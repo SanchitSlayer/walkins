@@ -1,0 +1,18 @@
+{
+  "name": "walkins",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "dotenv -e .env -- pnpm --parallel --filter=./apps/* run dev",
+    "db:migrate": "dotenv -e .env -- pnpm --filter @walkins/db run migrate",
+    "db:seed": "dotenv -e .env -- pnpm --filter @walkins/db run seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.2"
+  }
+}
