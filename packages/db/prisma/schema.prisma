@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model City {
+  id        String @id @default(cuid())
+  name      String
+  state     String
+  centerLat Float
+  centerLng Float
+
+  companies  Company[]
+  candidates Candidate[]
+  drives     Drive[]
+
+  @@map("cities")
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Company {
+  id                 String              @id @default(cuid())
+  name               String
+  gstin              String?
+  verificationStatus VerificationStatus  @default(PENDING)
+  contactPhone       String
+  cityId             String
+  createdAt          DateTime            @default(now())
+
+  city   City    @relation(fields: [cityId], references: [id])
+  users  User[]
+  drives Drive[]
+
+  @@index([cityId])
+  @@map("companies")
+}
+
+enum UserRole {
+  CANDIDATE
+  EMPLOYER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String
+  role      UserRole
+  companyId String?
+  createdAt DateTime @default(now())
+
+  company   Company?   @relation(fields: [companyId], references: [id])
+  candidate Candidate?
+  auditLogs AuditLog[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Candidate {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  cityId          String
+  homeLat         Float
+  homeLng         Float
+  maxTravelKm     Float
+  experienceYears Float
+  resumeKey       String?
+  telegramChatId  String?
+  // Populated by a DB trigger from homeLat/homeLng; not writable through Prisma.
+  geom            Unsupported("geography(Point, 4326)")?
+
+  user         User            @relation(fields: [userId], references: [id])
+  city         City            @relation(fields: [cityId], references: [id])
+  roles        CandidateRole[]
+  applications Application[]
+
+  @@index([cityId])
+  @@index([geom], type: Gist, map: "candidates_geom_gist")
+  @@map("candidates")
+}
+
+model Role {
+  id    String @id @default(cuid())
+  title String
+  slug  String @unique
+
+  candidates CandidateRole[]
+  drives     Drive[]
+
+  @@map("roles")
+}
+
+model CandidateRole {
+  candidateId String
+  roleId      String
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  role      Role      @relation(fields: [roleId], references: [id])
+
+  @@id([candidateId, roleId])
+  @@map("candidate_roles")
+}
+
+enum DriveStatus {
+  DRAFT
+  PENDING
+  LIVE
+  EXPIRED
+  CANCELLED
+}
+
+model Drive {
+  id            String      @id @default(cuid())
+  companyId     String
+  roleId        String
+  cityId        String
+  salaryMin     Int
+  salaryMax     Int
+  venueAddress  String
+  venueLat      Float
+  venueLng      Float
+  startsAt      DateTime
+  endsAt        DateTime
+  capacity      Int
+  experienceMin Float
+  experienceMax Float
+  status        DriveStatus @default(DRAFT)
+  // Populated by a DB trigger from venueLat/venueLng; not writable through Prisma.
+  geom          Unsupported("geography(Point, 4326)")?
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  role         Role          @relation(fields: [roleId], references: [id])
+  city         City          @relation(fields: [cityId], references: [id])
+  slots        DriveSlot[]
+  applications Application[]
+
+  @@index([companyId])
+  @@index([roleId])
+  @@index([geom], type: Gist, map: "drives_geom_gist")
+  @@map("drives")
+}
+
+model DriveSlot {
+  id          String   @id @default(cuid())
+  driveId     String
+  startsAt    DateTime
+  capacity    Int
+  bookedCount Int      @default(0)
+
+  drive        Drive         @relation(fields: [driveId], references: [id])
+  applications Application[]
+
+  @@index([driveId])
+  @@map("drive_slots")
+}
+
+enum ApplicationState {
+  INTERESTED
+  CONFIRMED
+  CHECKED_IN
+  INTERVIEWED
+  HIRED
+  NO_SHOW
+  REJECTED
+}
+
+model Application {
+  id             String           @id @default(cuid())
+  driveId        String
+  candidateId    String
+  slotId         String?
+  state          ApplicationState @default(INTERESTED)
+  stateChangedAt DateTime         @default(now())
+
+  drive     Drive      @relation(fields: [driveId], references: [id])
+  candidate Candidate  @relation(fields: [candidateId], references: [id])
+  slot      DriveSlot? @relation(fields: [slotId], references: [id])
+  checkIn   CheckIn?
+
+  @@index([driveId])
+  @@index([candidateId])
+  @@index([slotId])
+  @@map("applications")
+}
+
+model CheckIn {
+  id             String   @id @default(cuid())
+  applicationId  String   @unique
+  scannedAt      DateTime @default(now())
+  lat            Float
+  lng            Float
+  distanceMeters Float
+  isValid        Boolean
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@map("check_ins")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  entityType  String
+  entityId    String
+  action      String
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
