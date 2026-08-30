@@ -81,3 +81,12 @@ Data persists in named Docker volumes (`postgres_data`, `redis_data`,
   only ever needs to write the Float columns.
 - `packages/shared` exists so `apps/web` never depends on `@walkins/db`,
   which keeps the Prisma client out of the frontend bundle.
+
+## Development
+
+DEV_EXPOSE_OTP=true with NODE_ENV=development returns the OTP in the API
+response and logs it, so no SMS provider is needed locally. Both flags are
+required.
+
+To clear OTP rate limits while testing, delete the otp-request keys from
+Redis with redis-cli.
