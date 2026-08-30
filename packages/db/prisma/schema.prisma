@@ -28,13 +28,13 @@ enum VerificationStatus {
 }
 
 model Company {
-  id                 String              @id @default(cuid())
+  id                 String             @id @default(cuid())
   name               String
   gstin              String?
-  verificationStatus VerificationStatus  @default(PENDING)
+  verificationStatus VerificationStatus @default(PENDING)
   contactPhone       String
   cityId             String
-  createdAt          DateTime            @default(now())
+  createdAt          DateTime           @default(now())
 
   city   City    @relation(fields: [cityId], references: [id])
   users  User[]
@@ -67,8 +67,8 @@ model User {
 }
 
 model Candidate {
-  id              String  @id @default(cuid())
-  userId          String  @unique
+  id              String                                 @id @default(cuid())
+  userId          String                                 @unique
   cityId          String
   homeLat         Float
   homeLng         Float
@@ -120,23 +120,24 @@ enum DriveStatus {
 }
 
 model Drive {
-  id            String      @id @default(cuid())
-  companyId     String
-  roleId        String
-  cityId        String
-  salaryMin     Int
-  salaryMax     Int
-  venueAddress  String
-  venueLat      Float
-  venueLng      Float
-  startsAt      DateTime
-  endsAt        DateTime
-  capacity      Int
-  experienceMin Float
-  experienceMax Float
-  status        DriveStatus @default(DRAFT)
+  id                 String                                 @id @default(cuid())
+  companyId          String
+  roleId             String
+  cityId             String
+  salaryMin          Int
+  salaryMax          Int
+  venueAddress       String
+  venueLat           Float
+  venueLng           Float
+  startsAt           DateTime
+  endsAt             DateTime
+  capacity           Int
+  experienceMin      Float
+  experienceMax      Float
+  status             DriveStatus                            @default(DRAFT)
+  needsManualGeocode Boolean                                @default(false)
   // Populated by a DB trigger from venueLat/venueLng; not writable through Prisma.
-  geom          Unsupported("geography(Point, 4326)")?
+  geom               Unsupported("geography(Point, 4326)")?
 
   company      Company       @relation(fields: [companyId], references: [id])
   role         Role          @relation(fields: [roleId], references: [id])

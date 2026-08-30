@@ -31,6 +31,32 @@ async function main() {
       create: role,
     });
   }
+
+  // OTP verify only ever creates CANDIDATE users for a new phone (the
+  // {phone, otp} payload has no role field by design), so there is no
+  // self-serve path to an EMPLOYER account yet. Seed one test employer,
+  // scoped to a real company, so the drive CRUD endpoints are reachable.
+  const bengaluru = await prisma.city.findFirstOrThrow({ where: { name: "Bengaluru" } });
+
+  const testCompany = await prisma.company.findFirst({ where: { name: "Test Company" } });
+  const company =
+    testCompany ??
+    (await prisma.company.create({
+      data: {
+        name: "Test Company",
+        verificationStatus: "VERIFIED",
+        contactPhone: "9999999999",
+        cityId: bengaluru.id,
+      },
+    }));
+
+  const employerPhone = "9999999999";
+  const existingEmployer = await prisma.user.findUnique({ where: { phone: employerPhone } });
+  if (!existingEmployer) {
+    await prisma.user.create({
+      data: { phone: employerPhone, name: "Test Employer", role: "EMPLOYER", companyId: company.id },
+    });
+  }
 }
 
 main()
