@@ -15,3 +15,16 @@ export type ApplicationState =
   | "HIRED"
   | "NO_SHOW"
   | "REJECTED";
+
+export type AccessTokenPayload = {
+  userId: string;
+  role: UserRole;
+  companyId: string | null;
+};
+
+export type CursorPage<T> = {
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type { OtpRequestInput, OtpVerifyInput, CreateDriveInput, UpdateDriveInput } from "../schemas";
