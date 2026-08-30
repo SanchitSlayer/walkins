@@ -11,6 +11,24 @@ services, no API keys.
 - packages/db — Prisma schema, client, migrations, seed script
 - packages/shared — shared TypeScript types and zod schemas
 
+
+## Features
+
+Authentication is phone-based. A user requests an OTP, verifies it, and
+receives a short-lived JWT plus a rotating refresh token stored in an
+httpOnly cookie. OTP requests are rate limited per phone (3 per 15 minutes)
+and per IP (10 per hour), and an OTP is destroyed after 5 failed verify
+attempts.
+
+Three roles exist: CANDIDATE, EMPLOYER and ADMIN. Employers are scoped to a
+single company and cannot read or modify another company's drives. This is
+enforced in the service layer, not just the controller.
+
+Employers can create walk-in drives, which are jobs bound to a venue, a time
+window and a capacity. Creating a drive generates its interview slots from
+the time window and slot duration. Venue addresses are geocoded through
+Nominatim and written to the PostGIS columns; if geocoding fails the drive is
+still saved and flagged for manual coordinate entry.
 ## Prerequisites
 
 - Node.js 20 or later
