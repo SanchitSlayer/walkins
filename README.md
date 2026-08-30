@@ -29,6 +29,7 @@ window and a capacity. Creating a drive generates its interview slots from
 the time window and slot duration. Venue addresses are geocoded through
 Nominatim and written to the PostGIS columns; if geocoding fails the drive is
 still saved and flagged for manual coordinate entry.
+
 ## Prerequisites
 
 - Node.js 20 or later
