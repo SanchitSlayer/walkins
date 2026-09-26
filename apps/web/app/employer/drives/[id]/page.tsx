@@ -1,263 +1,173 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { updateDriveSchema } from "@walkins/shared";
 import type { DriveDetail } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { useRequireEmployer } from "@/lib/use-require-role";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-
-function toDatetimeLocal(iso: string): string {
-  const date = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+import { deriveBoardState, StatusMark } from "@/components/board/board-state";
+import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
+import { SlotStack } from "@/components/board/slot-stack";
+import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields } from "../drive-fields";
 
 export default function EditDrivePage() {
-  const ready = useRequireEmployer();
   const params = useParams<{ id: string }>();
-  const router = useRouter();
-
   const [drive, setDrive] = useState<DriveDetail | null>(null);
-  const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
-  const [cities, setCities] = useState<{ id: string; name: string; state: string }[]>([]);
+  const [fields, setFields] = useState<DriveFieldValues | null>(null);
+  const [capacity, setCapacity] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [now] = useState(() => new Date());
+
+  function show(next: DriveDetail) {
+    setDrive(next);
+    setFields(driveFieldValues(next));
+    setCapacity(String(next.capacity));
+  }
 
   useEffect(() => {
-    if (!ready) return;
-    apiClient.getDrive(params.id).then(setDrive);
-    apiClient.listRoles().then(setRoles);
-    apiClient.listCities().then(setCities);
-  }, [ready, params.id]);
-
-  function setField<K extends keyof DriveDetail>(key: K, value: DriveDetail[K]) {
-    setDrive((d) => (d ? { ...d, [key]: value } : d));
-  }
+    apiClient.getDrive(params.id).then(show);
+  }, [params.id]);
 
   const editable = drive?.status === "DRAFT" || drive?.status === "PENDING";
 
+  async function run(action: () => Promise<DriveDetail>, fallback: string) {
+    setLoading(true);
+    setError(null);
+    setSaved(false);
+    try {
+      show(await action());
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallback);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSave(event: FormEvent) {
     event.preventDefault();
-    if (!drive) return;
-    setError(null);
+    if (!drive || !fields) return;
 
-    const parsed = updateDriveSchema.safeParse({
-      roleId: drive.roleId,
-      cityId: drive.cityId,
-      salaryMin: Number(drive.salaryMin),
-      salaryMax: Number(drive.salaryMax),
-      venueAddress: drive.venueAddress,
-      startsAt: drive.startsAt,
-      endsAt: drive.endsAt,
-      capacity: Number(drive.capacity),
-      experienceMin: Number(drive.experienceMin),
-      experienceMax: Number(drive.experienceMax),
-    });
-
+    const parsed = updateDriveSchema.safeParse({ ...parseDriveFields(fields), capacity: Number(capacity) });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "Invalid input");
+      setError(parsed.error.errors[0]?.message ?? "A field is missing or invalid");
       return;
     }
-
-    setLoading(true);
-    try {
-      const updated = await apiClient.updateDrive(drive.id, parsed.data);
-      setDrive(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save drive");
-    } finally {
-      setLoading(false);
-    }
+    setSaved(await run(() => apiClient.updateDrive(drive.id, parsed.data), "Couldn't save the drive"));
   }
 
-  async function handleSubmitForReview() {
-    if (!drive) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const updated = await apiClient.submitDrive(drive.id);
-      setDrive(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit drive");
-    } finally {
-      setLoading(false);
-    }
+  function handleCancel() {
+    if (!drive || !confirm("Cancel this drive? Candidates will no longer see it, and this can't be undone.")) return;
+    run(() => apiClient.deleteDrive(drive.id), "Couldn't cancel the drive");
   }
 
-  async function handleCancel() {
-    if (!drive) return;
-    if (!confirm("Cancel this drive? This cannot be undone.")) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const updated = await apiClient.deleteDrive(drive.id);
-      setDrive(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to cancel drive");
-    } finally {
-      setLoading(false);
-    }
+  if (!drive || !fields) {
+    return (
+      <p role="status" className="type-meta text-housing-muted">
+        Loading drive
+      </p>
+    );
   }
 
-  if (!ready || !drive) {
-    return null;
-  }
+  const state = deriveBoardState({ ...drive, bookedCount: drive.slots.reduce((sum, s) => sum + s.bookedCount, 0) }, now);
 
   return (
-    <main className="mx-auto max-w-2xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{drive.role.title}</h1>
-        <Badge>{drive.status}</Badge>
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid content-start gap-6">
+        <div>
+          <Link href="/employer/drives" className="type-meta text-housing-muted underline-offset-4 hover:underline">
+            Drives
+          </Link>
+          <h1 className="type-h2 mt-1">{drive.role.title}</h1>
+          <p className="type-meta mt-1 text-housing-muted">
+            {editable ? "Editable until it goes live." : "Live, ended and cancelled drives can't be edited."}
+          </p>
+        </div>
+
+        {drive.needsManualGeocode && (
+          <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">
+            This address couldn&apos;t be placed on the map, so the venue pin sits at the city centre. Edit the address
+            and save to try again.
+          </p>
+        )}
+
+        <form className="grid gap-6" onSubmit={handleSave} noValidate>
+          <DriveFields
+            values={fields}
+            onChange={(key, value) => {
+              setSaved(false);
+              setFields((f) => f && { ...f, [key]: value });
+            }}
+            disabled={!editable}
+          />
+          <FieldGroup legend="Seats">
+            <BoardField label="Total seats" hint="Slots were fixed when the drive was created.">
+              <BoardInput
+                board
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={capacity}
+                onChange={(e) => {
+                  setSaved(false);
+                  setCapacity(e.target.value);
+                }}
+                disabled={!editable}
+              />
+            </BoardField>
+          </FieldGroup>
+
+          {error && (
+            <p role="alert" className="type-meta text-closing-lamp">
+              {error}
+            </p>
+          )}
+          <p role="status" className={saved ? "type-meta text-live-lamp" : "sr-only"}>
+            {saved ? "Changes saved." : ""}
+          </p>
+
+          {editable && (
+            <div>
+              <BoardButton type="submit" disabled={loading}>
+                {loading ? "Saving" : "Save changes"}
+              </BoardButton>
+            </div>
+          )}
+        </form>
       </div>
 
-      {drive.needsManualGeocode && (
-        <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-          This venue address could not be geocoded automatically. Coordinates are set to the city center — edit and
-          re-save the address to retry.
-        </p>
-      )}
-
-      <form className="space-y-4" onSubmit={handleSave}>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="roleId">Role</Label>
-            <select
-              id="roleId"
-              disabled={!editable}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
-              value={drive.roleId}
-              onChange={(e) => setField("roleId", e.target.value)}
-            >
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="cityId">City</Label>
-            <select
-              id="cityId"
-              disabled={!editable}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm disabled:opacity-50"
-              value={drive.cityId}
-              onChange={(e) => setField("cityId", e.target.value)}
-            >
-              {cities.map((city) => (
-                <option key={city.id} value={city.id}>
-                  {city.name}, {city.state}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="venueAddress">Venue address</Label>
-          <Input
-            id="venueAddress"
-            disabled={!editable}
-            value={drive.venueAddress}
-            onChange={(e) => setField("venueAddress", e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="salaryMin">Salary min</Label>
-            <Input
-              id="salaryMin"
-              type="number"
-              disabled={!editable}
-              value={drive.salaryMin}
-              onChange={(e) => setField("salaryMin", Number(e.target.value))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="salaryMax">Salary max</Label>
-            <Input
-              id="salaryMax"
-              type="number"
-              disabled={!editable}
-              value={drive.salaryMax}
-              onChange={(e) => setField("salaryMax", Number(e.target.value))}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="startsAt">Starts at</Label>
-            <Input
-              id="startsAt"
-              type="datetime-local"
-              disabled={!editable}
-              value={toDatetimeLocal(drive.startsAt)}
-              onChange={(e) => setField("startsAt", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="endsAt">Ends at</Label>
-            <Input
-              id="endsAt"
-              type="datetime-local"
-              disabled={!editable}
-              value={toDatetimeLocal(drive.endsAt)}
-              onChange={(e) => setField("endsAt", e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="capacity">Total capacity</Label>
-          <Input
-            id="capacity"
-            type="number"
-            disabled={!editable}
-            value={drive.capacity}
-            onChange={(e) => setField("capacity", Number(e.target.value))}
-          />
-        </div>
-
-        <div>
-          <Label>Slots (fixed at creation)</Label>
-          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-            {drive.slots.map((slot) => (
-              <li key={slot.id}>
-                {new Date(slot.startsAt).toLocaleString()} — {slot.bookedCount}/{slot.capacity} booked
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        {editable && (
-          <div className="flex gap-3">
-            <Button type="submit" disabled={loading}>
-              {loading ? "Saving..." : "Save changes"}
-            </Button>
-            {drive.status === "DRAFT" && (
-              <Button type="button" variant="outline" disabled={loading} onClick={handleSubmitForReview}>
-                Submit for review
-              </Button>
-            )}
-            <Button type="button" variant="destructive" disabled={loading} onClick={handleCancel}>
+      <aside className="grid content-start gap-6 lg:border-l lg:border-housing-line lg:pl-8" aria-label="Drive status and slots">
+        <section className="grid gap-3">
+          <h2 className="type-meta text-housing-muted">Status</h2>
+          <StatusMark state={state} surface="housing" className="type-body" />
+          {drive.status === "DRAFT" && (
+            <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "Couldn't send for review")}>
+              Send for review
+            </BoardButton>
+          )}
+          {drive.status === "LIVE" && (
+            <Link href={`/drives/${drive.id}`} className="type-meta text-stock underline underline-offset-4">
+              See the public page
+            </Link>
+          )}
+          {editable && (
+            <BoardButton variant="quiet" disabled={loading} onClick={handleCancel}>
               Cancel drive
-            </Button>
-          </div>
-        )}
-      </form>
+            </BoardButton>
+          )}
+        </section>
 
-      <button type="button" className="text-sm text-muted-foreground underline" onClick={() => router.push("/employer/drives")}>
-        Back to drives
-      </button>
-    </main>
+        <section aria-labelledby="slots-heading">
+          <h2 id="slots-heading" className="type-meta text-housing-muted">
+            Slots
+          </h2>
+          <SlotStack slots={drive.slots} now={now} dense className="mt-1" />
+        </section>
+      </aside>
+    </div>
   );
 }

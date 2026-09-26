@@ -2,27 +2,32 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { DriveSummary } from "@walkins/shared";
+import type { EmployerDriveRow } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { useRequireEmployer } from "@/lib/use-require-role";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { formatWhen } from "@/lib/board-format";
+import { deriveBoardState, StatusMark } from "@/components/board/board-state";
+import { BoardButton, boardButtonClass } from "@/components/board/field";
 
-const STATUS_BADGE: Record<DriveSummary["status"], BadgeProps["variant"]> = {
-  DRAFT: "secondary",
-  PENDING: "warning",
-  LIVE: "success",
-  EXPIRED: "outline",
-  CANCELLED: "destructive",
-};
+function Seats({ capacity, booked }: { capacity: number; booked: number }) {
+  return (
+    <span className="grid gap-1">
+      <span className="type-board-sm whitespace-nowrap">
+        {booked} of {capacity} booked
+      </span>
+      <span aria-hidden className="h-1 w-full max-w-28 bg-housing-line">
+        <span className="block h-full bg-stock" style={{ width: `${capacity ? Math.min(100, (booked / capacity) * 100) : 0}%` }} />
+      </span>
+    </span>
+  );
+}
 
 export default function EmployerDrivesPage() {
-  const ready = useRequireEmployer();
-  const [drives, setDrives] = useState<DriveSummary[]>([]);
+  const [drives, setDrives] = useState<EmployerDriveRow[]>([]);
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now] = useState(() => new Date());
 
   const currentCursor = cursorStack[cursorStack.length - 1];
 
@@ -34,77 +39,97 @@ export default function EmployerDrivesPage() {
       setDrives(page.items);
       setNextCursor(page.nextCursor);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load drives");
+      setError(err instanceof Error ? err.message : "Couldn't load your drives");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (ready) {
-      load(currentCursor);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, currentCursor]);
-
-  if (!ready) {
-    return null;
-  }
+    load(currentCursor);
+  }, [load, currentCursor]);
 
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Your drives</h1>
-        <Link href="/employer/drives/new">
-          <Button>New drive</Button>
+    <div className="grid gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="type-h2">Drives</h1>
+        <Link href="/employer/drives/new" className={boardButtonClass()}>
+          New drive
         </Link>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
+      {error && (
+        <p role="alert" className="type-meta text-closing-lamp">
+          {error}
+        </p>
+      )}
+      <p role="status" className="type-meta text-housing-muted">
+        {loading ? "Loading drives" : drives.length === 0 && !error ? "No drives yet. Start with a new drive." : ""}
+      </p>
 
-      {!loading && drives.length === 0 && (
-        <p className="text-sm text-muted-foreground">No drives yet. Create your first one.</p>
+      {drives.length > 0 && (
+        <div className="border-t border-housing-line">
+          <div
+            aria-hidden
+            className="type-meta hidden grid-cols-[minmax(0,1fr)_13rem_9rem_9rem] gap-4 border-b border-housing-line py-2 text-housing-muted md:grid"
+          >
+            <span>Role and venue</span>
+            <span>When</span>
+            <span>Seats</span>
+            <span>Status</span>
+          </div>
+          <ul>
+            {drives.map((drive) => {
+              const state = deriveBoardState(drive, now);
+              const when = formatWhen(drive.startsAt, drive.endsAt, now);
+              return (
+                <li
+                  key={drive.id}
+                  className="relative grid gap-2 border-b border-housing-line py-3 hover:bg-housing-raised md:grid-cols-[minmax(0,1fr)_13rem_9rem_9rem] md:items-center md:gap-4"
+                >
+                  <span className="min-w-0">
+                    {/* The link covers the whole row, so the row is one target
+                        without wrapping every cell in an anchor. */}
+                    <Link href={`/employer/drives/${drive.id}`} className="type-body font-semibold after:absolute after:inset-0">
+                      {drive.role.title}
+                    </Link>
+                    <span className="type-meta block truncate text-housing-muted">{drive.venueAddress}</span>
+                    {drive.needsManualGeocode && (
+                      <span className="type-meta block text-filling-lamp">Venue pin is approximate</span>
+                    )}
+                  </span>
+                  <span className="type-board-sm">
+                    <span className="whitespace-nowrap">{when.day}</span>
+                    {" · "}
+                    <span className="whitespace-nowrap">{when.time}</span>
+                  </span>
+                  <Seats capacity={drive.capacity} booked={drive.bookedCount} />
+                  <StatusMark state={state} surface="housing" />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
-      <ul className="space-y-3">
-        {drives.map((drive) => (
-          <li key={drive.id}>
-            <Link
-              href={`/employer/drives/${drive.id}`}
-              className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-accent"
-            >
-              <div>
-                <p className="font-medium">{drive.role.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  {drive.venueAddress} · {new Date(drive.startsAt).toLocaleString()}
-                </p>
-                {drive.needsManualGeocode && (
-                  <p className="text-xs text-amber-700">Coordinates need manual entry</p>
-                )}
-              </div>
-              <Badge variant={STATUS_BADGE[drive.status]}>{drive.status}</Badge>
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      <div className="flex justify-between">
-        <Button
-          variant="outline"
-          disabled={cursorStack.length <= 1}
-          onClick={() => setCursorStack((stack) => stack.slice(0, -1))}
-        >
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          disabled={!nextCursor}
-          onClick={() => nextCursor && setCursorStack((stack) => [...stack, nextCursor])}
-        >
-          Next
-        </Button>
-      </div>
-    </main>
+      {(cursorStack.length > 1 || nextCursor) && (
+        <div className="flex justify-between gap-3">
+          <BoardButton
+            variant="quiet"
+            disabled={cursorStack.length <= 1 || loading}
+            onClick={() => setCursorStack((stack) => stack.slice(0, -1))}
+          >
+            Previous page
+          </BoardButton>
+          <BoardButton
+            variant="quiet"
+            disabled={!nextCursor || loading}
+            onClick={() => nextCursor && setCursorStack((stack) => [...stack, nextCursor])}
+          >
+            Next page
+          </BoardButton>
+        </div>
+      )}
+    </div>
   );
 }

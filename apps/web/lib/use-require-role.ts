@@ -33,11 +33,3 @@ export function useRequireRole(role: "EMPLOYER" | "CANDIDATE"): boolean {
 
   return ready;
 }
-
-export function useRequireEmployer(): boolean {
-  return useRequireRole("EMPLOYER");
-}
-
-export function useRequireCandidate(): boolean {
-  return useRequireRole("CANDIDATE");
-}
