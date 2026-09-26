@@ -66,7 +66,44 @@ export const createDriveSchema = z
 
 export const updateDriveSchema = z.object(driveCoreShape).partial();
 
+// Single source of truth for the maximum allowed travel radius. Kept to a
+// realistic walk-in-interview commute distance (not an arbitrary large
+// number) so the targeting query's GiST-indexable bounding prefilter
+// (TargetingService) actually narrows the candidate set instead of just
+// technically being "a constant." The profile page's radius slider and the
+// zod validation both derive from this same value — if it ever changes
+// without the prefilter changing too, the prefilter would silently exclude
+// valid candidates above the old ceiling instead of just becoming looser.
+export const MAX_TRAVEL_KM = 50;
+
+// Partial at the schema layer; the service enforces that all fields are
+// present on a candidate's *first* save (Candidate's location/travel
+// columns are NOT NULL with no defaults), then allows true partial edits
+// once the row exists.
+export const updateCandidateProfileSchema = z
+  .object({
+    cityId: z.string().min(1),
+    homeLat: z.number().min(-90).max(90),
+    homeLng: z.number().min(-180).max(180),
+    maxTravelKm: z.number().positive().max(MAX_TRAVEL_KM),
+    experienceYears: z.number().nonnegative(),
+    roleIds: z.array(z.string().min(1)),
+  })
+  .partial();
+
+export const driveSearchQuerySchema = z.object({
+  city: z.string().min(1).optional(),
+  role: z.string().min(1).optional(),
+  radiusKm: z.coerce.number().positive().optional(),
+  fromDate: z.coerce.date().optional(),
+  toDate: z.coerce.date().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(50).optional(),
+});
+
 export type OtpRequestInput = z.infer<typeof otpRequestSchema>;
 export type OtpVerifyInput = z.infer<typeof otpVerifySchema>;
 export type CreateDriveInput = z.infer<typeof createDriveSchema>;
 export type UpdateDriveInput = z.infer<typeof updateDriveSchema>;
+export type UpdateCandidateProfileInput = z.infer<typeof updateCandidateProfileSchema>;
+export type DriveSearchQuery = z.infer<typeof driveSearchQuerySchema>;

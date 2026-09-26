@@ -28,3 +28,43 @@ export type CursorPage<T> = {
 };
 
 export type { OtpRequestInput, OtpVerifyInput, CreateDriveInput, UpdateDriveInput } from "../schemas";
+
+// Moved here from apps/web (rather than duplicated) because public search
+// results need the same shape plus distanceKm, and are fetched both
+// client-side and during SSR — not just through the browser-only api client.
+export type DriveSummary = {
+  id: string;
+  roleId: string;
+  cityId: string;
+  salaryMin: number;
+  salaryMax: number;
+  venueAddress: string;
+  venueLat: number;
+  venueLng: number;
+  startsAt: string;
+  endsAt: string;
+  capacity: number;
+  experienceMin: number;
+  experienceMax: number;
+  status: DriveStatus;
+  needsManualGeocode: boolean;
+  role: { title: string; slug: string };
+};
+
+export type DriveDetail = DriveSummary & {
+  slots: { id: string; startsAt: string; capacity: number; bookedCount: number }[];
+};
+
+export type DriveSearchResult = DriveSummary & {
+  distanceKm: number;
+  city: { name: string; state: string };
+};
+
+export type CandidateProfile = {
+  cityId: string;
+  homeLat: number;
+  homeLng: number;
+  maxTravelKm: number;
+  experienceYears: number;
+  roleIds: string[];
+};
