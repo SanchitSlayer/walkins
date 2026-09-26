@@ -6,10 +6,15 @@ import { MAX_TRAVEL_KM } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useRequireRole } from "@/lib/use-require-role";
 import { nearestCity } from "@/lib/geo";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
+import { Masthead } from "@/components/board/masthead";
+import { Slab } from "@/components/board/slab";
 
-const ProfileMap = dynamic(() => import("@/components/leaflet/profile-map"), { ssr: false });
+const PinMap = dynamic(() => import("@/components/board/pin-map"), {
+  ssr: false,
+  loading: () => <div className="h-[420px] border border-housing-line bg-housing-raised" />,
+});
 
 const DEFAULT_LAT = 12.9716;
 const DEFAULT_LNG = 77.5946;
@@ -25,8 +30,10 @@ export default function ProfilePage() {
   const [radiusKm, setRadiusKm] = useState(10);
   const [experienceYears, setExperienceYears] = useState(0);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -41,11 +48,35 @@ export default function ProfilePage() {
         setExperienceYears(profile.experienceYears);
         setSelectedRoleIds(profile.roleIds);
       }
+      setLoaded(true);
     });
   }, [ready]);
 
+  function moveHome(newLat: number, newLng: number) {
+    setLat(newLat);
+    setLng(newLng);
+    setSaved(false);
+  }
+
   function toggleRole(roleId: string) {
+    setSaved(false);
     setSelectedRoleIds((ids) => (ids.includes(roleId) ? ids.filter((id) => id !== roleId) : [...ids, roleId]));
+  }
+
+  function locateHome() {
+    setError(null);
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        moveHome(position.coords.latitude, position.coords.longitude);
+        setLocating(false);
+      },
+      () => {
+        setError("Your browser didn't share a location. Place the diamond on the map instead.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
   }
 
   async function handleSave() {
@@ -53,7 +84,7 @@ export default function ProfilePage() {
     setSaved(false);
 
     if (selectedRoleIds.length === 0) {
-      setError("Select at least one role");
+      setError("Pick at least one role you'd walk in for.");
       return;
     }
     if (cities.length === 0) {
@@ -74,92 +105,119 @@ export default function ProfilePage() {
       });
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save profile");
+      setError(err instanceof Error ? err.message : "Couldn't save your profile");
     } finally {
       setLoading(false);
     }
   }
 
-  if (!ready) {
-    return null;
-  }
-
   const detectedCity = cities.length > 0 ? nearestCity({ lat, lng }, cities) : null;
 
   return (
-    <main className="mx-auto max-w-2xl space-y-6 p-6">
-      <h1 className="text-lg font-semibold">Your profile</h1>
-      <p className="text-sm text-muted-foreground">
-        Drag the pin (or click the map) to set your home location. Drives within your travel radius will be shown
-        to you.
-      </p>
+    <div className="min-h-screen bg-housing text-stock">
+      <Masthead />
+      {ready && loaded && (
+        <main className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:gap-10">
+          <div className="grid content-start gap-6">
+            <div>
+              <h1 className="type-h1">Where you&apos;ll travel from</h1>
+              <p className="type-body mt-2 text-housing-muted">
+                Drives within your travel distance of home are the ones we&apos;ll show you first.
+              </p>
+            </div>
 
-      <ProfileMap
-        lat={lat}
-        lng={lng}
-        radiusKm={radiusKm}
-        onChange={(newLat, newLng) => {
-          setLat(newLat);
-          setLng(newLng);
-        }}
-      />
+            <Slab depth="md" className="grid w-full gap-6 p-5">
+              <BoardField label={`Travel distance: ${radiusKm} km`} surface="stock">
+                <input
+                  type="range"
+                  min={1}
+                  max={MAX_TRAVEL_KM}
+                  value={radiusKm}
+                  onChange={(e) => {
+                    setRadiusKm(Number(e.target.value));
+                    setSaved(false);
+                  }}
+                  aria-valuetext={`${radiusKm} kilometres`}
+                  className="h-11 w-full accent-ink"
+                />
+              </BoardField>
 
-      {detectedCity && (
-        <p className="text-sm text-muted-foreground">
-          Detected city: {detectedCity.name}, {detectedCity.state}
-        </p>
+              <BoardField label="Years of experience" surface="stock" className="w-40">
+                <BoardInput
+                  surface="stock"
+                  board
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.5}
+                  value={experienceYears}
+                  onChange={(e) => {
+                    setExperienceYears(Number(e.target.value));
+                    setSaved(false);
+                  }}
+                />
+              </BoardField>
+
+              <fieldset>
+                <legend className="type-meta text-ink-muted">Roles you&apos;d walk in for</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {roles.map((role) => {
+                    const on = selectedRoleIds.includes(role.id);
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => toggleRole(role.id)}
+                        className={cn(
+                          "type-meta inline-flex min-h-11 items-center gap-2 border px-3",
+                          on ? "border-ink bg-ink text-stock" : "border-ink-muted text-ink hover:bg-stock-edge",
+                        )}
+                      >
+                        <span aria-hidden className={cn("h-2.5 w-2.5 border", on ? "border-stock bg-stock" : "border-ink-muted")} />
+                        {role.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              {error && (
+                <p role="alert" className="type-meta text-closing-ink">
+                  {error}
+                </p>
+              )}
+              <p role="status" className={cn("type-meta text-live-ink", !saved && "sr-only")}>
+                {saved ? "Saved. Search now measures from this home." : ""}
+              </p>
+
+              <BoardButton surface="stock" onClick={handleSave} disabled={loading}>
+                {loading ? "Saving" : "Save profile"}
+              </BoardButton>
+            </Slab>
+          </div>
+
+          <section aria-labelledby="home-heading" className="grid content-start gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 id="home-heading" className="type-h3">
+                Home
+              </h2>
+              <BoardButton variant="quiet" onClick={locateHome} disabled={locating}>
+                {locating ? "Finding you" : "Use my current location"}
+              </BoardButton>
+            </div>
+            <PinMap lat={lat} lng={lng} radiusKm={radiusKm} onChange={moveHome} className="h-[420px] lg:h-[560px]" />
+            <p className="type-meta text-housing-muted">
+              Drag the diamond or click the map to move your home. The pale ring is how far you&apos;ll travel.
+            </p>
+            {detectedCity && (
+              <p className="type-board-md">
+                Nearest city: {detectedCity.name}, {detectedCity.state}
+              </p>
+            )}
+          </section>
+        </main>
       )}
-
-      <div className="space-y-2">
-        <Label htmlFor="radius">Travel radius: {radiusKm} km</Label>
-        <input
-          id="radius"
-          type="range"
-          min={1}
-          max={MAX_TRAVEL_KM}
-          value={radiusKm}
-          onChange={(e) => setRadiusKm(Number(e.target.value))}
-          className="w-full"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="experience">Experience (years)</Label>
-        <input
-          id="experience"
-          type="number"
-          min={0}
-          step={0.5}
-          value={experienceYears}
-          onChange={(e) => setExperienceYears(Number(e.target.value))}
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Roles you&apos;re interested in</Label>
-        <div className="flex flex-wrap gap-2">
-          {roles.map((role) => (
-            <button
-              key={role.id}
-              type="button"
-              onClick={() => toggleRole(role.id)}
-              className={`rounded-md border px-3 py-1 text-sm ${
-                selectedRoleIds.includes(role.id) ? "border-primary bg-primary text-primary-foreground" : "border-input"
-              }`}
-            >
-              {role.title}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {saved && <p className="text-sm text-emerald-700">Profile saved.</p>}
-
-      <Button onClick={handleSave} disabled={loading}>
-        {loading ? "Saving..." : "Save profile"}
-      </Button>
-    </main>
+    </div>
   );
 }

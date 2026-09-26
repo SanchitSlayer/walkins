@@ -4,9 +4,9 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { otpRequestSchema, otpVerifySchema } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
+import { Masthead } from "@/components/board/masthead";
+import { Slab } from "@/components/board/slab";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function LoginPage() {
 
     const parsed = otpRequestSchema.safeParse({ phone });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "Invalid phone number");
+      setError(parsed.error.errors[0]?.message ?? "Enter a valid phone number");
       return;
     }
 
@@ -33,7 +33,7 @@ export default function LoginPage() {
       setDevOtp(result.devOtp ?? null);
       setStep("otp");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to request OTP");
+      setError(err instanceof Error ? err.message : "Couldn't send the code");
     } finally {
       setLoading(false);
     }
@@ -45,84 +45,101 @@ export default function LoginPage() {
 
     const parsed = otpVerifySchema.safeParse({ phone, otp });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "Invalid OTP");
+      setError(parsed.error.errors[0]?.message ?? "Enter the 6-digit code");
       return;
     }
 
     setLoading(true);
     try {
       const { role } = await apiClient.verifyOtp(parsed.data);
-      router.push(role === "EMPLOYER" ? "/employer/drives" : "/");
+      router.push(role === "EMPLOYER" ? "/employer/drives" : "/profile");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify OTP");
+      setError(err instanceof Error ? err.message : "Couldn't check the code");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-border p-6">
+    <div className="min-h-screen bg-housing text-stock">
+      <Masthead />
+      <main className="mx-auto grid max-w-md gap-6 px-4 py-12 sm:py-20">
         <div>
-          <h1 className="text-lg font-semibold">Log in</h1>
-          <p className="text-sm text-muted-foreground">
-            {step === "phone" ? "Enter your phone number to receive an OTP." : `Enter the code sent to ${phone}.`}
+          <h1 className="type-h1">Log in</h1>
+          <p className="type-body mt-2 text-housing-muted">
+            {step === "phone" ? "We'll text a one-time code to your phone." : `Enter the code sent to ${phone}.`}
           </p>
         </div>
 
-        {step === "phone" ? (
-          <form className="space-y-4" onSubmit={handleRequestOtp}>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone number</Label>
-              <Input
-                id="phone"
-                type="tel"
-                inputMode="tel"
-                placeholder="9999999999"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                autoFocus
-              />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Sending..." : "Send OTP"}
-            </Button>
-          </form>
-        ) : (
-          <form className="space-y-4" onSubmit={handleVerifyOtp}>
-            <div className="space-y-2">
-              <Label htmlFor="otp">6-digit code</Label>
-              <Input
-                id="otp"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="123456"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                autoFocus
-              />
-              {devOtp && <p className="text-xs text-muted-foreground">Dev mode: OTP is {devOtp}</p>}
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Verifying..." : "Verify"}
-            </Button>
-            <button
-              type="button"
-              className="w-full text-center text-sm text-muted-foreground underline"
-              onClick={() => {
-                setStep("phone");
-                setOtp("");
-                setError(null);
-              }}
-            >
-              Use a different number
-            </button>
-          </form>
-        )}
-      </div>
-    </main>
+        <Slab depth="md" className="w-full p-5">
+          {step === "phone" ? (
+            <form className="grid gap-5" onSubmit={handleRequestOtp} noValidate>
+              <BoardField label="Phone number" hint="Your 10-digit mobile number" surface="stock">
+                <BoardInput
+                  surface="stock"
+                  board
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  aria-invalid={error ? true : undefined}
+                  autoFocus
+                />
+              </BoardField>
+              {error && (
+                <p role="alert" className="type-meta text-closing-ink">
+                  {error}
+                </p>
+              )}
+              <BoardButton type="submit" surface="stock" disabled={loading}>
+                {loading ? "Sending code" : "Send code"}
+              </BoardButton>
+            </form>
+          ) : (
+            <form className="grid gap-5" onSubmit={handleVerifyOtp} noValidate>
+              <BoardField
+                label="6-digit code"
+                surface="stock"
+                hint={devOtp ? `Development build: the code is ${devOtp}` : undefined}
+              >
+                <BoardInput
+                  surface="stock"
+                  board
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  aria-invalid={error ? true : undefined}
+                  autoFocus
+                  className="tracking-[0.3em]"
+                />
+              </BoardField>
+              {error && (
+                <p role="alert" className="type-meta text-closing-ink">
+                  {error}
+                </p>
+              )}
+              <BoardButton type="submit" surface="stock" disabled={loading}>
+                {loading ? "Checking code" : "Log in"}
+              </BoardButton>
+              <BoardButton
+                surface="stock"
+                variant="quiet"
+                onClick={() => {
+                  setStep("phone");
+                  setOtp("");
+                  setError(null);
+                }}
+              >
+                Use a different number
+              </BoardButton>
+            </form>
+          )}
+        </Slab>
+      </main>
+    </div>
   );
 }
