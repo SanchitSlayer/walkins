@@ -1,4 +1,4 @@
-import type { CursorPage, DriveSearchResult } from "@walkins/shared";
+import type { DriveSearchPage, PublicDriveDetail } from "@walkins/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -16,7 +16,7 @@ export async function searchDrivesOnServer(params: {
   fromDate?: string;
   toDate?: string;
   cursor?: string;
-}): Promise<CursorPage<DriveSearchResult>> {
+}): Promise<DriveSearchPage> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value) query.set(key, value);
@@ -31,16 +31,17 @@ export async function searchDrivesOnServer(params: {
 
 export type CityRow = { id: string; name: string; state: string; centerLat: number; centerLng: number };
 
-export async function getCityCenterByName(name: string): Promise<CityRow | null> {
+export async function listCitiesOnServer(): Promise<CityRow[]> {
   const response = await fetch(`${API_URL}/cities`, { cache: "no-store" });
-  if (!response.ok) {
-    return null;
-  }
-  const cities: CityRow[] = await response.json();
+  return response.ok ? response.json() : [];
+}
+
+export async function getCityCenterByName(name: string): Promise<CityRow | null> {
+  const cities = await listCitiesOnServer();
   return cities.find((city) => city.name.toLowerCase() === name.toLowerCase()) ?? null;
 }
 
-export async function getPublicDriveOnServer(driveId: string): Promise<DriveSearchResult | null> {
+export async function getPublicDriveOnServer(driveId: string): Promise<PublicDriveDetail | null> {
   const response = await fetch(`${API_URL}/drives/${driveId}/public`, { cache: "no-store" });
   if (!response.ok) {
     return null;

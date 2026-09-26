@@ -5,10 +5,11 @@ import type {
   CreateDriveInput,
   CursorPage,
   DriveDetail,
-  DriveSearchResult,
-  DriveSummary,
+  DriveSearchPage,
+  EmployerDriveRow,
   OtpRequestInput,
   OtpVerifyInput,
+  PublicDriveDetail,
   UpdateCandidateProfileInput,
   UpdateDriveInput,
 } from "@walkins/shared";
@@ -29,15 +30,27 @@ function decodeAccessToken(token: string): JwtPayload {
   return JSON.parse(atob(base64));
 }
 
-async function refreshAccessToken(): Promise<boolean> {
-  const response = await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
-  if (!response.ok) {
-    accessToken = null;
-    return false;
-  }
-  const data = await response.json();
-  accessToken = data.accessToken;
-  return true;
+// Single-flight: the refresh token rotates on every use and the API treats a
+// second use of the same token as theft (revoking every session), so two
+// components refreshing at once on page load must share one request.
+let refreshing: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  refreshing ??= (async () => {
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
+      if (!response.ok) {
+        accessToken = null;
+        return false;
+      }
+      const data = await response.json();
+      accessToken = data.accessToken;
+      return true;
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
 }
 
 async function request(path: string, options: RequestInit = {}, retry = true): Promise<Response> {
@@ -92,11 +105,10 @@ export const apiClient = {
     accessToken = null;
   },
 
-  // Called once on app load to silently re-establish a session from the
-  // httpOnly refresh cookie, since the access token itself doesn't survive
-  // a page reload.
+  // Re-establishes a session from the httpOnly refresh cookie after a page
+  // load. Reuses a token already in memory rather than rotating again.
   async restoreSession(): Promise<{ role: string; companyId: string | null } | null> {
-    const ok = await refreshAccessToken();
+    const ok = accessToken !== null || (await refreshAccessToken());
     if (!ok || !accessToken) return null;
     const payload = decodeAccessToken(accessToken);
     return { role: payload.role, companyId: payload.companyId };
@@ -130,7 +142,7 @@ export const apiClient = {
     return parseOrThrow(await request(`/drives/${id}`));
   },
 
-  async listMyDrives(cursor?: string): Promise<CursorPage<DriveSummary>> {
+  async listMyDrives(cursor?: string): Promise<CursorPage<EmployerDriveRow>> {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
     return parseOrThrow(await request(`/drives/mine${query}`));
   },
@@ -151,13 +163,13 @@ export const apiClient = {
     return parseOrThrow(await request("/candidates/me", { method: "PATCH", body: JSON.stringify(input) }));
   },
 
-  async getPublicDrive(id: string): Promise<DriveSearchResult> {
+  async getPublicDrive(id: string): Promise<PublicDriveDetail> {
     return parseOrThrow(await request(`/drives/${id}/public`));
   },
 
   async searchDrives(
     params: { city?: string; role?: string; radiusKm?: number; fromDate?: string; toDate?: string; cursor?: string },
-  ): Promise<CursorPage<DriveSearchResult>> {
+  ): Promise<DriveSearchPage> {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined) query.set(key, String(value));
