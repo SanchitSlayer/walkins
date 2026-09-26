@@ -2,58 +2,314 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Registered so the slab's viewpoint can transition smoothly; unregistered
+   custom properties jump between values instead of interpolating. */
+@property --slab-dx {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --slab-dy {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --slab-rx {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --slab-ry {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --slab-extent {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
+    /* Housing: the board's dark body, and the page surface everywhere. */
+    --housing: #15140f;
+    --housing-raised: #1f1e18;
+    --housing-line: #34322a;
+    --housing-muted: #9b988d;
+    /* Control borders on housing: hairlines at 1.44:1 fail non-text contrast. */
+    --housing-rule: #77746a;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Stock: the card material slabs are cut from. Only ever a slab, never a page. */
+    --stock: #eae9e3;
+    --stock-edge: #b5b2a8;
+    --stock-edge-deep: #8f8c82;
+    --ink: #15140f;
+    --ink-muted: #5e5b52;
+
+    /* State. Each has a lamp value (lit, on housing) and an ink value
+       (printed, on stock) because no single hex clears contrast on both. */
+    --live-lamp: #58b07b;
+    --live-ink: #2e6b46;
+    --filling-lamp: #e8a64c;
+    --filling-ink: #8a5a10;
+    --closing-lamp: #e5634a;
+    --closing-ink: #a8341f;
+    --pending-lamp: #7fa6cc;
+    --pending-ink: #2a4d6e;
+
+    /* Chosen to clear 3:1 against housing, raised housing and stock alike. */
+    --focus: #4a7fb5;
+
+    --depth-sm: 4px;
+    --depth-md: 8px;
+    --depth-lg: 12px;
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-housing-line;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-housing text-stock;
+    font-family: var(--font-archivo), system-ui, sans-serif;
+  }
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
+  }
+}
+
+/* Type scale. Width is part of each step, not a separate choice: expanded
+   for display and headings, standard for reading, narrow for board data.
+
+   Casing: interface copy (headings we write, labels, buttons, nav, messages)
+   is sentence case. Strings that come from the database are content and keep
+   the casing they were entered with: a role title is printed the way a job
+   notice prints it ("Warehouse Associate"), and so are company names, venue
+   addresses and city names. Never lower-case or text-transform them to match
+   the chrome, and never apply text-transform in these classes. */
+@layer components {
+  .type-display {
+    font-stretch: 125%;
+    font-weight: 800;
+    font-size: clamp(2.25rem, 1.6rem + 3vw, 3.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+  }
+  .type-h1 {
+    font-stretch: 125%;
+    font-weight: 700;
+    font-size: clamp(1.75rem, 1.35rem + 1.8vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  .type-h2 {
+    font-stretch: 125%;
+    font-weight: 700;
+    font-size: clamp(1.375rem, 1.15rem + 1vw, 1.75rem);
+    line-height: 1.15;
+  }
+  .type-h3 {
+    font-stretch: 112%;
+    font-weight: 600;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  .type-body {
+    font-stretch: 100%;
+    font-weight: 400;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .type-meta {
+    font-stretch: 100%;
+    font-weight: 500;
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+  .type-board-lg,
+  .type-board-md,
+  .type-board-sm {
+    font-stretch: 75%;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+  .type-board-lg {
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1.1;
+  }
+  .type-board-md {
+    font-weight: 600;
+    font-size: 1.125rem;
+    line-height: 1.2;
+  }
+  .type-board-sm {
+    font-weight: 600;
+    font-size: 0.875rem;
+    line-height: 1.3;
+  }
+}
+
+/* Slab: a pass cut from card stock. The thickness is drawn in oblique
+   (cabinet) projection rather than true perspective, because a physically
+   accurate render of a few millimetres of card at a gentle angle shows
+   almost no edge. The extrusion vector is the viewpoint: at rest the viewer
+   is below, looking up at the board, so the underside shows; pointer
+   movement moves the viewpoint. Stacked zero-blur layers, never a blur. */
+@layer components {
+  .slab {
+    --slab-depth: var(--depth-md);
+    --slab-dx: calc(var(--slab-depth) * 0.3);
+    --slab-dy: var(--slab-depth);
+    --slab-ex-dx: calc(var(--slab-dx) * var(--slab-extent));
+    --slab-ex-dy: calc(var(--slab-dy) * var(--slab-extent));
+    position: relative;
+    display: block;
+    background: var(--stock);
+    color: var(--ink);
+    transform: translate(
+        calc(var(--slab-dx) - var(--slab-ex-dx)),
+        calc(var(--slab-dy) - var(--slab-ex-dy))
+      )
+      perspective(900px) rotateX(var(--slab-rx)) rotateY(var(--slab-ry));
+    box-shadow:
+      calc(var(--slab-ex-dx) * 0.1) calc(var(--slab-ex-dy) * 0.1) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.2) calc(var(--slab-ex-dy) * 0.2) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.3) calc(var(--slab-ex-dy) * 0.3) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.4) calc(var(--slab-ex-dy) * 0.4) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.5) calc(var(--slab-ex-dy) * 0.5) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.6) calc(var(--slab-ex-dy) * 0.6) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.7) calc(var(--slab-ex-dy) * 0.7) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.8) calc(var(--slab-ex-dy) * 0.8) 0 0 var(--stock-edge),
+      calc(var(--slab-ex-dx) * 0.9) calc(var(--slab-ex-dy) * 0.9) 0 0 var(--stock-edge-deep),
+      var(--slab-ex-dx) var(--slab-ex-dy) 0 0 var(--stock-edge-deep);
+    transition:
+      --slab-dx 180ms ease-out,
+      --slab-dy 180ms ease-out,
+      --slab-rx 180ms ease-out,
+      --slab-ry 180ms ease-out,
+      --slab-extent 90ms ease-out;
+  }
+  .slab[data-depth="sm"] {
+    --slab-depth: var(--depth-sm);
+  }
+  .slab[data-depth="lg"] {
+    --slab-depth: var(--depth-lg);
+  }
+  /* Pressing pushes the face back toward the board along the same vector. */
+  .slab[data-interactive]:active {
+    --slab-extent: 0.35;
+  }
+  .slab[data-interactive] {
+    cursor: pointer;
+  }
+  /* Selected (e.g. picked on the map): an outline drawn on the housing, not
+     just a deeper lift, so selection never rests on depth alone. Keyboard
+     focus overrides its colour below. */
+  .slab[data-selected] {
+    outline: 2px solid var(--stock);
+    outline-offset: calc(var(--slab-depth) + 3px);
+  }
+  .slab:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: calc(var(--slab-depth) + 3px);
+  }
+  /* The rail is printed onto the stock, so it takes the ink value. */
+  .slab-rail {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 6px;
+    background: var(--rail-color, transparent);
+  }
+}
+
+/* Split-flap cells: the board's own display, dark flaps with lit characters. */
+@layer components {
+  .flap {
+    display: inline-flex;
+    gap: 0.08em;
+    font-stretch: 75%;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    line-height: 1;
+  }
+  .flap-cell {
+    position: relative;
+    display: inline-block;
+    width: var(--flap-w, 0.68em);
+    height: 1.3em;
+    perspective: 240px;
+    color: var(--flap-color, var(--stock));
+  }
+  .flap-half,
+  .flap-leaf {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 50%;
+    overflow: hidden;
+    background: var(--housing-raised);
+    backface-visibility: hidden;
+  }
+  .flap-top,
+  .flap-leaf-front {
+    top: 0;
+    border-bottom: 1px solid var(--housing);
+  }
+  .flap-bottom,
+  .flap-leaf-back {
+    bottom: 0;
+  }
+  .flap-glyph {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 200%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .flap-bottom .flap-glyph,
+  .flap-leaf-back .flap-glyph {
+    top: -100%;
+  }
+  .flap-leaf-front {
+    transform-origin: bottom;
+    animation: flap-fall-front var(--flap-ms, 140ms) ease-in var(--flap-delay, 0ms) both;
+  }
+  .flap-leaf-back {
+    transform-origin: top;
+    animation: flap-fall-back var(--flap-ms, 140ms) ease-out calc(var(--flap-delay, 0ms) + var(--flap-ms, 140ms)) both;
+  }
+  @keyframes flap-fall-front {
+    from {
+      transform: rotateX(0deg);
+    }
+    to {
+      transform: rotateX(-90deg);
+    }
+  }
+  @keyframes flap-fall-back {
+    from {
+      transform: rotateX(90deg);
+    }
+    to {
+      transform: rotateX(0deg);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slab {
+    transition: none;
+  }
+  .flap-leaf-front,
+  .flap-leaf-back {
+    animation: none;
+    display: none;
   }
 }
