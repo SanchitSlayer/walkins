@@ -101,6 +101,67 @@ export const driveSearchQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).optional(),
 });
 
+// Response schemas describe the wire format (dates as ISO strings), and the
+// public ones are applied by the API before responding: anything a schema
+// does not name is stripped, so candidate identities or application rows can
+// never reach a public endpoint by being accidentally selected.
+export const driveSlotSchema = z.object({
+  id: z.string(),
+  startsAt: z.string(),
+  capacity: z.number().int(),
+  bookedCount: z.number().int(),
+});
+
+export const driveSummarySchema = z.object({
+  id: z.string(),
+  roleId: z.string(),
+  cityId: z.string(),
+  salaryMin: z.number().int(),
+  salaryMax: z.number().int(),
+  venueAddress: z.string(),
+  venueLat: z.number(),
+  venueLng: z.number(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  capacity: z.number().int(),
+  experienceMin: z.number(),
+  experienceMax: z.number(),
+  status: driveStatusSchema,
+  needsManualGeocode: z.boolean(),
+  role: z.object({ title: z.string(), slug: z.string() }),
+});
+
+export const driveDetailSchema = driveSummarySchema.extend({
+  slots: z.array(driveSlotSchema),
+});
+
+export const employerDriveRowSchema = driveSummarySchema.extend({
+  bookedCount: z.number().int(),
+});
+
+export const driveSearchResultSchema = driveSummarySchema.extend({
+  distanceKm: z.number(),
+  city: z.object({ name: z.string(), state: z.string() }),
+  bookedCount: z.number().int(),
+});
+
+export const driveSearchPageSchema = z.object({
+  items: z.array(driveSearchResultSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const publicDriveDetailSchema = driveSearchResultSchema.extend({
+  slots: z.array(driveSlotSchema),
+});
+
+export type DriveSlot = z.infer<typeof driveSlotSchema>;
+export type DriveSummary = z.infer<typeof driveSummarySchema>;
+export type DriveDetail = z.infer<typeof driveDetailSchema>;
+export type EmployerDriveRow = z.infer<typeof employerDriveRowSchema>;
+export type DriveSearchResult = z.infer<typeof driveSearchResultSchema>;
+export type DriveSearchPage = z.infer<typeof driveSearchPageSchema>;
+export type PublicDriveDetail = z.infer<typeof publicDriveDetailSchema>;
+
 export type OtpRequestInput = z.infer<typeof otpRequestSchema>;
 export type OtpVerifyInput = z.infer<typeof otpVerifySchema>;
 export type CreateDriveInput = z.infer<typeof createDriveSchema>;
