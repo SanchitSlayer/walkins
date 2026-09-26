@@ -1,6 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, prisma } from "@walkins/db";
-import type { CreateDriveInput, DriveSearchQuery, DriveSearchResult, UpdateDriveInput } from "@walkins/shared";
+import {
+  type CreateDriveInput,
+  type DriveSearchPage,
+  type DriveSearchQuery,
+  type DriveSearchResult,
+  type PublicDriveDetail,
+  type UpdateDriveInput,
+  driveSearchPageSchema,
+  publicDriveDetailSchema,
+} from "@walkins/shared";
 import { GeocodingService } from "./geocoding.service";
 
 type RawSearchRow = {
@@ -24,7 +33,25 @@ type RawSearchRow = {
   cityName: string;
   cityState: string;
   distanceMeters: number;
+  bookedCount: number;
 };
+
+// Shared by search and the public detail endpoint. bookedCount is summed in
+// the same statement (not by loading slots into JS) so search stays a single
+// round trip however many results it returns; ::int because SUM over an
+// integer column is bigint, which Prisma returns as a BigInt that JSON
+// serialisation rejects.
+function publicDriveColumns(origin: { lat: number; lng: number }) {
+  return Prisma.sql`
+    d.id, d."roleId", d."cityId", d."salaryMin", d."salaryMax", d."venueAddress",
+    d."venueLat", d."venueLng", d."startsAt", d."endsAt", d.capacity,
+    d."experienceMin", d."experienceMax", d.status, d."needsManualGeocode",
+    r.title AS "roleTitle", r.slug AS "roleSlug",
+    c.name AS "cityName", c.state AS "cityState",
+    ST_Distance(d.geom, ST_SetSRID(ST_MakePoint(${origin.lng}, ${origin.lat}), 4326)::geography) AS "distanceMeters",
+    (SELECT COALESCE(SUM(s."bookedCount"), 0)::int FROM drive_slots s WHERE s."driveId" = d.id) AS "bookedCount"
+  `;
+}
 
 function toSearchResult(row: RawSearchRow): DriveSearchResult {
   return {
@@ -46,6 +73,7 @@ function toSearchResult(row: RawSearchRow): DriveSearchResult {
     role: { title: row.roleTitle, slug: row.roleSlug },
     city: { name: row.cityName, state: row.cityState },
     distanceKm: row.distanceMeters / 1000,
+    bookedCount: row.bookedCount,
   };
 }
 
@@ -166,17 +194,27 @@ export class DrivesService {
     const hasMore = drives.length > limit;
     const items = hasMore ? drives.slice(0, limit) : drives;
 
+    // Summed in the database for the whole page in one grouped query, so the
+    // list stays two round trips however many drives it returns.
+    const sums = await prisma.driveSlot.groupBy({
+      by: ["driveId"],
+      where: { driveId: { in: items.map((d) => d.id) } },
+      _sum: { bookedCount: true },
+    });
+    const booked = new Map(sums.map((s) => [s.driveId, s._sum.bookedCount ?? 0]));
+
     return {
-      items,
+      items: items.map((d) => ({ ...d, bookedCount: booked.get(d.id) ?? 0 })),
       nextCursor: hasMore ? items[items.length - 1].id : null,
     };
   }
 
-  // Public search: only LIVE drives, distance-ordered from the resolved
-  // origin (a logged-in candidate's home, or the filtered city's center).
-  // Raw SQL because ST_Distance/ST_DWithin operate on the Unsupported geom
-  // column, which Prisma's query builder cannot reference at all.
-  async search(query: DriveSearchQuery, currentUserId: string | null) {
+  // Public search: only LIVE drives that have not ended, distance-ordered
+  // from the resolved origin (a logged-in candidate's home, or the filtered
+  // city's center). Ended drives are excluded here rather than hidden on the
+  // page so cursor pages stay full. Raw SQL because ST_Distance/ST_DWithin
+  // operate on the Unsupported geom column, which Prisma cannot reference.
+  async search(query: DriveSearchQuery, currentUserId: string | null): Promise<DriveSearchPage> {
     const limit = query.limit ?? 20;
 
     const cityId = query.city
@@ -198,7 +236,12 @@ export class DrivesService {
       throw new BadRequestException("Specify a city, or log in with a saved home location, to search drives");
     }
 
-    const conditions: Prisma.Sql[] = [Prisma.sql`d.status = 'LIVE'`];
+    // endsAt is a UTC timestamp without zone, so compare against now in UTC
+    // explicitly instead of relying on the session time zone.
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`d.status = 'LIVE'`,
+      Prisma.sql`d."endsAt" > (now() AT TIME ZONE 'UTC')`,
+    ];
     if (cityId) conditions.push(Prisma.sql`d."cityId" = ${cityId}`);
     if (roleId) conditions.push(Prisma.sql`d."roleId" = ${roleId}`);
     if (query.fromDate) conditions.push(Prisma.sql`d."startsAt" >= ${query.fromDate}`);
@@ -216,13 +259,7 @@ export class DrivesService {
     }
 
     const rows = await prisma.$queryRaw<RawSearchRow[]>`
-      SELECT
-        d.id, d."roleId", d."cityId", d."salaryMin", d."salaryMax", d."venueAddress",
-        d."venueLat", d."venueLng", d."startsAt", d."endsAt", d.capacity,
-        d."experienceMin", d."experienceMax", d.status, d."needsManualGeocode",
-        r.title AS "roleTitle", r.slug AS "roleSlug",
-        c.name AS "cityName", c.state AS "cityState",
-        ST_Distance(d.geom, ST_SetSRID(ST_MakePoint(${origin.lng}, ${origin.lat}), 4326)::geography) AS "distanceMeters"
+      SELECT ${publicDriveColumns(origin)}
       FROM drives d
       JOIN roles r ON r.id = d."roleId"
       JOIN cities c ON c.id = d."cityId"
@@ -234,14 +271,20 @@ export class DrivesService {
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
 
-    return {
+    return driveSearchPageSchema.parse({
       items: items.map(toSearchResult),
       nextCursor: hasMore ? encodeCursor(items[items.length - 1]) : null,
-    };
+    });
   }
 
-  async findPublicOne(driveId: string, currentUserId: string | null): Promise<DriveSearchResult> {
-    const drive = await prisma.drive.findFirst({ where: { id: driveId, status: "LIVE" }, select: { cityId: true } });
+  async findPublicOne(driveId: string, currentUserId: string | null): Promise<PublicDriveDetail> {
+    // EXPIRED is served as well as LIVE so a stale forwarded link shows that
+    // the drive has ended instead of a 404, including after the Phase 4
+    // expiry job starts writing EXPIRED. Drafts and pending drives stay private.
+    const drive = await prisma.drive.findFirst({
+      where: { id: driveId, status: { in: ["LIVE", "EXPIRED"] } },
+      select: { cityId: true },
+    });
     if (!drive) {
       throw new NotFoundException("Drive not found");
     }
@@ -251,21 +294,25 @@ export class DrivesService {
     // misses — which it does not, since we pass a concrete cityId here.
     const origin = (await this.resolveSearchOrigin(currentUserId, drive.cityId))!;
 
-    const [row] = await prisma.$queryRaw<RawSearchRow[]>`
-      SELECT
-        d.id, d."roleId", d."cityId", d."salaryMin", d."salaryMax", d."venueAddress",
-        d."venueLat", d."venueLng", d."startsAt", d."endsAt", d.capacity,
-        d."experienceMin", d."experienceMax", d.status, d."needsManualGeocode",
-        r.title AS "roleTitle", r.slug AS "roleSlug",
-        c.name AS "cityName", c.state AS "cityState",
-        ST_Distance(d.geom, ST_SetSRID(ST_MakePoint(${origin.lng}, ${origin.lat}), 4326)::geography) AS "distanceMeters"
-      FROM drives d
-      JOIN roles r ON r.id = d."roleId"
-      JOIN cities c ON c.id = d."cityId"
-      WHERE d.id = ${driveId}
-    `;
+    const [[row], slots] = await Promise.all([
+      prisma.$queryRaw<RawSearchRow[]>`
+        SELECT ${publicDriveColumns(origin)}
+        FROM drives d
+        JOIN roles r ON r.id = d."roleId"
+        JOIN cities c ON c.id = d."cityId"
+        WHERE d.id = ${driveId}
+      `,
+      prisma.driveSlot.findMany({
+        where: { driveId },
+        select: { id: true, startsAt: true, capacity: true, bookedCount: true },
+        orderBy: { startsAt: "asc" },
+      }),
+    ]);
 
-    return toSearchResult(row);
+    return publicDriveDetailSchema.parse({
+      ...toSearchResult(row),
+      slots: slots.map((slot) => ({ ...slot, startsAt: slot.startsAt.toISOString() })),
+    });
   }
 
   private async resolveSearchOrigin(
