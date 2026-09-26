@@ -2,9 +2,11 @@ import { Module } from "@nestjs/common";
 import { DrivesController } from "./drives.controller";
 import { DrivesService } from "./drives.service";
 import { GeocodingService } from "./geocoding.service";
+import { TargetingService } from "./targeting.service";
 
 @Module({
   controllers: [DrivesController],
-  providers: [DrivesService, GeocodingService],
+  providers: [DrivesService, GeocodingService, TargetingService],
+  exports: [TargetingService],
 })
 export class DrivesModule {}
