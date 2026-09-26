@@ -16,3 +16,5 @@ models/
 .claude/
 CLAUDE.md
 .mcp.json
+
+*.tsbuildinfo
