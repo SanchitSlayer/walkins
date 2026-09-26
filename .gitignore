@@ -18,3 +18,5 @@ CLAUDE.md
 .mcp.json
 
 *.tsbuildinfo
+
+apps/web/public/maplibre/
