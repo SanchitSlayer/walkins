@@ -1,6 +1,17 @@
 "use client";
 
-import type { CreateDriveInput, CursorPage, OtpRequestInput, OtpVerifyInput, UpdateDriveInput } from "@walkins/shared";
+import type {
+  CandidateProfile,
+  CreateDriveInput,
+  CursorPage,
+  DriveDetail,
+  DriveSearchResult,
+  DriveSummary,
+  OtpRequestInput,
+  OtpVerifyInput,
+  UpdateCandidateProfileInput,
+  UpdateDriveInput,
+} from "@walkins/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -51,35 +62,16 @@ async function request(path: string, options: RequestInit = {}, retry = true): P
 }
 
 async function parseOrThrow<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => ({}));
+  // Nest sends an empty body (not the JSON literal "null") for a
+  // controller returning null — .json() throws on that, so the fallback
+  // must be null too, not {}, or an empty-but-truthy object silently masks
+  // "no data" as "some data with no fields" for every caller downstream.
+  const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data.message ?? `Request failed with status ${response.status}`);
+    throw new Error(data?.message ?? `Request failed with status ${response.status}`);
   }
   return data as T;
 }
-
-export type DriveSummary = {
-  id: string;
-  roleId: string;
-  cityId: string;
-  salaryMin: number;
-  salaryMax: number;
-  venueAddress: string;
-  venueLat: number;
-  venueLng: number;
-  startsAt: string;
-  endsAt: string;
-  capacity: number;
-  experienceMin: number;
-  experienceMax: number;
-  status: "DRAFT" | "PENDING" | "LIVE" | "EXPIRED" | "CANCELLED";
-  needsManualGeocode: boolean;
-  role: { title: string; slug: string };
-};
-
-export type DriveDetail = DriveSummary & {
-  slots: { id: string; startsAt: string; capacity: number; bookedCount: number }[];
-};
 
 export const apiClient = {
   async requestOtp(input: OtpRequestInput): Promise<{ devOtp?: string }> {
@@ -147,7 +139,30 @@ export const apiClient = {
     return parseOrThrow(await request("/roles"));
   },
 
-  async listCities(): Promise<{ id: string; name: string; state: string }[]> {
+  async listCities(): Promise<{ id: string; name: string; state: string; centerLat: number; centerLng: number }[]> {
     return parseOrThrow(await request("/cities"));
+  },
+
+  async getMyProfile(): Promise<CandidateProfile | null> {
+    return parseOrThrow(await request("/candidates/me"));
+  },
+
+  async updateMyProfile(input: UpdateCandidateProfileInput): Promise<CandidateProfile> {
+    return parseOrThrow(await request("/candidates/me", { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
+  async getPublicDrive(id: string): Promise<DriveSearchResult> {
+    return parseOrThrow(await request(`/drives/${id}/public`));
+  },
+
+  async searchDrives(
+    params: { city?: string; role?: string; radiusKm?: number; fromDate?: string; toDate?: string; cursor?: string },
+  ): Promise<CursorPage<DriveSearchResult>> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) query.set(key, String(value));
+    }
+    const qs = query.toString();
+    return parseOrThrow(await request(`/drives/search${qs ? `?${qs}` : ""}`));
   },
 };

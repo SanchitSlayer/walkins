@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient } from "./api-client";
 
-export function useRequireEmployer(): boolean {
+export function useRequireRole(role: "EMPLOYER" | "CANDIDATE"): boolean {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
@@ -12,13 +12,13 @@ export function useRequireEmployer(): boolean {
     let cancelled = false;
 
     async function check() {
-      let role = apiClient.getCurrentRole();
-      if (!role) {
+      let currentRole = apiClient.getCurrentRole();
+      if (!currentRole) {
         const session = await apiClient.restoreSession();
-        role = session?.role ?? null;
+        currentRole = session?.role ?? null;
       }
       if (cancelled) return;
-      if (role !== "EMPLOYER") {
+      if (currentRole !== role) {
         router.replace("/login");
         return;
       }
@@ -29,7 +29,15 @@ export function useRequireEmployer(): boolean {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, role]);
 
   return ready;
+}
+
+export function useRequireEmployer(): boolean {
+  return useRequireRole("EMPLOYER");
+}
+
+export function useRequireCandidate(): boolean {
+  return useRequireRole("CANDIDATE");
 }

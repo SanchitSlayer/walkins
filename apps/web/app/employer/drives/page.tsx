@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { DriveSummary } from "@/lib/api-client";
+import type { DriveSummary } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { useRequireEmployer } from "@/lib/use-require-employer";
+import { useRequireEmployer } from "@/lib/use-require-role";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 

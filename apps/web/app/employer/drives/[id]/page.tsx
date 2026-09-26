@@ -3,9 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { updateDriveSchema } from "@walkins/shared";
-import type { DriveDetail } from "@/lib/api-client";
+import type { DriveDetail } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { useRequireEmployer } from "@/lib/use-require-employer";
+import { useRequireEmployer } from "@/lib/use-require-role";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
