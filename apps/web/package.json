@@ -3,24 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p ${WEB_PORT:-3000}",
-    "build": "next build",
+    "dev": "node scripts/copy-maplibre-worker.mjs && next dev -p ${WEB_PORT:-3000}",
+    "build": "node scripts/copy-maplibre-worker.mjs && next build",
     "start": "next start -p ${WEB_PORT:-3000}"
   },
   "dependencies": {
     "@walkins/shared": "workspace:*",
-    "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "leaflet": "^1.9.4",
+    "maplibre-gl": "^6.11.2",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-leaflet": "^5.0.0",
-    "tailwind-merge": "^2.5.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwind-merge": "^2.5.2"
   },
   "devDependencies": {
-    "@types/leaflet": "^1.9.12",
     "@types/node": "^20.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
