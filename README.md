@@ -30,6 +30,24 @@ the time window and slot duration. Venue addresses are geocoded through
 Nominatim and written to the PostGIS columns; if geocoding fails the drive is
 still saved and flagged for manual coordinate entry.
 
+
+Candidates set their home location, travel radius, role interests and
+experience on a profile page with a draggable map pin. The targeting query
+then finds, for any drive, every candidate whose own stated travel radius
+reaches that venue - the radius comes from each candidate row rather than
+being fixed, so a candidate willing to travel 3 km and one willing to travel
+25 km get different results for the same drive.
+
+That per-row radius means a spatial index cannot be used directly, so the
+query applies a constant bounding-box prefilter first and the per-candidate
+radius second. Both the prefilter and the validation ceiling derive from one
+shared constant so they cannot drift apart.
+
+Public drive search is open to anonymous visitors, with cursor pagination and
+distance from either the candidate's home or the city centre. Results render
+as a Leaflet map with OpenStreetMap tiles alongside a list, with filters held
+in URL search params.
+
 ## Prerequisites
 
 - Node.js 20 or later
