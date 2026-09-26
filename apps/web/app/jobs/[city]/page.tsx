@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Masthead } from "@/components/board/masthead";
 import { getCityCenterByName, searchDrivesOnServer } from "@/lib/server-search";
 import JobsSearchClient from "../jobs-search-client";
 
@@ -22,18 +23,20 @@ export default async function JobsByCityPage({
   const initialData = await searchDrivesOnServer({ city, ...query });
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <h1 className="text-lg font-semibold">
-        Walk-in drives in {cityRow.name}, {cityRow.state}
-      </h1>
-      <JobsSearchClient
-        city={city}
-        initialData={initialData}
-        cityCenter={{ lat: cityRow.centerLat, lng: cityRow.centerLng }}
-        initialRadiusKm={query.radiusKm}
-        initialFromDate={query.fromDate}
-        initialToDate={query.toDate}
-      />
-    </main>
+    <div className="min-h-screen bg-housing text-stock">
+      <Masthead context={`${cityRow.name}, ${cityRow.state}`} />
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <JobsSearchClient
+          city={city}
+          heading={`Drives in ${cityRow.name}`}
+          initialData={initialData}
+          cityCenter={{ lat: cityRow.centerLat, lng: cityRow.centerLng }}
+          initialRadiusKm={query.radiusKm}
+          initialFromDate={query.fromDate}
+          initialToDate={query.toDate}
+          renderedAt={Date.now()}
+        />
+      </main>
+    </div>
   );
 }
