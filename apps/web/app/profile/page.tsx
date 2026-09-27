@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
+import { TelegramPanel } from "./telegram-panel";
 
 const PinMap = dynamic(() => import("@/components/board/pin-map"), {
   ssr: false,
@@ -30,6 +31,7 @@ export default function ProfilePage() {
   const [radiusKm, setRadiusKm] = useState(10);
   const [experienceYears, setExperienceYears] = useState(0);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [telegramConnected, setTelegramConnected] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export default function ProfilePage() {
         setRadiusKm(profile.maxTravelKm);
         setExperienceYears(profile.experienceYears);
         setSelectedRoleIds(profile.roleIds);
+        setTelegramConnected(profile.telegramConnected);
       }
       setLoaded(true);
     });
@@ -95,7 +98,7 @@ export default function ProfilePage() {
 
     setLoading(true);
     try {
-      await apiClient.updateMyProfile({
+      const profile = await apiClient.updateMyProfile({
         cityId: city.id,
         homeLat: lat,
         homeLng: lng,
@@ -103,6 +106,7 @@ export default function ProfilePage() {
         experienceYears,
         roleIds: selectedRoleIds,
       });
+      setTelegramConnected(profile.telegramConnected);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save your profile");
@@ -195,6 +199,8 @@ export default function ProfilePage() {
                 {loading ? "Saving" : "Save profile"}
               </BoardButton>
             </Slab>
+
+            <TelegramPanel connected={telegramConnected} />
           </div>
 
           <section aria-labelledby="home-heading" className="grid content-start gap-3">

@@ -1,6 +1,15 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
+import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { prisma } from "@walkins/db";
-import type { CandidateProfile, UpdateCandidateProfileInput } from "@walkins/shared";
+import {
+  type CandidateProfile,
+  TELEGRAM_LINK_TTL_SECONDS,
+  type TelegramLink,
+  telegramLinkKey,
+  telegramLinkSchema,
+  type UpdateCandidateProfileInput,
+} from "@walkins/shared";
+import { redis } from "../common/redis";
 
 const REQUIRED_ON_CREATE = ["cityId", "homeLat", "homeLng", "maxTravelKm", "experienceYears", "roleIds"] as const;
 
@@ -53,7 +62,37 @@ export class CandidatesService {
     return (await this.getMe(userId)) as CandidateProfile;
   }
 
-  private toProfile(candidate: { cityId: string; homeLat: number; homeLng: number; maxTravelKm: number; experienceYears: number; roles: { roleId: string }[] }): CandidateProfile {
+  // The token is the only thing tying a Telegram chat to this account, so it
+  // is random, single use (the bot deletes it on /start) and short-lived.
+  async createTelegramLink(userId: string): Promise<TelegramLink> {
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+    if (!botUsername) {
+      throw new ServiceUnavailableException("Telegram isn't configured on this server");
+    }
+    const candidate = await prisma.candidate.findUnique({ where: { userId }, select: { id: true } });
+    if (!candidate) {
+      throw new BadRequestException("Save your profile before connecting Telegram");
+    }
+
+    // base64url stays inside the characters Telegram allows in a start parameter.
+    const token = randomBytes(24).toString("base64url");
+    await redis.set(telegramLinkKey(token), candidate.id, "EX", TELEGRAM_LINK_TTL_SECONDS);
+    return telegramLinkSchema.parse({
+      token,
+      deepLink: `https://t.me/${botUsername}?start=${token}`,
+      expiresInSeconds: TELEGRAM_LINK_TTL_SECONDS,
+    });
+  }
+
+  private toProfile(candidate: {
+    cityId: string;
+    homeLat: number;
+    homeLng: number;
+    maxTravelKm: number;
+    experienceYears: number;
+    telegramChatId: string | null;
+    roles: { roleId: string }[];
+  }): CandidateProfile {
     return {
       cityId: candidate.cityId,
       homeLat: candidate.homeLat,
@@ -61,6 +100,7 @@ export class CandidatesService {
       maxTravelKm: candidate.maxTravelKm,
       experienceYears: candidate.experienceYears,
       roleIds: candidate.roles.map((r) => r.roleId),
+      telegramConnected: candidate.telegramChatId !== null,
     };
   }
 }

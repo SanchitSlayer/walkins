@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { updateCandidateProfileSchema } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
@@ -26,5 +26,10 @@ export class CandidatesController {
     body: ReturnType<typeof updateCandidateProfileSchema.parse>,
   ) {
     return this.candidatesService.updateMe(user.userId, body);
+  }
+
+  @Post("me/telegram-link")
+  createTelegramLink(@CurrentUser() user: AccessTokenPayload) {
+    return this.candidatesService.createTelegramLink(user.userId);
   }
 }

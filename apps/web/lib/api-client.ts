@@ -10,6 +10,7 @@ import type {
   OtpRequestInput,
   OtpVerifyInput,
   PublicDriveDetail,
+  TelegramLink,
   UpdateCandidateProfileInput,
   UpdateDriveInput,
 } from "@walkins/shared";
@@ -161,6 +162,10 @@ export const apiClient = {
 
   async updateMyProfile(input: UpdateCandidateProfileInput): Promise<CandidateProfile> {
     return parseOrThrow(await request("/candidates/me", { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
+  async createTelegramLink(): Promise<TelegramLink> {
+    return parseOrThrow(await request("/candidates/me/telegram-link", { method: "POST" }));
   },
 
   async getPublicDrive(id: string): Promise<PublicDriveDetail> {
