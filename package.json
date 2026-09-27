@@ -10,7 +10,10 @@
     "db:migrate": "dotenv -e .env -- pnpm --filter @walkins/db run migrate",
     "db:seed": "dotenv -e .env -- pnpm --filter @walkins/db run seed",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "test": "pnpm --filter @walkins/worker run test",
+    "worker:dlq": "pnpm --filter @walkins/worker run dlq",
+    "worker:fanout": "pnpm --filter @walkins/worker run fanout"
   },
   "devDependencies": {
     "dotenv-cli": "^7.4.2"
