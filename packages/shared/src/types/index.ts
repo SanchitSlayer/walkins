@@ -48,4 +48,5 @@ export type CandidateProfile = {
   maxTravelKm: number;
   experienceYears: number;
   roleIds: string[];
+  telegramConnected: boolean;
 };
