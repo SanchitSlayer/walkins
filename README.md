@@ -1,13 +1,14 @@
 # Walkins
 
 Walk-in interview platform. Runs entirely locally via Docker Compose. No paid
-services, no API keys.
+services, and no API keys are needed to run it; a Telegram bot token is
+optional and only switches alerts from the console to real messages.
 
 ## Stack
 
-- apps/web — Next.js 15 (App Router), TypeScript, Tailwind, shadcn/ui
+- apps/web — Next.js 15 (App Router), TypeScript, Tailwind, MapLibre GL
 - apps/api — NestJS 10
-- apps/worker — Node + BullMQ
+- apps/worker — Node + BullMQ queues, cron schedules and the Telegram bot
 - packages/db — Prisma schema, client, migrations, seed script
 - packages/shared — shared TypeScript types and zod schemas
 
@@ -44,9 +45,69 @@ radius second. Both the prefilter and the validation ceiling derive from one
 shared constant so they cannot drift apart.
 
 Public drive search is open to anonymous visitors, with cursor pagination and
-distance from either the candidate's home or the city centre. Results render
-as a Leaflet map with OpenStreetMap tiles alongside a list, with filters held
-in URL search params.
+distance from either the candidate's home or the city centre. Drives that
+have ended are left out of search, but a direct link to one still loads and
+says the drive has ended, so a stale forwarded link never 404s. Results
+render as a list beside a MapLibre GL city map: OpenStreetMap tiles in the
+board's dark palette, each drive a pillar whose height is its headcount and
+whose lit top is the seats still open. Filters are held in URL search params.
+
+The interface follows a departure-board design system (tokens and primitives
+in `apps/web/components/board` and `apps/web/app/globals.css`, with a live
+specimen at `/design` in development). One rule is easy to break by accident:
+interface copy is sentence case, but strings from the database are content
+and keep the casing they were entered with, so a role title reads
+"Warehouse Associate". Don't lower-case or text-transform them.
+
+### Notifications
+
+The problem the platform exists for is that walk-in drives happen and the
+people nearby never hear about them in time. Alerts are the core of it.
+
+- Targeting (`packages/db/src/targeting.ts`) decides who a drive is for:
+  candidates in the same city with a matching role and experience whose own
+  travel radius reaches the venue. It is paged, so a fanout is never capped.
+- `AlertService` in the worker turns a drive into one queued job per
+  candidate. It never sends anything. Discovery alerts go to the targeting
+  set; morning-of reminders go only to candidates who confirmed, read from
+  applications, because a reminder is about a commitment, not discovery.
+- The `alerts` queue does the sending through a `NotificationChannel`
+  (interface in `packages/shared`). A resolver picks the first channel that
+  can reach each candidate: WhatsApp (a stub until Meta business verification
+  exists), then Telegram, or the console channel when no bot token is set.
+- Every attempt is a row in `notifications`. An attempt claims the alert with
+  a PENDING row before calling the provider, and a partial unique index allows
+  only one PENDING or SENT row per drive, candidate and template, so no retry
+  or duplicate job can send the same alert twice. The BullMQ job id
+  (`alert.{driveId}.{candidateId}.{templateKey}`) deduplicates earlier and more
+  cheaply, but only while the job is kept.
+- Sends are throttled to 25 a second, a Telegram 429 pauses the whole queue for
+  as long as Telegram asks, and failures retry three times with exponential
+  backoff. A send whose outcome is unknown (a timeout, a connection dropped
+  mid-request) is not retried, since it may have been delivered; it keeps its
+  claim and goes to the dead-letter list for a person to check. Telegram
+  reports no delivery receipts, so `deliveredAt` stays empty for it.
+
+Candidates connect Telegram from their profile, which issues a single-use
+token (10 minutes, in Redis) and a t.me deep link. The bot, run by the worker
+in polling mode so no public URL is needed, answers:
+
+- `/start <token>` links the chat to the candidate
+- `/jobs` lists the five nearest live drives within the candidate's travel
+  distance, using the same rule as alerts, and says how to widen it if none
+- `/stop` unlinks the chat and stops alerts
+
+Scheduled jobs, in India time:
+
+- every 15 minutes: live drives starting within 48 hours that haven't had a
+  discovery alert are fanned out
+- 07:00: reminders to confirmed candidates for drives starting that day
+- 00:30: ended drives move to EXPIRED, and confirmed applications with no
+  check-in become NO_SHOW. Booked counts are kept as the record of what was
+  booked. (The web app still derives Expired on its own between runs.)
+- 01:00: candidate reliability is recomputed as attended over confirmed.
+  REJECTED counts toward neither, since it can happen before or after an
+  interview.
 
 ## Prerequisites
 
@@ -89,6 +150,10 @@ in URL search params.
    pnpm db:seed
    ```
 
+   Optional: to send real Telegram alerts, create a bot with @BotFather and set
+   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` in `.env`. Without them
+   the worker prints alerts to its console instead, and everything else runs.
+
 6. Start web, api, and worker together:
 
    ```
@@ -118,6 +183,9 @@ Data persists in named Docker volumes (`postgres_data`, `redis_data`,
   only ever needs to write the Float columns.
 - `packages/shared` exists so `apps/web` never depends on `@walkins/db`,
   which keeps the Prisma client out of the frontend bundle.
+- MapLibre locates its web worker from `import.meta.url`, which the Next.js
+  bundler can't follow, so `apps/web` copies the worker files into
+  `public/maplibre/` (gitignored) before every `dev` and `build`.
 
 ## Development
 
@@ -127,3 +195,21 @@ required.
 
 To clear OTP rate limits while testing, delete the otp-request keys from
 Redis with redis-cli.
+
+Worker tests (vitest) use the local Postgres and Redis, so start Docker first.
+They create and remove their own fixtures and use a throwaway queue:
+
+```
+pnpm test
+```
+
+To queue one drive's alerts by hand, and to list jobs that failed for good:
+
+```
+pnpm worker:fanout <driveId> [drive_48h | drive_morning_of]
+pnpm worker:dlq
+```
+
+Seeded candidates have no Telegram chat linked, so even with a bot token set
+the only accounts that can receive a real message are ones you link yourself
+from the profile page.
