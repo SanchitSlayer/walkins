@@ -15,7 +15,8 @@
     "postinstall": "prisma generate && tsc"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "@walkins/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
