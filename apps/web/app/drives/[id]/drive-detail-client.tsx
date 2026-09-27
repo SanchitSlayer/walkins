@@ -3,9 +3,8 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
-import type { PublicDriveDetail } from "@walkins/shared";
+import { formatDistance, formatExperience, formatSalary, formatSeats, formatWhen, type PublicDriveDetail } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { formatDistance, formatExperience, formatSalary, formatSeats, formatWhen } from "@/lib/board-format";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { Countdown } from "@/components/board/flap-display";
 import { Slab } from "@/components/board/slab";

@@ -1,5 +1,4 @@
-import type { DriveStatus } from "@walkins/shared";
-import { dayKey } from "@/lib/board-format";
+import { dayKey, type DriveStatus } from "@walkins/shared";
 import { cn } from "@/lib/utils";
 
 export type BoardState = "live" | "filling" | "closing" | "pending" | "draft" | "expired" | "cancelled";

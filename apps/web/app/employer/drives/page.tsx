@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { EmployerDriveRow } from "@walkins/shared";
+import { type EmployerDriveRow, formatWhen } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
-import { formatWhen } from "@/lib/board-format";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
 

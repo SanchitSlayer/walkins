@@ -1,5 +1,4 @@
-import type { DriveSearchResult } from "@walkins/shared";
-import { formatDistance, formatSalary, formatSeats, formatWhen } from "@/lib/board-format";
+import { type DriveSearchResult, formatDistance, formatSalary, formatSeats, formatWhen } from "@walkins/shared";
 import { deriveBoardState, StatusMark } from "./board-state";
 import { Slab } from "./slab";
 

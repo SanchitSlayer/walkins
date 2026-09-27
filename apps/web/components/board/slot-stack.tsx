@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DriveSlot } from "@walkins/shared";
-import { dayKey, dayLabel, formatSeats, formatTime } from "@/lib/board-format";
+import { dayKey, dayLabel, type DriveSlot, formatSeats, formatTime } from "@walkins/shared";
 import { cn } from "@/lib/utils";
 
 const MAX_TOKENS = 30;
