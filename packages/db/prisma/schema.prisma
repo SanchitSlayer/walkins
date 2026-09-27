@@ -75,14 +75,19 @@ model Candidate {
   maxTravelKm     Float
   experienceYears Float
   resumeKey       String?
-  telegramChatId  String?
+  telegramChatId  String?                                @unique
+  // attended / confirmed over past drives, recomputed nightly; null until
+  // the candidate has confirmed for at least one drive.
+  reliability          Float?
+  reliabilityUpdatedAt DateTime?
   // Populated by a DB trigger from homeLat/homeLng; not writable through Prisma.
   geom            Unsupported("geography(Point, 4326)")?
 
   user         User            @relation(fields: [userId], references: [id])
   city         City            @relation(fields: [cityId], references: [id])
-  roles        CandidateRole[]
-  applications Application[]
+  roles         CandidateRole[]
+  applications  Application[]
+  notifications Notification[]
 
   @@index([cityId])
   @@index([geom], type: Gist, map: "candidates_geom_gist")
@@ -142,8 +147,9 @@ model Drive {
   company      Company       @relation(fields: [companyId], references: [id])
   role         Role          @relation(fields: [roleId], references: [id])
   city         City          @relation(fields: [cityId], references: [id])
-  slots        DriveSlot[]
-  applications Application[]
+  slots         DriveSlot[]
+  applications  Application[]
+  notifications Notification[]
 
   @@index([companyId])
   @@index([roleId])
@@ -206,6 +212,41 @@ model CheckIn {
   application Application @relation(fields: [applicationId], references: [id])
 
   @@map("check_ins")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// One row per send attempt, so retries leave a trail instead of overwriting
+// the last error. A partial unique index in the migration SQL (Prisma cannot
+// express one) allows at most one PENDING or SENT row per drive, candidate
+// and template: an attempt claims that slot before calling the provider, so
+// no retry, redelivery or duplicate job can send the same alert twice.
+model Notification {
+  id                String             @id @default(cuid())
+  candidateId       String
+  driveId           String
+  channel           String
+  templateKey       String
+  status            NotificationStatus
+  attempt           Int
+  jobId             String
+  providerMessageId String?
+  error             String?
+  createdAt         DateTime           @default(now())
+  sentAt            DateTime?
+  // Only for channels that report delivery; Telegram does not.
+  deliveredAt       DateTime?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+  drive     Drive     @relation(fields: [driveId], references: [id])
+
+  @@index([driveId, candidateId])
+  @@map("notifications")
 }
 
 model AuditLog {
