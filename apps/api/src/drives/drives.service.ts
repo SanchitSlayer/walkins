@@ -7,6 +7,7 @@ import {
   type DriveSearchResult,
   type PublicDriveDetail,
   type UpdateDriveInput,
+  type VenuePinInput,
   driveSearchPageSchema,
   publicDriveDetailSchema,
 } from "@walkins/shared";
@@ -86,6 +87,10 @@ function decodeCursor(cursor: string): { distanceMeters: number; id: string } {
   return { distanceMeters: Number(distanceMeters), id };
 }
 
+// A pin is what the 200 m check-in geofence is measured from, so it can't be
+// looser than the fence itself is meant to be tolerant of.
+const MAX_PIN_ACCURACY_METERS = 100;
+
 // Every endpoint that returns a single drive (create/update/submit/remove/
 // findOne) uses this same include, so the frontend can treat their
 // responses as interchangeable and merge them into the same state shape.
@@ -145,17 +150,59 @@ export class DrivesService {
       throw new BadRequestException("A drive can only be edited while DRAFT or PENDING");
     }
 
-    let geocodePatch: { venueLat: number; venueLng: number; needsManualGeocode: boolean } | undefined;
-    if (input.venueAddress !== undefined || input.cityId !== undefined) {
+    // The edit form sends every field on every save, so "present" is not
+    // "changed". Re-geocoding an unchanged address would replace a venue
+    // pinned from a device with the area-level guess it was pinned to fix.
+    // A real address change means a different place, so the pin goes too.
+    const addressChanged = input.venueAddress !== undefined && input.venueAddress !== existing.venueAddress;
+    const cityChanged = input.cityId !== undefined && input.cityId !== existing.cityId;
+    let geocodePatch:
+      | { venueLat: number; venueLng: number; needsManualGeocode: boolean; venuePinnedAt: null }
+      | undefined;
+    if (addressChanged || cityChanged) {
       const cityId = input.cityId ?? existing.cityId;
       const venueAddress = input.venueAddress ?? existing.venueAddress;
-      geocodePatch = await this.resolveCoordinates(cityId, venueAddress);
+      geocodePatch = { ...(await this.resolveCoordinates(cityId, venueAddress)), venuePinnedAt: null };
     }
 
     return prisma.drive.update({
       where: { id: driveId },
       data: { ...input, ...geocodePatch },
       include: DRIVE_DETAIL_INCLUDE,
+    });
+  }
+
+  // Set from a device at the venue, usually on the day, so unlike other edits
+  // this is allowed while the drive is LIVE.
+  async pinVenue(companyId: string, userId: string, driveId: string, input: VenuePinInput) {
+    const existing = await this.findOwned(companyId, driveId);
+    if (!["DRAFT", "PENDING", "LIVE"].includes(existing.status)) {
+      throw new BadRequestException("A cancelled or ended drive's venue can't be moved");
+    }
+    if (input.accuracy > MAX_PIN_ACCURACY_METERS) {
+      throw new BadRequestException(
+        `This device's location is only accurate to ±${Math.round(input.accuracy)} m, too loose to anchor a ` +
+          "200 m check-in zone. Turn Wi-Fi on or move nearer a window, then try again.",
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const drive = await tx.drive.update({
+        where: { id: driveId },
+        data: { venueLat: input.lat, venueLng: input.lng, needsManualGeocode: false, venuePinnedAt: new Date() },
+        include: DRIVE_DETAIL_INCLUDE,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          entityType: "drive",
+          entityId: driveId,
+          action: "venue_pinned",
+          before: { venueLat: existing.venueLat, venueLng: existing.venueLng },
+          after: { venueLat: input.lat, venueLng: input.lng, accuracyMeters: input.accuracy },
+        },
+      });
+      return drive;
     });
   }
 

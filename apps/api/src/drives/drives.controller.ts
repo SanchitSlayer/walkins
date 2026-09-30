@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { createDriveSchema, driveSearchQuerySchema, updateDriveSchema } from "@walkins/shared";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { createDriveSchema, driveSearchQuerySchema, updateDriveSchema, type VenuePinInput, venuePinSchema } from "@walkins/shared";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { OptionalJwtAuthGuard } from "../common/optional-jwt-auth.guard";
+import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -23,7 +24,7 @@ export class DrivesController {
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(createDriveSchema)) body: ReturnType<typeof createDriveSchema.parse>,
   ) {
-    return this.drivesService.create(this.requireCompanyId(user), body);
+    return this.drivesService.create(requireCompanyId(user), body);
   }
 
   @Patch(":id")
@@ -34,14 +35,25 @@ export class DrivesController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateDriveSchema)) body: ReturnType<typeof updateDriveSchema.parse>,
   ) {
-    return this.drivesService.update(this.requireCompanyId(user), id, body);
+    return this.drivesService.update(requireCompanyId(user), id, body);
+  }
+
+  @Post(":id/venue-pin")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("EMPLOYER")
+  pinVenue(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(venuePinSchema)) body: VenuePinInput,
+  ) {
+    return this.drivesService.pinVenue(requireCompanyId(user), user.userId, id, body);
   }
 
   @Post(":id/submit")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   submit(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.submit(this.requireCompanyId(user), id);
+    return this.drivesService.submit(requireCompanyId(user), id);
   }
 
   @Get("mine")
@@ -53,7 +65,7 @@ export class DrivesController {
     @Query("limit") limit?: string,
   ) {
     const parsedLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
-    return this.drivesService.listMine(this.requireCompanyId(user), cursor, parsedLimit);
+    return this.drivesService.listMine(requireCompanyId(user), cursor, parsedLimit);
   }
 
   @Get("search")
@@ -75,20 +87,13 @@ export class DrivesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   findOne(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.findOne(this.requireCompanyId(user), id);
+    return this.drivesService.findOne(requireCompanyId(user), id);
   }
 
   @Delete(":id")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   remove(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.remove(this.requireCompanyId(user), id);
-  }
-
-  private requireCompanyId(user: AccessTokenPayload): string {
-    if (!user.companyId) {
-      throw new ForbiddenException("This account is not linked to a company");
-    }
-    return user.companyId;
+    return this.drivesService.remove(requireCompanyId(user), id);
   }
 }
