@@ -1,5 +1,5 @@
 import type { Queue } from "bullmq";
-import { prisma } from "@walkins/db";
+import { prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import { dayKey } from "@walkins/shared";
 import type { AlertService } from "../alerts/alert-service";
 
@@ -57,18 +57,40 @@ async function sendMorningReminders(alerts: AlertService): Promise<string> {
   return `${drives.length} drives, ${targeted} confirmed candidates to remind`;
 }
 
-// bookedCount is left alone: it is the record of what was booked, which is
-// what an employer looking back at a drive needs to see.
+// Each no-show goes through the same transition function as every other
+// state change, one transaction apiece, so each gets its audit row and a
+// candidate checked in by the desk at the last second is skipped rather than
+// overwritten. bookedCount is left alone: it is the record of what was
+// booked, which is what an employer looking back at a drive needs to see.
+export async function markNoShows(): Promise<{ noShows: number; changedMeanwhile: number }> {
+  const unattended = await prisma.application.findMany({
+    where: { state: "CONFIRMED", checkIn: { is: null }, drive: { status: "EXPIRED" } },
+    select: { id: true },
+  });
+
+  let noShows = 0;
+  let changedMeanwhile = 0;
+  for (const { id } of unattended) {
+    try {
+      await prisma.$transaction((tx) =>
+        transitionApplication(tx, { applicationId: id, to: "NO_SHOW", actor: { kind: "system", userId: null } }),
+      );
+      noShows += 1;
+    } catch (err) {
+      if (!(err instanceof StaleTransitionError)) throw err;
+      changedMeanwhile += 1;
+    }
+  }
+  return { noShows, changedMeanwhile };
+}
+
 async function expireDrives(): Promise<string> {
-  const now = new Date();
-  const [drives, noShows] = await prisma.$transaction([
-    prisma.drive.updateMany({ where: { status: "LIVE", endsAt: { lte: now } }, data: { status: "EXPIRED" } }),
-    prisma.application.updateMany({
-      where: { state: "CONFIRMED", checkIn: { is: null }, drive: { status: "EXPIRED" } },
-      data: { state: "NO_SHOW", stateChangedAt: now },
-    }),
-  ]);
-  return `${drives.count} drives expired, ${noShows.count} confirmed applications marked no-show`;
+  const drives = await prisma.drive.updateMany({
+    where: { status: "LIVE", endsAt: { lte: new Date() } },
+    data: { status: "EXPIRED" },
+  });
+  const { noShows, changedMeanwhile } = await markNoShows();
+  return `${drives.count} drives expired, ${noShows} confirmed applications marked no-show, ${changedMeanwhile} changed meanwhile`;
 }
 
 // REJECTED is left out of both counts: it can come before or after an

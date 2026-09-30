@@ -36,7 +36,13 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
   if (drive.endsAt <= now) return { skip: "drive has ended" };
 
   let slotStartsAt: string | null = null;
-  if (templateKey === "drive_morning_of") {
+  if (templateKey === "drive_48h") {
+    // Targeting leaves applicants out, but only at the moment of fanout; a
+    // job queued before they applied is still waiting. Any application,
+    // even a withdrawn one, means they have already found this drive.
+    const applied = await prisma.application.count({ where: { driveId, candidateId } });
+    if (applied > 0) return { skip: "candidate has since applied" };
+  } else if (templateKey === "drive_morning_of") {
     const application = await prisma.application.findFirst({
       where: { driveId, candidateId, state: "CONFIRMED" },
       include: { slot: true },
