@@ -8,6 +8,13 @@ import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
 
+// Where to go after logging in, when a page sent us here. Only a path on this
+// site: "//host" or a full URL would turn login into an open redirect.
+function returnPath(): string | null {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<"phone" | "otp">("phone");
@@ -52,7 +59,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { role } = await apiClient.verifyOtp(parsed.data);
-      router.push(role === "EMPLOYER" ? "/employer/drives" : "/profile");
+      router.push(returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : "/profile"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't check the code");
     } finally {
