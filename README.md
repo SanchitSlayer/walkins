@@ -187,6 +187,57 @@ Data persists in named Docker volumes (`postgres_data`, `redis_data`,
   bundler can't follow, so `apps/web` copies the worker files into
   `public/maplibre/` (gitignored) before every `dev` and `build`.
 
+## Testing check-in on a phone
+
+Check-in is meant to be tested with a real phone: a real camera reading the
+QR on the laptop screen and a real GPS fix. Two things make that different
+from ordinary local development.
+
+**The browser never calls the API directly.** It calls `/api` on the web
+app's own origin, and Next.js proxies that to the API (`API_INTERNAL_URL`,
+default `http://localhost:4000`; see `apps/web/next.config.ts`). This is not
+an optimisation. On the phone, `localhost` means the phone itself, so an API
+address of `http://localhost:4000` points nowhere useful. And the page has to
+be HTTPS for the camera and GPS, and an HTTPS page is not allowed to call a
+plain-HTTP API. Proxying through the page's own origin removes both problems,
+and the refresh cookie stays on that origin too.
+
+**The camera and GPS only work over HTTPS** (or on `localhost`, which the
+phone isn't). To serve the web app over HTTPS on your network:
+
+1. Find the laptop's Wi-Fi address, e.g. `ipconfig getifaddr en0` on macOS,
+   and set it in `.env`:
+
+   ```
+   LAN_HOST=192.168.1.20
+   ```
+
+2. Run `pnpm dev`. On the first run Next.js downloads mkcert, installs a local
+   certificate authority on the laptop (this can ask for your password once)
+   and writes a certificate for `localhost` and `LAN_HOST` to
+   `apps/web/certificates/` (gitignored). The log prints where the authority's
+   `rootCA.pem` lives: `CA Root certificate created in <folder>`.
+
+3. Make the phone trust that authority, or it will refuse the certificate:
+   - iPhone: AirDrop or email `rootCA.pem` to the phone and open it; install
+     it under Settings > General > VPN & Device Management; then turn on full
+     trust for it under Settings > General > About > Certificate Trust
+     Settings.
+   - Android: Settings > Security > Encryption & credentials > Install a
+     certificate > CA certificate, and choose `rootCA.pem`.
+
+4. With the phone on the same Wi-Fi, open `https://<LAN_HOST>:3000`. If it
+   can't connect, the laptop's firewall may be blocking incoming connections
+   to Node.
+
+That authority can sign a certificate for any site, and anyone with its key
+can too, so remove it from the phone when you're done testing. Leave
+`LAN_HOST` empty for ordinary development on `http://localhost:3000`.
+
+The QR on the employer's screen is a link to `/checkin` with the code after
+the `#`, so the phone's own camera app can open it directly; `/checkin` also
+has a scanner for anyone who opens the page first.
+
 ## Development
 
 DEV_EXPOSE_OTP=true with NODE_ENV=development returns the OTP in the API
