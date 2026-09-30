@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 
-const NAV_BY_ROLE: Record<string, { href: string; label: string }> = {
-  CANDIDATE: { href: "/profile", label: "Your profile" },
-  EMPLOYER: { href: "/employer/drives", label: "Your drives" },
+const NAV_BY_ROLE: Record<string, { href: string; label: string }[]> = {
+  CANDIDATE: [
+    { href: "/my-drives", label: "Your drives" },
+    { href: "/profile", label: "Your profile" },
+  ],
+  EMPLOYER: [{ href: "/employer/drives", label: "Your drives" }],
 };
 
 export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {
@@ -30,7 +33,7 @@ export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {
       type="button"
       onClick={logOut}
       disabled={pending}
-      className="type-meta min-h-11 text-housing-muted underline-offset-4 hover:text-stock hover:underline disabled:opacity-60"
+      className="type-meta min-h-11 whitespace-nowrap text-housing-muted underline-offset-4 hover:text-stock hover:underline disabled:opacity-60"
     >
       {pending ? "Logging out" : "Log out"}
     </button>
@@ -55,14 +58,13 @@ function SessionNav() {
       </Link>
     );
   }
-  const link = NAV_BY_ROLE[role];
   return (
     <nav aria-label="Account" className="flex items-center gap-5">
-      {link && (
-        <Link href={link.href} className="type-meta text-stock underline-offset-4 hover:underline">
+      {(NAV_BY_ROLE[role] ?? []).map((link) => (
+        <Link key={link.href} href={link.href} className="type-meta whitespace-nowrap text-stock underline-offset-4 hover:underline">
           {link.label}
         </Link>
-      )}
+      ))}
       <LogoutButton onLoggedOut={() => setRole(null)} />
     </nav>
   );
@@ -71,7 +73,9 @@ function SessionNav() {
 export function Masthead({ context }: { context?: string }) {
   return (
     <header className="border-b border-housing-line bg-housing-raised text-stock">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      {/* On a narrow phone the account links drop to their own row rather
+          than squeezing the city name to a letter. */}
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-baseline gap-3">
           <Link href="/" className="type-h3 shrink-0">
             Walkins

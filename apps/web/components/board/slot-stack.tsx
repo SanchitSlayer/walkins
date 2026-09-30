@@ -29,15 +29,22 @@ function Tokens({ capacity, booked, perToken, past }: { capacity: number; booked
 }
 
 // dense is the operations desk's size: same tokens, smaller board type.
+// Given onSelect, each slot becomes a radio option (the caller supplies the
+// fieldset and its legend); slots that have started or are full can't be
+// picked.
 export function SlotStack({
   slots,
   now,
   dense = false,
+  selectedId = null,
+  onSelect,
   className,
 }: {
   slots: DriveSlot[];
   now: Date;
   dense?: boolean;
+  selectedId?: string | null;
+  onSelect?: (slotId: string) => void;
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -78,11 +85,11 @@ export function SlotStack({
           <ol className="mt-2 grid gap-3">
             {day.slots.map((slot) => {
               const past = new Date(slot.startsAt) <= now;
-              return (
-                <li
-                  key={slot.id}
-                  className={cn("grid items-start gap-x-3", dense ? "grid-cols-[3rem_1fr]" : "grid-cols-[4.75rem_1fr]")}
-                >
+              const full = slot.bookedCount >= slot.capacity;
+              const selected = slot.id === selectedId;
+              const row = cn("grid items-start gap-x-3", dense ? "grid-cols-[3rem_1fr]" : "grid-cols-[4.75rem_1fr]");
+              const content = (
+                <>
                   <span className={cn(dense ? "type-board-md" : "type-board-lg leading-none", past && "text-housing-muted")}>
                     {formatTime(slot.startsAt)}
                   </span>
@@ -90,8 +97,36 @@ export function SlotStack({
                     <Tokens capacity={slot.capacity} booked={slot.bookedCount} perToken={perToken} past={past} />
                     <span className="type-board-sm text-housing-muted">
                       {past ? "Under way or over" : formatSeats(slot.capacity, slot.bookedCount)}
+                      {selected && " · Selected"}
                     </span>
                   </span>
+                </>
+              );
+              return (
+                <li key={slot.id}>
+                  {onSelect ? (
+                    <label
+                      className={cn(
+                        row,
+                        "-mx-2 border-2 p-2 has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus",
+                        selected ? "border-stock" : "border-transparent",
+                        past || full ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-housing-rule",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="slot"
+                        value={slot.id}
+                        checked={selected}
+                        disabled={past || full}
+                        onChange={() => onSelect(slot.id)}
+                        className="sr-only"
+                      />
+                      {content}
+                    </label>
+                  ) : (
+                    <div className={row}>{content}</div>
+                  )}
                 </li>
               );
             })}

@@ -8,7 +8,7 @@ import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { Countdown } from "@/components/board/flap-display";
 import { Slab } from "@/components/board/slab";
-import { SlotStack } from "@/components/board/slot-stack";
+import { BookingPanel } from "./booking-panel";
 
 const CityPlane = dynamic(() => import("@/components/board/city-plane"), {
   ssr: false,
@@ -96,12 +96,12 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
         </Slab>
 
         {!ended && drive.slots.length > 0 && (
-          <section aria-labelledby="slots-heading">
-            <h2 id="slots-heading" className="type-h3">
-              Interview slots
-            </h2>
-            <SlotStack slots={drive.slots} now={now} className="mt-3" />
-          </section>
+          <BookingPanel
+            drive={drive}
+            now={now}
+            bookable={drive.status === "LIVE"}
+            onSeatsChanged={async () => setDrive(await apiClient.getPublicDrive(drive.id))}
+          />
         )}
       </div>
 
