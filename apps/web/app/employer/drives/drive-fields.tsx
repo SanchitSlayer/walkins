@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import type { DriveSummary } from "@walkins/shared";
+import { dayLabel, type DriveSummary, formatTime } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardField, BoardInput, BoardSelect } from "@/components/board/field";
 
@@ -72,14 +72,19 @@ export function FieldGroup({ legend, children }: { legend: string; children: Rea
   );
 }
 
+// venuePinnedAt is passed on the edit page: a pinned venue is replaced by
+// the address's geocode as soon as the address changes, and the employer
+// should know that before they type.
 export function DriveFields({
   values,
   onChange,
   disabled = false,
+  venuePinnedAt = null,
 }: {
   values: DriveFieldValues;
   onChange: (key: keyof DriveFieldValues, value: string) => void;
   disabled?: boolean;
+  venuePinnedAt?: string | null;
 }) {
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [cities, setCities] = useState<{ id: string; name: string; state: string }[]>([]);
@@ -118,7 +123,15 @@ export function DriveFields({
             ))}
           </BoardSelect>
         </BoardField>
-        <BoardField label="Venue address" hint="The street address candidates will walk to." className="sm:col-span-2">
+        <BoardField
+          label="Venue address"
+          hint={
+            venuePinnedAt
+              ? `Venue location set from a device (${dayLabel(new Date(venuePinnedAt), new Date())}, ${formatTime(venuePinnedAt)}). Editing the address will reset it.`
+              : "The street address candidates will walk to."
+          }
+          className="sm:col-span-2"
+        >
           <BoardInput autoComplete="street-address" {...input("venueAddress")} />
         </BoardField>
       </FieldGroup>

@@ -7,7 +7,7 @@ import { updateDriveSchema } from "@walkins/shared";
 import type { DriveDetail } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
-import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
+import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
 import { SlotStack } from "@/components/board/slot-stack";
 import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields } from "../drive-fields";
 
@@ -97,6 +97,7 @@ export default function EditDrivePage() {
 
         <form className="grid gap-6" onSubmit={handleSave} noValidate>
           <DriveFields
+            venuePinnedAt={drive.venuePinnedAt}
             values={fields}
             onChange={(key, value) => {
               setSaved(false);
@@ -150,9 +151,14 @@ export default function EditDrivePage() {
             </BoardButton>
           )}
           {drive.status === "LIVE" && (
-            <Link href={`/drives/${drive.id}`} className="type-meta text-stock underline underline-offset-4">
-              See the public page
-            </Link>
+            <>
+              <Link href={`/employer/drives/${drive.id}/checkin`} className={boardButtonClass()}>
+                Open check-in screen
+              </Link>
+              <Link href={`/drives/${drive.id}`} className="type-meta text-stock underline underline-offset-4">
+                See the public page
+              </Link>
+            </>
           )}
           {editable && (
             <BoardButton variant="quiet" disabled={loading} onClick={handleCancel}>
