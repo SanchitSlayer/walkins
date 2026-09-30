@@ -3,21 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/copy-maplibre-worker.mjs && next dev -p ${WEB_PORT:-3000}",
+    "dev": "node scripts/copy-maplibre-worker.mjs && next dev ${LAN_HOST:+--experimental-https -H $LAN_HOST} -p ${WEB_PORT:-3000}",
     "build": "node scripts/copy-maplibre-worker.mjs && next build",
     "start": "next start -p ${WEB_PORT:-3000}"
   },
   "dependencies": {
     "@walkins/shared": "workspace:*",
     "clsx": "^2.1.1",
+    "html5-qrcode": "^2.3.8",
     "maplibre-gl": "^6.11.2",
     "next": "^15.0.0",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",

@@ -2,20 +2,27 @@
 
 import type {
   CandidateProfile,
+  CheckInRequest,
+  CheckInResult,
+  CheckInToken,
   CreateDriveInput,
   CursorPage,
   DriveDetail,
   DriveSearchPage,
   EmployerDriveRow,
+  MyApplication,
+  MyApplications,
   OtpRequestInput,
   OtpVerifyInput,
   PublicDriveDetail,
   TelegramLink,
   UpdateCandidateProfileInput,
   UpdateDriveInput,
+  VenuePinInput,
 } from "@walkins/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// Same-origin, proxied to the API by next.config.ts; see lib/api-internal-url.ts.
+const API_URL = "/api";
 
 // Held in memory only (never localStorage) — refreshed via the httpOnly
 // refresh cookie, which the browser sends automatically with credentials:
@@ -143,6 +150,14 @@ export const apiClient = {
     return parseOrThrow(await request(`/drives/${id}`));
   },
 
+  async getCheckInToken(driveId: string): Promise<CheckInToken> {
+    return parseOrThrow(await request(`/drives/${driveId}/checkin-token`));
+  },
+
+  async pinVenue(driveId: string, input: VenuePinInput): Promise<DriveDetail> {
+    return parseOrThrow(await request(`/drives/${driveId}/venue-pin`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
   async listMyDrives(cursor?: string): Promise<CursorPage<EmployerDriveRow>> {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
     return parseOrThrow(await request(`/drives/mine${query}`));
@@ -166,6 +181,22 @@ export const apiClient = {
 
   async createTelegramLink(): Promise<TelegramLink> {
     return parseOrThrow(await request("/candidates/me/telegram-link", { method: "POST" }));
+  },
+
+  async apply(driveId: string, slotId: string): Promise<MyApplication> {
+    return parseOrThrow(await request(`/drives/${driveId}/apply`, { method: "POST", body: JSON.stringify({ slotId }) }));
+  },
+
+  async releaseApplication(id: string): Promise<MyApplication> {
+    return parseOrThrow(await request(`/applications/${id}`, { method: "DELETE" }));
+  },
+
+  async listMyApplications(): Promise<MyApplications> {
+    return parseOrThrow(await request("/applications/mine"));
+  },
+
+  async checkIn(input: CheckInRequest): Promise<CheckInResult> {
+    return parseOrThrow(await request("/check-in", { method: "POST", body: JSON.stringify(input) }));
   },
 
   async getPublicDrive(id: string): Promise<PublicDriveDetail> {

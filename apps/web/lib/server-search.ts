@@ -1,6 +1,5 @@
 import type { DriveSearchPage, PublicDriveDetail } from "@walkins/shared";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_INTERNAL_URL as API_URL } from "./api-internal-url";
 
 // Plain, unauthenticated fetch for the server-rendered initial page load.
 // Deliberately does not forward the refresh cookie: rotating a refresh
