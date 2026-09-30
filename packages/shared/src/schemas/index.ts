@@ -14,6 +14,7 @@ export const applicationStateSchema = z.enum([
   "HIRED",
   "NO_SHOW",
   "REJECTED",
+  "WITHDRAWN",
 ]);
 
 export const phoneSchema = z
@@ -133,6 +134,7 @@ export const driveSummarySchema = z.object({
 
 export const driveDetailSchema = driveSummarySchema.extend({
   slots: z.array(driveSlotSchema),
+  venuePinnedAt: z.string().nullable(),
 });
 
 export const employerDriveRowSchema = driveSummarySchema.extend({
@@ -154,6 +156,128 @@ export const publicDriveDetailSchema = driveSearchResultSchema.extend({
   slots: z.array(driveSlotSchema),
 });
 
+const latitude = z.number().min(-90).max(90);
+const longitude = z.number().min(-180).max(180);
+
+export const applySchema = z.object({
+  slotId: z.string().min(1),
+});
+
+// Employers move applicants forward after they arrive; the transition table
+// in @walkins/db decides which of these is legal from the current state.
+export const employerApplicationUpdateSchema = z.object({
+  to: z.enum(["INTERVIEWED", "HIRED", "REJECTED"]),
+});
+
+export const checkInRequestSchema = z.object({
+  token: z.string().min(1),
+  lat: latitude,
+  lng: longitude,
+  accuracy: z.number().nonnegative(),
+  // Set by the offline queue: when the phone captured the scan. Untrusted,
+  // shown to the employer, never used to decide whether to accept.
+  capturedAt: z.coerce.date().optional(),
+  // The candidate agreed to register as a walk-in after being told they
+  // hadn't applied.
+  walkIn: z.boolean().optional(),
+});
+
+export const venuePinSchema = z.object({
+  lat: latitude,
+  lng: longitude,
+  accuracy: z.number().nonnegative(),
+});
+
+export const manualCheckInSchema = z.object({
+  reason: z.string().trim().max(200).optional(),
+});
+
+export const checkInMethodSchema = z.enum(["SCAN", "WALK_IN", "MANUAL"]);
+
+export const checkInSchema = z.object({
+  id: z.string(),
+  applicationId: z.string(),
+  method: checkInMethodSchema,
+  scannedAt: z.string(),
+  capturedAt: z.string().nullable(),
+  distanceMeters: z.number().nullable(),
+  accuracyMeters: z.number().nullable(),
+  isValid: z.boolean(),
+  flagReason: z.string().nullable(),
+});
+
+export const checkInResultSchema = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("checked_in"), checkIn: checkInSchema }),
+  z.object({ outcome: z.literal("already_checked_in"), checkIn: checkInSchema }),
+  z.object({
+    outcome: z.literal("needs_registration"),
+    drive: z.object({ id: z.string(), roleTitle: z.string(), companyName: z.string() }),
+  }),
+]);
+
+export const checkInTokenSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+  rotateAfterSeconds: z.number().int(),
+});
+
+export const myApplicationSchema = z.object({
+  id: z.string(),
+  state: applicationStateSchema,
+  slotStartsAt: z.string().nullable(),
+  drive: z.object({
+    id: z.string(),
+    roleTitle: z.string(),
+    companyName: z.string(),
+    venueAddress: z.string(),
+    venueLat: z.number(),
+    venueLng: z.number(),
+    startsAt: z.string(),
+    endsAt: z.string(),
+    status: driveStatusSchema,
+  }),
+  checkIn: checkInSchema.nullable(),
+});
+
+export const myApplicationsSchema = z.object({
+  upcoming: z.array(myApplicationSchema),
+  past: z.array(myApplicationSchema),
+});
+
+// Employer-only: names are shown to the company running the drive and
+// nowhere public.
+export const liveBoardSchema = z.object({
+  driveId: z.string(),
+  counts: z.object({
+    alerted: z.number().int(),
+    confirmed: z.number().int(),
+    checkedIn: z.number().int(),
+    walkIns: z.number().int(),
+    hired: z.number().int(),
+  }),
+  arrivals: z.array(
+    z.object({
+      checkInId: z.string(),
+      applicationId: z.string(),
+      name: z.string(),
+      method: checkInMethodSchema,
+      scannedAt: z.string(),
+      slotStartsAt: z.string().nullable(),
+      distanceMeters: z.number().nullable(),
+      isValid: z.boolean(),
+      flagReason: z.string().nullable(),
+    }),
+  ),
+  awaiting: z.array(
+    z.object({
+      applicationId: z.string(),
+      name: z.string(),
+      state: applicationStateSchema,
+      slotStartsAt: z.string().nullable(),
+    }),
+  ),
+});
+
 export type DriveSlot = z.infer<typeof driveSlotSchema>;
 export type DriveSummary = z.infer<typeof driveSummarySchema>;
 export type DriveDetail = z.infer<typeof driveDetailSchema>;
@@ -168,3 +292,14 @@ export type CreateDriveInput = z.infer<typeof createDriveSchema>;
 export type UpdateDriveInput = z.infer<typeof updateDriveSchema>;
 export type UpdateCandidateProfileInput = z.infer<typeof updateCandidateProfileSchema>;
 export type DriveSearchQuery = z.infer<typeof driveSearchQuerySchema>;
+export type ApplyInput = z.infer<typeof applySchema>;
+export type EmployerApplicationUpdate = z.infer<typeof employerApplicationUpdateSchema>;
+export type CheckInRequest = z.infer<typeof checkInRequestSchema>;
+export type VenuePinInput = z.infer<typeof venuePinSchema>;
+export type ManualCheckInInput = z.infer<typeof manualCheckInSchema>;
+export type CheckIn = z.infer<typeof checkInSchema>;
+export type CheckInResult = z.infer<typeof checkInResultSchema>;
+export type CheckInToken = z.infer<typeof checkInTokenSchema>;
+export type MyApplication = z.infer<typeof myApplicationSchema>;
+export type MyApplications = z.infer<typeof myApplicationsSchema>;
+export type LiveBoard = z.infer<typeof liveBoardSchema>;

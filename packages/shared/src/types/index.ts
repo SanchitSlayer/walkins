@@ -14,7 +14,8 @@ export type ApplicationState =
   | "INTERVIEWED"
   | "HIRED"
   | "NO_SHOW"
-  | "REJECTED";
+  | "REJECTED"
+  | "WITHDRAWN";
 
 export type AccessTokenPayload = {
   userId: string;
