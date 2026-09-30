@@ -141,6 +141,10 @@ model Drive {
   experienceMax      Float
   status             DriveStatus                            @default(DRAFT)
   needsManualGeocode Boolean                                @default(false)
+  // Set when the employer placed the venue from a device at the venue. Area
+  // geocoding can be a kilometre off, so a pinned point is kept until the
+  // address itself changes.
+  venuePinnedAt      DateTime?
   // Populated by a DB trigger from venueLat/venueLng; not writable through Prisma.
   geom               Unsupported("geography(Point, 4326)")?
 
@@ -179,6 +183,7 @@ enum ApplicationState {
   HIRED
   NO_SHOW
   REJECTED
+  WITHDRAWN
 }
 
 model Application {
@@ -194,20 +199,39 @@ model Application {
   slot      DriveSlot? @relation(fields: [slotId], references: [id])
   checkIn   CheckIn?
 
-  @@index([driveId])
+  // One application per candidate per drive, enforced here rather than by a
+  // check-then-insert, so two concurrent applies cannot both land. A release
+  // is a move to WITHDRAWN, not a delete, so the row (and this guarantee)
+  // survives and re-applying reuses it.
+  @@unique([driveId, candidateId])
   @@index([candidateId])
   @@index([slotId])
   @@map("applications")
 }
 
+enum CheckInMethod {
+  SCAN
+  WALK_IN
+  MANUAL
+}
+
+// Location fields are null for a MANUAL check-in: the employer marked the
+// person present, so there is no reading. isValid false means "accepted but
+// needs an employer's confirmation", with the reason in flagReason.
 model CheckIn {
-  id             String   @id @default(cuid())
-  applicationId  String   @unique
-  scannedAt      DateTime @default(now())
-  lat            Float
-  lng            Float
-  distanceMeters Float
+  id             String        @id @default(cuid())
+  applicationId  String        @unique
+  method         CheckInMethod
+  scannedAt      DateTime      @default(now())
+  // Client-reported time of an offline scan that synced later; untrusted,
+  // shown to the employer next to scannedAt, never used to accept a token.
+  capturedAt     DateTime?
+  lat            Float?
+  lng            Float?
+  accuracyMeters Float?
+  distanceMeters Float?
   isValid        Boolean
+  flagReason     String?
 
   application Application @relation(fields: [applicationId], references: [id])
 
