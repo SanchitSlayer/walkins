@@ -135,6 +135,7 @@ export const driveSummarySchema = z.object({
 export const driveDetailSchema = driveSummarySchema.extend({
   slots: z.array(driveSlotSchema),
   venuePinnedAt: z.string().nullable(),
+  city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),
 });
 
 export const employerDriveRowSchema = driveSummarySchema.extend({
@@ -186,6 +187,9 @@ export const venuePinSchema = z.object({
   lat: latitude,
   lng: longitude,
   accuracy: z.number().nonnegative(),
+  // Required to pin further than MAX_TRAVEL_KM from the drive's city centre:
+  // the employer has been shown that distance and confirmed it.
+  confirmFar: z.boolean().optional(),
 });
 
 export const manualCheckInSchema = z.object({
@@ -260,6 +264,7 @@ export const liveBoardSchema = z.object({
       checkInId: z.string(),
       applicationId: z.string(),
       name: z.string(),
+      state: applicationStateSchema,
       method: checkInMethodSchema,
       scannedAt: z.string(),
       slotStartsAt: z.string().nullable(),
@@ -273,6 +278,29 @@ export const liveBoardSchema = z.object({
       applicationId: z.string(),
       name: z.string(),
       state: applicationStateSchema,
+      slotStartsAt: z.string().nullable(),
+    }),
+  ),
+});
+
+// What the arrivals board may show. It is built to be put on a screen facing
+// the queue, so it carries no full names, distances or flag reasons, and it
+// is a separate shape rather than a filtered view so nothing extra can leak
+// through a field someone forgot to hide.
+export const liveDisplaySchema = z.object({
+  driveId: z.string(),
+  roleTitle: z.string(),
+  companyName: z.string(),
+  venueAddress: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  counts: liveBoardSchema.shape.counts,
+  arrivals: z.array(
+    z.object({
+      checkInId: z.string(),
+      displayName: z.string(),
+      method: checkInMethodSchema,
+      scannedAt: z.string(),
       slotStartsAt: z.string().nullable(),
     }),
   ),
@@ -303,3 +331,4 @@ export type CheckInToken = z.infer<typeof checkInTokenSchema>;
 export type MyApplication = z.infer<typeof myApplicationSchema>;
 export type MyApplications = z.infer<typeof myApplicationsSchema>;
 export type LiveBoard = z.infer<typeof liveBoardSchema>;
+export type LiveDisplay = z.infer<typeof liveDisplaySchema>;
