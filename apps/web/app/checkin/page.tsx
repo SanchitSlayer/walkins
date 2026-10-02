@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
 import { type CheckIn, formatTime } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
+import { FLUSHED_EVENT, type FlushResult, isNetworkError, loadPass, queueCheckIn, queuedCheckIns } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
@@ -20,6 +21,7 @@ type Step =
   | { kind: "sending" }
   | { kind: "walk-in"; roleTitle: string; companyName: string }
   | { kind: "done"; checkIn: CheckIn; again: boolean }
+  | { kind: "queued" }
   | { kind: "failed"; message: string };
 
 // The QR on the employer's screen is a link to this page with the code after
@@ -59,6 +61,11 @@ export default function CheckInPage() {
   }, []);
 
   const send = useCallback(async (token: string, reading: Reading, walkIn = false) => {
+    const queue = async () => {
+      await queueCheckIn({ token, ...reading });
+      setStep({ kind: "queued" });
+    };
+    if (!navigator.onLine) return queue();
     setStep({ kind: "sending" });
     try {
       const result = await apiClient.checkIn({ token, ...reading, walkIn });
@@ -69,6 +76,8 @@ export default function CheckInPage() {
         setStep({ kind: "done", checkIn: result.checkIn, again: result.outcome === "already_checked_in" });
       }
     } catch (err) {
+      // No answer at all: the signal dropped between scanning and sending.
+      if (isNetworkError(err)) return queue();
       setStep({ kind: "failed", message: err instanceof Error ? err.message : "Check-in didn't go through" });
     }
   }, []);
@@ -96,6 +105,43 @@ export default function CheckInPage() {
   }, [ready, checkInWith]);
 
   useEffect(() => () => void stopScanner(), [stopScanner]);
+
+  // Loaded now rather than on the first tap, so the service worker has the
+  // scanner cached before anyone needs it with no signal.
+  useEffect(() => {
+    void import("html5-qrcode");
+  }, []);
+
+  const [online, setOnline] = useState(true);
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    const update = () => {
+      setOnline(navigator.onLine);
+      setWaiting(queuedCheckIns().length);
+    };
+    // A queued scan sent from this page or any other: show how it went.
+    const onFlushed = (event: Event) => {
+      update();
+      const last = (event as CustomEvent<FlushResult[]>).detail.at(-1);
+      if (!last) return;
+      setStep((current) =>
+        current.kind !== "queued"
+          ? current
+          : last.status === "sent"
+            ? { kind: "done", checkIn: last.checkIn, again: false }
+            : { kind: "failed", message: last.message },
+      );
+    };
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    window.addEventListener(FLUSHED_EVENT, onFlushed);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+      window.removeEventListener(FLUSHED_EVENT, onFlushed);
+    };
+  }, [step.kind]);
 
   async function startScanning() {
     if (!window.isSecureContext) {
@@ -137,6 +183,13 @@ export default function CheckInPage() {
       <main className="mx-auto grid max-w-md gap-6 px-4 py-8">
         <h1 className="type-h1">Check in</h1>
 
+        {!online && <OfflinePass />}
+        {waiting > 0 && step.kind !== "queued" && (
+          <p className="type-meta text-housing-muted">
+            {waiting === 1 ? "1 check-in is" : `${waiting} check-ins are`} waiting to send.
+          </p>
+        )}
+
         <div role="status" className="grid gap-4">
           {step.kind === "idle" && (
             <>
@@ -168,6 +221,16 @@ export default function CheckInPage() {
                   Not now
                 </BoardButton>
               </div>
+            </div>
+          )}
+
+          {step.kind === "queued" && (
+            <div className="grid gap-2 border border-housing-rule p-4">
+              <p className="type-h3">Saved on this phone</p>
+              <p className="type-body text-housing-muted">
+                There&apos;s no signal, so your check-in will be sent as soon as there is. It needs to go within 30 minutes; keep
+                this page open if you can, or open Walkins again once you have signal.
+              </p>
             </div>
           )}
 
@@ -211,6 +274,24 @@ export default function CheckInPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// With no signal, the candidate's next booked drive from the copy saved on
+// this phone, so they can still see where and when.
+function OfflinePass() {
+  const [pass] = useState(() => loadPass());
+  const next = pass?.applications.upcoming.find((a) => a.state === "CONFIRMED");
+  return (
+    <div className="grid gap-1 border-l-4 border-pending-lamp bg-housing-raised p-4">
+      <p className="type-meta">You&apos;re offline. Scanning still works; your check-in is sent when the signal is back.</p>
+      {next && (
+        <p className="type-board-md">
+          {next.drive.roleTitle} at {next.drive.companyName}
+          {next.slotStartsAt ? ` · slot ${formatTime(next.slotStartsAt)}` : ""}
+        </p>
+      )}
     </div>
   );
 }

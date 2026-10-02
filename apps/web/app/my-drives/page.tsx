@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { type ApplicationState, formatTime, formatWhen, type MyApplication, type MyApplications } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
+import { isNetworkError, loadPass, savePass } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
@@ -93,13 +94,25 @@ export default function MyDrivesPage() {
   const [applications, setApplications] = useState<MyApplications | null>(null);
   const [releasingId, setReleasingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
 
+  // This page is the candidate's pass: each successful load is kept on the
+  // phone, and with no signal the kept copy is shown instead.
   const load = useCallback(async () => {
     try {
-      setApplications(await apiClient.listMyApplications());
+      const fresh = await apiClient.listMyApplications();
+      savePass(fresh);
+      setApplications(fresh);
+      setSavedAt(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load your drives");
+      const pass = isNetworkError(err) ? loadPass() : null;
+      if (pass) {
+        setApplications(pass.applications);
+        setSavedAt(pass.savedAt);
+      } else {
+        setError(err instanceof Error ? err.message : "Couldn't load your drives");
+      }
     }
   }, []);
 
@@ -132,6 +145,12 @@ export default function MyDrivesPage() {
       <Masthead />
       <main className="mx-auto grid max-w-3xl gap-10 px-4 py-8 sm:px-6">
         <h1 className="type-h1">Your drives</h1>
+
+        {savedAt && (
+          <p className="type-meta border-l-4 border-pending-lamp bg-housing-raised p-4">
+            You&apos;re offline. Showing your drives as saved at {formatTime(savedAt)}; booking changes need signal.
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="type-meta text-closing-lamp">
