@@ -1,0 +1,10 @@
+{
+  "name": "Walkins",
+  "short_name": "Walkins",
+  "description": "Walk-in interviews near you",
+  "start_url": "/my-drives",
+  "display": "standalone",
+  "background_color": "#15140f",
+  "theme_color": "#15140f",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
