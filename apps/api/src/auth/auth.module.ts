@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
-import { RateLimiterService } from "./rate-limiter.service";
+import { RateLimiterService } from "../common/rate-limiter.service";
 
 @Module({
   imports: [

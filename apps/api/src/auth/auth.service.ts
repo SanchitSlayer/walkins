@@ -4,7 +4,7 @@ import { JwtService } from "@nestjs/jwt";
 import { prisma } from "@walkins/db";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { redis } from "../common/redis";
-import { RateLimiterService } from "./rate-limiter.service";
+import { RateLimiterService } from "../common/rate-limiter.service";
 
 const OTP_TTL_SECONDS = 5 * 60;
 const MAX_OTP_ATTEMPTS = 5;

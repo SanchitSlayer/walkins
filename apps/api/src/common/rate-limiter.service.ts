@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { redis } from "../common/redis";
+import { redis } from "./redis";
 
 // Sliding-window log via a Redis sorted set: each call's timestamp is scored
 // and stored, entries older than the window are trimmed, and the remaining
@@ -26,5 +26,14 @@ export class RateLimiterService {
       .exec();
 
     return true;
+  }
+
+  // For limits on failures only: check before the attempt without counting
+  // it, then consume() just when it fails, so successes never use up the
+  // allowance.
+  async isExhausted(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+    const redisKey = `ratelimit:${key}`;
+    await redis.zremrangebyscore(redisKey, 0, Date.now() - windowSeconds * 1000);
+    return (await redis.zcard(redisKey)) >= limit;
   }
 }
