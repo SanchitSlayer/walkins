@@ -5,7 +5,7 @@ import type {
   CheckIn,
   CheckInRequest,
   CheckInResult,
-  CheckInToken,
+  CheckInCode,
   CreateDriveInput,
   CursorPage,
   DriveDetail,
@@ -181,8 +181,8 @@ export const apiClient = {
     return parseOrThrow(await request(`/drives/${id}`));
   },
 
-  async getCheckInToken(driveId: string): Promise<CheckInToken> {
-    return parseOrThrow(await request(`/drives/${driveId}/checkin-token`));
+  async getCheckInCode(driveId: string): Promise<CheckInCode> {
+    return parseOrThrow(await request(`/drives/${driveId}/checkin-code`));
   },
 
   async pinVenue(driveId: string, input: VenuePinInput): Promise<DriveDetail> {

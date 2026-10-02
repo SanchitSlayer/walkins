@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { dayLabel, type DriveDetail, formatTime } from "@walkins/shared";
+import { dayLabel, type DriveDetail, formatCheckInCode, formatTime } from "@walkins/shared";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
 import { VenueOutsideCityNotice } from "../../venue-notice";
 
 const RETRY_MS = 5_000;
 
-type Code = { image: string; expiresAt: number; nextAt: number };
+type Code = { image: string; text: string; expiresAt: number; nextAt: number };
 
 function pinnedLabel(iso: string) {
   return `${dayLabel(new Date(iso), new Date())}, ${formatTime(iso)}`;
@@ -125,14 +125,23 @@ export default function CheckInScreenPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const token = await apiClient.getCheckInToken(id);
-      const image = await QRCode.toDataURL(`${window.location.origin}/checkin#${token.token}`, {
+      const issued = await apiClient.getCheckInCode(id);
+      // Pure black on white with a four-module quiet zone, and Q-level error
+      // correction to ride out screen glare: the short code keeps the symbol
+      // coarse enough to afford it. The board's ink-on-ivory looked right and
+      // read badly; a camera needs contrast, not palette.
+      const image = await QRCode.toDataURL(`${window.location.origin}/checkin#${issued.code}`, {
         width: 720,
-        margin: 2,
-        errorCorrectionLevel: "M",
-        color: { dark: "#15140f", light: "#eae9e3" },
+        margin: 4,
+        errorCorrectionLevel: "Q",
+        color: { dark: "#000000", light: "#ffffff" },
       });
-      setCode({ image, expiresAt: new Date(token.expiresAt).getTime(), nextAt: Date.now() + token.rotateAfterSeconds * 1000 });
+      setCode({
+        image,
+        text: formatCheckInCode(issued.code),
+        expiresAt: new Date(issued.expiresAt).getTime(),
+        nextAt: Date.now() + issued.rotateAfterSeconds * 1000,
+      });
       setProblem(null);
     } catch (err) {
       setProblem(err instanceof Error ? err.message : "Couldn't get a check-in code");
@@ -180,11 +189,19 @@ export default function CheckInScreenPage() {
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,34rem)_1fr]">
         <div className="grid gap-3">
           {live ? (
-            <img
-              src={code.image}
-              alt="Check-in code for this drive. It changes every minute."
-              className="aspect-square w-full max-w-[34rem] border border-housing-line"
-            />
+            // A large white card rather than a QR floating on the dark page:
+            // phone cameras expose for the dark surround and wash the code out.
+            <div className="grid w-full max-w-[34rem] justify-items-center gap-2 bg-white p-6 text-black">
+              <img
+                src={code.image}
+                alt="Check-in QR code for this drive. It changes every minute; the same code is written below it."
+                className="aspect-square w-full"
+              />
+              <p className="type-meta">Or type this code at {host}/checkin</p>
+              <p className="type-board-lg text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[0.12em]" aria-label={`Code ${code.text}`}>
+                {code.text}
+              </p>
+            </div>
           ) : (
             <div className="grid aspect-square w-full max-w-[34rem] place-items-center border border-housing-line p-6 text-center">
               <p className="type-body text-housing-muted">{problem ?? "Getting a check-in code…"}</p>
@@ -202,11 +219,11 @@ export default function CheckInScreenPage() {
 
         <div className="grid content-start gap-6">
           <section className="grid gap-2">
-            <h2 className="type-h3">Candidates: scan to check in</h2>
+            <h2 className="type-h3">Candidates: check in here</h2>
             <p className="type-body text-housing-muted">
-              Point your phone&apos;s camera at the code and open the link, or open{" "}
-              <span className="type-board-md text-stock">{host}/checkin</span>{" "}
-              and scan it there. Your location is checked once, to confirm you&apos;re here.
+              Point your phone&apos;s camera at the QR code and open the link. If your camera won&apos;t read it, open{" "}
+              <span className="type-board-md text-stock">{host}/checkin</span> and type the code written under it. Your
+              location is checked once, to confirm you&apos;re here.
             </p>
           </section>
           {drive?.venuePinnedAt && <VenueLocation drive={drive} onPinned={setDrive} />}

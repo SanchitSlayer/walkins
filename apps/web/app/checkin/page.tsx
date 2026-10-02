@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
-import { type CheckIn, formatTime } from "@walkins/shared";
+import { type CheckIn, formatTime, normalizeCheckInCode } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { FLUSHED_EVENT, type FlushResult, isNetworkError, loadPass, queueCheckIn, queuedCheckIns } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
-import { BoardButton, boardButtonClass } from "@/components/board/field";
+import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 
 const SCANNER_ID = "checkin-scanner";
@@ -27,9 +27,58 @@ type Step =
 // The QR on the employer's screen is a link to this page with the code after
 // the "#", so a phone's own camera app works too; the scanner here accepts
 // either the link or a bare code.
-function tokenFrom(scanned: string): string {
+function codeFrom(scanned: string): string {
   const hash = scanned.indexOf("#");
   return hash === -1 ? scanned.trim() : scanned.slice(hash + 1).trim();
+}
+
+// Typing the code is a first-class way in, not a fallback behind a link: bad
+// lighting and old phone cameras are the ordinary case at a venue.
+function TypedCode({ onSubmit }: { onSubmit: (code: string) => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-3 border-t border-housing-line pt-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const code = normalizeCheckInCode(value);
+        if (!code) {
+          setError("A code is 8 letters and numbers, like K7QF 4XM2.");
+          return;
+        }
+        onSubmit(code);
+      }}
+    >
+      <BoardField label="Or type the code from the screen" hint="It's written in large letters under the QR code.">
+        <BoardInput
+          board
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError(null);
+          }}
+          autoComplete="off"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={11}
+          aria-invalid={error ? true : undefined}
+          className="h-14 text-[1.5rem] uppercase tracking-[0.15em]"
+        />
+      </BoardField>
+      {error && (
+        <p role="alert" className="type-meta text-closing-lamp">
+          {error}
+        </p>
+      )}
+      <div>
+        <BoardButton type="submit" variant="quiet">
+          Check in with this code
+        </BoardButton>
+      </div>
+    </form>
+  );
 }
 
 function locate(): Promise<Reading> {
@@ -54,23 +103,23 @@ export default function CheckInPage() {
   const ready = useRequireRole("CANDIDATE");
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const scanner = useRef<Html5Qrcode | null>(null);
-  const pending = useRef<{ token: string; reading: Reading } | null>(null);
+  const pending = useRef<{ code: string; reading: Reading } | null>(null);
 
   const stopScanner = useCallback(async () => {
     if (scanner.current?.isScanning) await scanner.current.stop();
   }, []);
 
-  const send = useCallback(async (token: string, reading: Reading, walkIn = false) => {
+  const send = useCallback(async (code: string, reading: Reading, walkIn = false) => {
     const queue = async () => {
-      await queueCheckIn({ token, ...reading });
+      await queueCheckIn({ code, ...reading });
       setStep({ kind: "queued" });
     };
     if (!navigator.onLine) return queue();
     setStep({ kind: "sending" });
     try {
-      const result = await apiClient.checkIn({ token, ...reading, walkIn });
+      const result = await apiClient.checkIn({ code, ...reading, walkIn });
       if (result.outcome === "needs_registration") {
-        pending.current = { token, reading };
+        pending.current = { code, reading };
         setStep({ kind: "walk-in", roleTitle: result.drive.roleTitle, companyName: result.drive.companyName });
       } else {
         setStep({ kind: "done", checkIn: result.checkIn, again: result.outcome === "already_checked_in" });
@@ -83,10 +132,10 @@ export default function CheckInPage() {
   }, []);
 
   const checkInWith = useCallback(
-    async (token: string) => {
+    async (code: string) => {
       setStep({ kind: "locating" });
       try {
-        await send(token, await locate());
+        await send(code, await locate());
       } catch (err) {
         setStep({ kind: "failed", message: err instanceof Error ? err.message : "Couldn't get your location" });
       }
@@ -99,9 +148,9 @@ export default function CheckInPage() {
   // so a refresh or a screenshot doesn't carry it around.
   useEffect(() => {
     if (!ready || !window.location.hash) return;
-    const token = tokenFrom(window.location.hash);
+    const code = codeFrom(window.location.hash);
     history.replaceState(null, "", window.location.pathname);
-    if (token) checkInWith(token);
+    if (code) checkInWith(code);
   }, [ready, checkInWith]);
 
   useEffect(() => () => void stopScanner(), [stopScanner]);
@@ -157,7 +206,7 @@ export default function CheckInPage() {
         { fps: 10, qrbox: { width: 240, height: 240 } },
         async (decoded) => {
           await stopScanner();
-          checkInWith(tokenFrom(decoded));
+          checkInWith(codeFrom(decoded));
         },
         undefined,
       );
@@ -194,11 +243,13 @@ export default function CheckInPage() {
           {step.kind === "idle" && (
             <>
               <p className="type-body text-housing-muted">
-                Scan the code on the screen at the venue. Your location is checked once, to confirm you&apos;re there.
+                Scan the QR code on the screen at the venue, or type the code written under it. Your location is checked
+                once, to confirm you&apos;re there.
               </p>
               <div>
-                <BoardButton onClick={startScanning}>Scan the code</BoardButton>
+                <BoardButton onClick={startScanning}>Scan the QR code</BoardButton>
               </div>
+              <TypedCode onSubmit={checkInWith} />
             </>
           )}
           {step.kind === "scanning" && <p className="type-body text-housing-muted">Point your camera at the code.</p>}
@@ -213,7 +264,7 @@ export default function CheckInPage() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <BoardButton
-                  onClick={() => pending.current && send(pending.current.token, pending.current.reading, true)}
+                  onClick={() => pending.current && send(pending.current.code, pending.current.reading, true)}
                 >
                   Register as a walk-in
                 </BoardButton>

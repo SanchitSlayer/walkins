@@ -18,7 +18,7 @@ export const FLUSHED_EVENT = "walkins:checkins-flushed";
 export type QueuedCheckIn = {
   id: string;
   userId: string | null;
-  token: string;
+  code: string;
   lat: number;
   lng: number;
   accuracy: number;
@@ -128,7 +128,7 @@ export function flushCheckIns(): Promise<FlushResult[]> {
           // Always a walk-in: the server ignores it for someone with a
           // booking, and an offline phone couldn't ask the question anyway.
           const result = await apiClient.checkIn({
-            token: item.token,
+            code: item.code,
             lat: item.lat,
             lng: item.lng,
             accuracy: item.accuracy,
