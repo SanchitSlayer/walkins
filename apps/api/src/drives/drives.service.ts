@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, prisma } from "@walkins/db";
 import {
   type CreateDriveInput,
@@ -9,6 +9,8 @@ import {
   type UpdateDriveInput,
   type VenuePinInput,
   driveSearchPageSchema,
+  haversineDistanceKm,
+  MAX_TRAVEL_KM,
   publicDriveDetailSchema,
 } from "@walkins/shared";
 import { GeocodingService } from "./geocoding.service";
@@ -97,6 +99,7 @@ const MAX_PIN_ACCURACY_METERS = 100;
 const DRIVE_DETAIL_INCLUDE = {
   slots: true,
   role: { select: { title: true, slug: true } },
+  city: { select: { name: true, centerLat: true, centerLng: true } },
 } as const;
 
 @Injectable()
@@ -186,6 +189,25 @@ export class DrivesService {
       );
     }
 
+    // A pin outside the drive's city fails quietly everywhere at once:
+    // targeting matches nobody, the city map frames half the country and
+    // every honest check-in is out of range. Past the furthest any candidate
+    // may travel, the employer has to confirm the distance they were shown.
+    const city = await prisma.city.findUniqueOrThrow({ where: { id: existing.cityId } });
+    const km = haversineDistanceKm(city.centerLat, city.centerLng, input.lat, input.lng);
+    const cityName = city.name;
+    const farFromCity = km > MAX_TRAVEL_KM;
+    if (farFromCity && !input.confirmFar) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: "Conflict",
+        code: "PIN_FAR_FROM_CITY",
+        distanceKm: Math.round(km),
+        cityName,
+        message: `This device is ${Math.round(km).toLocaleString("en-IN")} km from the centre of ${cityName}, where this drive is listed.`,
+      });
+    }
+
     return prisma.$transaction(async (tx) => {
       const drive = await tx.drive.update({
         where: { id: driveId },
@@ -199,7 +221,12 @@ export class DrivesService {
           entityId: driveId,
           action: "venue_pinned",
           before: { venueLat: existing.venueLat, venueLng: existing.venueLng },
-          after: { venueLat: input.lat, venueLng: input.lng, accuracyMeters: input.accuracy },
+          after: {
+            venueLat: input.lat,
+            venueLng: input.lng,
+            accuracyMeters: input.accuracy,
+            ...(farFromCity ? { confirmedKmFromCity: Math.round(km) } : {}),
+          },
         },
       });
       return drive;
