@@ -7,7 +7,7 @@ import { ApplicationsService } from "../src/applications/applications.service";
 import { CheckInTokenService } from "../src/check-in/check-in-token.service";
 import { CheckInService } from "../src/check-in/check-in.service";
 import { redis } from "../src/common/redis";
-import { LiveBoardService } from "../src/live/live-board.service";
+import { displayName, LiveBoardService } from "../src/live/live-board.service";
 import { LiveGateway } from "../src/live/live.gateway";
 import { createFixture, type Fixture, removeFixture } from "./fixtures";
 
@@ -224,17 +224,51 @@ describe("the employer's side", () => {
     });
 
     const stranger = socket("some-other-company");
-    await expect(gateway.join(stranger, fixture.drive.id)).resolves.toEqual({ error: "Drive not found" });
+    await expect(gateway.join(stranger, { driveId: fixture.drive.id, view: "desk" })).resolves.toEqual({ error: "Drive not found" });
     expect(stranger.join).not.toHaveBeenCalled();
 
     const owner = socket(fixture.company.id);
-    const board = await gateway.join(owner, fixture.drive.id);
-    expect(owner.join).toHaveBeenCalledWith(`drive:${fixture.drive.id}`);
-    expect(board).toHaveProperty("counts");
-    if (!("counts" in board)) return;
+    await expect(gateway.join(owner, { driveId: fixture.drive.id, view: "somewhere" })).resolves.toEqual({ error: "Unknown view" });
+    const desk = await gateway.join(owner, { driveId: fixture.drive.id, view: "desk" });
+    expect(owner.join).toHaveBeenCalledWith(`drive:${fixture.drive.id}:desk`);
+    expect(desk).toHaveProperty("awaiting");
+    if (!("awaiting" in desk)) return;
     // Booked arrivals so far in this file: two duplicate-scan tests, the
     // poor-accuracy scan, the late sync, the manual mark and the confirmed
     // flag. The refused far-away scan adds none; walk-ins are counted apart.
-    expect(board.counts).toMatchObject({ checkedIn: 6, walkIns: 2, hired: 0 });
+    expect(desk.counts).toMatchObject({ checkedIn: 6, walkIns: 2, hired: 0 });
+    expect(desk.arrivals.some((a) => a.flagReason !== null)).toBe(true);
+  });
+
+  it("gives the public board short names and nothing the desk alone should see", async () => {
+    const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService());
+    const owner = {
+      data: { user: { userId: fixture.employer.id, role: "EMPLOYER" as const, companyId: fixture.company.id } },
+      join: vi.fn(async () => {}),
+    };
+
+    const board = await gateway.join(owner, { driveId: fixture.drive.id, view: "board" });
+
+    expect(owner.join).toHaveBeenCalledWith(`drive:${fixture.drive.id}:board`);
+    expect(board).toHaveProperty("arrivals");
+    if (!("arrivals" in board) || "awaiting" in board) throw new Error("expected the board projection");
+    expect(board.counts).toMatchObject({ checkedIn: 6, walkIns: 2 });
+    const serialised = JSON.stringify(board);
+    for (const { candidateId } of fixture.candidates) {
+      const user = await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, include: { user: true } });
+      expect(serialised).not.toContain(user.user.name);
+    }
+    expect(serialised).not.toMatch(/flagReason|distanceMeters|applicationId|accurate to/);
+    // Fixture names are "Check-in Test Candidate 7", so the short form is "Check-in 7.".
+    expect(board.arrivals[0].displayName).toMatch(/^Check-in \w+\.$/);
+  });
+});
+
+describe("shortening names for the board", () => {
+  it("keeps the first name and the last name's initial", () => {
+    expect(displayName("Asha Kumari Rao")).toBe("Asha R.");
+    expect(displayName("  Ravi   kumar ")).toBe("Ravi K.");
+    expect(displayName("Mononym")).toBe("Mononym");
+    expect(displayName("   ")).toBe("Candidate");
   });
 });
