@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
+import { forgetDevice } from "@/lib/offline";
 
 const NAV_BY_ROLE: Record<string, { href: string; label: string }[]> = {
   CANDIDATE: [
@@ -21,6 +22,7 @@ export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {
     setPending(true);
     try {
       await apiClient.logout();
+      forgetDevice();
       onLoggedOut?.();
       router.push("/");
     } finally {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { apiClient } from "./api-client";
+import { isNetworkError, lastSession, rememberSession } from "./offline";
 
 export function useRequireRole(role: "EMPLOYER" | "CANDIDATE"): boolean {
   const router = useRouter();
@@ -15,8 +16,18 @@ export function useRequireRole(role: "EMPLOYER" | "CANDIDATE"): boolean {
     async function check() {
       let currentRole = apiClient.getCurrentRole();
       if (!currentRole) {
-        const session = await apiClient.restoreSession();
-        currentRole = session?.role ?? null;
+        try {
+          currentRole = (await apiClient.restoreSession())?.role ?? null;
+        } catch (err) {
+          if (!isNetworkError(err)) throw err;
+          // No signal, so the session can't be checked. Fall back to the role
+          // this device last had: the offline pages only show what is already
+          // on it, and anything they send is checked by the server later.
+          currentRole = lastSession()?.role ?? null;
+        }
+      }
+      if (currentRole && apiClient.isAuthenticated()) {
+        rememberSession({ userId: apiClient.getCurrentUserId(), role: currentRole });
       }
       if (cancelled) return;
       if (currentRole !== role) {

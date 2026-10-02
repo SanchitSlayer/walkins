@@ -2,6 +2,7 @@
 
 import type {
   CandidateProfile,
+  CheckIn,
   CheckInRequest,
   CheckInResult,
   CheckInToken,
@@ -9,7 +10,10 @@ import type {
   CursorPage,
   DriveDetail,
   DriveSearchPage,
+  EmployerApplicationUpdate,
   EmployerDriveRow,
+  LiveBoard,
+  LiveDisplay,
   MyApplication,
   MyApplications,
   OtpRequestInput,
@@ -30,7 +34,7 @@ const API_URL = "/api";
 // re-establishes it from the cookie.
 let accessToken: string | null = null;
 
-type JwtPayload = { userId: string; role: string; companyId: string | null };
+type JwtPayload = { userId: string; role: string; companyId: string | null; exp: number };
 
 function decodeAccessToken(token: string): JwtPayload {
   const payload = token.split(".")[1];
@@ -82,6 +86,19 @@ async function request(path: string, options: RequestInit = {}, retry = true): P
   return response;
 }
 
+// Keeps the status and body alongside the message, for the few callers that
+// act on a specific refusal (a pin far from the city asks to confirm).
+export class ApiError extends Error {
+  name = "ApiError";
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: Record<string, unknown> | null,
+  ) {
+    super(message);
+  }
+}
+
 async function parseOrThrow<T>(response: Response): Promise<T> {
   // Nest sends an empty body (not the JSON literal "null") for a
   // controller returning null — .json() throws on that, so the fallback
@@ -89,7 +106,7 @@ async function parseOrThrow<T>(response: Response): Promise<T> {
   // "no data" as "some data with no fields" for every caller downstream.
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data?.message ?? `Request failed with status ${response.status}`);
+    throw new ApiError(typeof data?.message === "string" ? data.message : `Request failed with status ${response.status}`, response.status, data);
   }
   return data as T;
 }
@@ -122,8 +139,22 @@ export const apiClient = {
     return { role: payload.role, companyId: payload.companyId };
   },
 
+  // For the live-board socket, which presents a token only when it connects:
+  // a still-valid one, refreshed first (through the same single-flight
+  // refresh as everything else) if it expires within the next 30 seconds.
+  async socketToken(): Promise<string | null> {
+    if (!accessToken || decodeAccessToken(accessToken).exp * 1000 - Date.now() < 30_000) {
+      await refreshAccessToken();
+    }
+    return accessToken;
+  },
+
   isAuthenticated(): boolean {
     return accessToken !== null;
+  },
+
+  getCurrentUserId(): string | null {
+    return accessToken ? decodeAccessToken(accessToken).userId : null;
   },
 
   getCurrentRole(): string | null {
@@ -156,6 +187,30 @@ export const apiClient = {
 
   async pinVenue(driveId: string, input: VenuePinInput): Promise<DriveDetail> {
     return parseOrThrow(await request(`/drives/${driveId}/venue-pin`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async getLiveDesk(driveId: string): Promise<LiveBoard> {
+    return parseOrThrow(await request(`/drives/${driveId}/live`));
+  },
+
+  async getLiveDisplay(driveId: string): Promise<LiveDisplay> {
+    return parseOrThrow(await request(`/drives/${driveId}/live/display`));
+  },
+
+  async confirmCheckIn(checkInId: string): Promise<CheckIn> {
+    return parseOrThrow(await request(`/check-ins/${checkInId}/confirm`, { method: "POST" }));
+  },
+
+  async markPresent(applicationId: string, reason?: string): Promise<CheckInResult> {
+    return parseOrThrow(
+      await request(`/applications/${applicationId}/check-in`, { method: "POST", body: JSON.stringify({ reason }) }),
+    );
+  },
+
+  async updateApplicationState(applicationId: string, to: EmployerApplicationUpdate["to"]): Promise<{ id: string; state: string }> {
+    return parseOrThrow(
+      await request(`/applications/${applicationId}/state`, { method: "PATCH", body: JSON.stringify({ to }) }),
+    );
   },
 
   async listMyDrives(cursor?: string): Promise<CursorPage<EmployerDriveRow>> {
