@@ -1,26 +1,31 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { type Actor, createApplication, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import {
   type CheckInRequest,
   type CheckInResult,
   checkInResultSchema,
-  type CheckInToken,
-  checkInTokenSchema,
+  type CheckInCode,
+  checkInCodeSchema,
   formatTime,
 } from "@walkins/shared";
 import { toCheckIn } from "../applications/application.mapper";
 import { isUniqueViolation } from "../common/prisma-errors";
+import { RateLimiterService } from "../common/rate-limiter.service";
 import { redis } from "../common/redis";
 import { LiveGateway } from "../live/live.gateway";
-import { CHECKIN_TOKEN_ROTATE_SECONDS, CheckInTokenService } from "./check-in-token.service";
+import { CHECKIN_TOKEN_ROTATE_SECONDS, CheckInTokenService, OFFLINE_GRACE_MS } from "./check-in-token.service";
 
 const GEOFENCE_METERS = 200;
 const MAX_ACCURACY_METERS = 100;
 const OPENS_BEFORE_START_MS = 60 * 60_000;
-// An offline scan syncs after its code has expired. Within this window it is
-// accepted and flagged for the employer, since the server can't tell a phone
-// that lost signal from a code that was photographed and forwarded.
-const OFFLINE_GRACE_MS = 30 * 60_000;
+
+// Wrong codes allowed per 10 minutes before lookups are refused. The code is a
+// 40-bit secret rather than a signed token, so guessing is what this limits.
+// The per-address limit is higher because a venue's candidates may all share
+// one Wi-Fi address and the occasional typo from each of them adds up.
+const FAILED_CODE_WINDOW_SECONDS = 10 * 60;
+const FAILED_CODES_PER_ACCOUNT = 10;
+const FAILED_CODES_PER_ADDRESS = 60;
 
 // Stops the same candidate replaying the same code after a successful
 // check-in, and nothing more. It does not stop a photographed QR shared on
@@ -40,24 +45,38 @@ export class CheckInService {
   constructor(
     private readonly tokens: CheckInTokenService,
     private readonly live: LiveGateway,
+    private readonly limiter: RateLimiterService,
   ) {}
 
-  async issueToken(companyId: string, driveId: string): Promise<CheckInToken> {
+  async issueCode(companyId: string, driveId: string): Promise<CheckInCode> {
     const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId } });
     if (!drive) throw new NotFoundException("Drive not found");
     if (drive.status !== "LIVE" || drive.endsAt <= new Date()) {
       throw new BadRequestException("Check-in codes are only shown for a live drive that hasn't ended");
     }
-    const { token, expiresAt } = this.tokens.issue(driveId);
-    return checkInTokenSchema.parse({
-      token,
+    const { code, expiresAt } = await this.tokens.issueCode(driveId);
+    return checkInCodeSchema.parse({
+      code,
       expiresAt: expiresAt.toISOString(),
       rotateAfterSeconds: CHECKIN_TOKEN_ROTATE_SECONDS,
     });
   }
 
-  async checkIn(userId: string, input: CheckInRequest): Promise<CheckInResult> {
-    const token = this.tokens.verify(input.token);
+  async checkIn(userId: string, ip: string, input: CheckInRequest): Promise<CheckInResult> {
+    const limits = [
+      { key: `checkin-code:user:${userId}`, limit: FAILED_CODES_PER_ACCOUNT },
+      { key: `checkin-code:ip:${ip}`, limit: FAILED_CODES_PER_ADDRESS },
+    ];
+    for (const { key, limit } of limits) {
+      if (await this.limiter.isExhausted(key, limit, FAILED_CODE_WINDOW_SECONDS)) {
+        throw new HttpException("Too many wrong codes. Wait a few minutes, then try the code on the screen.", HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
+    const token = await this.tokens.resolve(input.code);
+    if (!token) {
+      await Promise.all(limits.map(({ key, limit }) => this.limiter.consume(key, limit, FAILED_CODE_WINDOW_SECONDS)));
+      throw new BadRequestException("That code isn't right, or it has expired. Check the code on the screen and try again.");
+    }
     const now = new Date();
     const lateByMs = now.getTime() - token.expiresAt.getTime();
     if (lateByMs > OFFLINE_GRACE_MS) {

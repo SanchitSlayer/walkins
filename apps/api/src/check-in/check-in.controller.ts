@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import {
   type AccessTokenPayload,
   type CheckInRequest,
@@ -6,6 +6,7 @@ import {
   type ManualCheckInInput,
   manualCheckInSchema,
 } from "@walkins/shared";
+import type { Request } from "express";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { requireCompanyId } from "../common/require-company";
@@ -23,15 +24,16 @@ export class CheckInController {
   @Roles("CANDIDATE")
   checkIn(
     @CurrentUser() user: AccessTokenPayload,
+    @Req() request: Request,
     @Body(new ZodValidationPipe(checkInRequestSchema)) body: CheckInRequest,
   ) {
-    return this.checkIns.checkIn(user.userId, body);
+    return this.checkIns.checkIn(user.userId, request.ip ?? "unknown", body);
   }
 
-  @Get("drives/:id/checkin-token")
+  @Get("drives/:id/checkin-code")
   @Roles("EMPLOYER")
-  issueToken(@CurrentUser() user: AccessTokenPayload, @Param("id") driveId: string) {
-    return this.checkIns.issueToken(requireCompanyId(user), driveId);
+  issueCode(@CurrentUser() user: AccessTokenPayload, @Param("id") driveId: string) {
+    return this.checkIns.issueCode(requireCompanyId(user), driveId);
   }
 
   @Post("applications/:id/check-in")
