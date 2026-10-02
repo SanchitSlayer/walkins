@@ -5,8 +5,9 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { dayLabel, type DriveDetail, formatTime } from "@walkins/shared";
-import { apiClient } from "@/lib/api-client";
+import { ApiError, apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
+import { VenueOutsideCityNotice } from "../../venue-notice";
 
 const RETRY_MS = 5_000;
 
@@ -31,8 +32,22 @@ function VenueLocation({ drive, onPinned }: { drive: DriveDetail; onPinned: (dri
     setMessage(null);
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
+        const reading = { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy };
         try {
-          onPinned(await apiClient.pinVenue(drive.id, { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy }));
+          let pinned: DriveDetail;
+          try {
+            pinned = await apiClient.pinVenue(drive.id, reading);
+          } catch (err) {
+            // Far outside the drive's city: the server names the distance and
+            // only pins once the employer has seen it and said yes.
+            if (!(err instanceof ApiError && err.body?.code === "PIN_FAR_FROM_CITY")) throw err;
+            if (!confirm(`${err.message} Pin the venue here anyway?`)) {
+              setMessage({ text: "Not pinned.", error: false });
+              return;
+            }
+            pinned = await apiClient.pinVenue(drive.id, { ...reading, confirmFar: true });
+          }
+          onPinned(pinned);
           setMessage({ text: `Set, accurate to ±${Math.round(coords.accuracy)} m.`, error: false });
         } catch (err) {
           setMessage({ text: err instanceof Error ? err.message : "Couldn't set the venue location", error: true });
@@ -159,6 +174,7 @@ export default function CheckInScreenPage() {
         {drive && <p className="type-meta mt-1 text-housing-muted">{drive.venueAddress}</p>}
       </div>
 
+      {drive && <VenueOutsideCityNotice drive={drive} />}
       {drive && !drive.venuePinnedAt && <VenueLocation drive={drive} onPinned={setDrive} />}
 
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,34rem)_1fr]">
