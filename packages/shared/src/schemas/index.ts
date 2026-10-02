@@ -171,7 +171,8 @@ export const employerApplicationUpdateSchema = z.object({
 });
 
 export const checkInRequestSchema = z.object({
-  token: z.string().min(1),
+  // As scanned or typed; the server normalises it (see check-in-code.ts).
+  code: z.string().trim().min(1).max(32),
   lat: latitude,
   lng: longitude,
   accuracy: z.number().nonnegative(),
@@ -219,8 +220,8 @@ export const checkInResultSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
-export const checkInTokenSchema = z.object({
-  token: z.string(),
+export const checkInCodeSchema = z.object({
+  code: z.string(),
   expiresAt: z.string(),
   rotateAfterSeconds: z.number().int(),
 });
@@ -327,7 +328,7 @@ export type VenuePinInput = z.infer<typeof venuePinSchema>;
 export type ManualCheckInInput = z.infer<typeof manualCheckInSchema>;
 export type CheckIn = z.infer<typeof checkInSchema>;
 export type CheckInResult = z.infer<typeof checkInResultSchema>;
-export type CheckInToken = z.infer<typeof checkInTokenSchema>;
+export type CheckInCode = z.infer<typeof checkInCodeSchema>;
 export type MyApplication = z.infer<typeof myApplicationSchema>;
 export type MyApplications = z.infer<typeof myApplicationsSchema>;
 export type LiveBoard = z.infer<typeof liveBoardSchema>;
