@@ -126,11 +126,22 @@ the booked count only goes up while it is below capacity, in the same
 transaction that creates the application.
 
 At the venue the employer opens the drive's check-in screen on a laptop. It
-shows a QR that changes every minute: a link to `/checkin` carrying a code
-that lives 90 seconds. The candidate scans it, their phone takes one GPS
-reading, and the check-in is accepted within 200 m of the venue, accepted but
-flagged for the employer when the reading is worse than ±100 m, and refused
-otherwise. Someone who never booked is offered a walk-in on the spot.
+shows a QR that changes every minute, and the same code in large type under
+it. The QR holds only a short link, `/checkin#K7QF4XM2`: the signed check-in
+token stays on the server, stored against that 8-character code (Crockford
+base32, 40 bits), so the symbol is coarse enough to read off a laptop screen
+at standing distance. Anyone whose camera won't read it types the code
+instead; that box is on the check-in page from the start, because bad light
+and old phones are the normal case. Wrong codes are limited to 10 per
+account and 60 per network address every 10 minutes, since a short code is
+a secret that could otherwise be guessed.
+
+The code stands for a token that lives 90 seconds, and keeps resolving for 30
+minutes after that so a scan made offline can still be sent late (flagged for
+the employer). The candidate's phone takes one GPS reading, and the check-in
+is accepted within 200 m of the venue, accepted but flagged when the reading
+is worse than ±100 m, and refused otherwise. Someone who never booked is
+offered a walk-in on the spot.
 
 Before the first check-in the employer should set the venue location from
 the laptop, at the venue: geocoding an address often lands on the middle of
