@@ -109,6 +109,56 @@ Scheduled jobs, in India time:
   REJECTED counts toward neither, since it can happen before or after an
   interview.
 
+Scheduled jobs only run while the worker is running. If it is stopped over
+00:30, ended drives stay LIVE until the next night's run: the missed run is
+not replayed. That looks like a bug and isn't one. The web app derives
+"Expired" from the end time on its own, so public pages stay right meanwhile,
+but anything reading the stored status (the employer list, the alert scans)
+sees LIVE until the job runs.
+
+### Booking, check-in and the arrivals board
+
+Candidates book a slot from the drive page and can release it again. Every
+change to an application goes through one transition function
+(`packages/db/src/applications.ts`) that checks the move is legal, moves the
+seat with it and writes an audit row. A slot's last seat can't be sold twice:
+the booked count only goes up while it is below capacity, in the same
+transaction that creates the application.
+
+At the venue the employer opens the drive's check-in screen on a laptop. It
+shows a QR that changes every minute: a link to `/checkin` carrying a code
+that lives 90 seconds. The candidate scans it, their phone takes one GPS
+reading, and the check-in is accepted within 200 m of the venue, accepted but
+flagged for the employer when the reading is worse than ±100 m, and refused
+otherwise. Someone who never booked is offered a walk-in on the spot.
+
+Before the first check-in the employer should set the venue location from
+the laptop, at the venue: geocoding an address often lands on the middle of
+an area, hundreds of metres from the building, and every honest check-in
+would then be refused. A pin more than 50 km from the drive's city centre
+needs an explicit confirmation naming the distance, and a notice stays on the
+drive's pages while it is there, because a venue outside its city quietly
+breaks alerts, the city map and check-in at once.
+
+The arrivals board (`/employer/drives/<id>/live`) is built to be put on a
+screen facing the queue: split-flap counts and the latest arrivals as first
+name and last initial with their slot time. It receives its own, narrower
+data than the employer gets, so full names, distances and flag reasons can't
+reach it. Confirming flagged check-ins, marking people present, and marking
+them interviewed, hired or not selected all happen on the drive page, which
+is the employer's own screen.
+
+Check-in keeps working without signal. The service worker keeps the
+candidate's pass and the check-in page available offline, and a scan made
+with no signal is saved on the phone and sent as soon as there is signal,
+within the 30 minutes the server accepts a late scan for (it is flagged for
+the employer). The page sends it, never the service worker: sending from the
+worker would mean refreshing the session outside the page, which races the
+page's own refresh and logs the candidate out. Where Background Sync exists
+(Chrome on Android) the worker wakes an open page when signal returns; Safari
+on iOS has no Background Sync, so there the scan goes when Walkins is next
+open with signal. What the phone keeps is cleared on logout.
+
 ## Prerequisites
 
 - Node.js 20 or later
@@ -229,6 +279,14 @@ phone isn't). To serve the web app over HTTPS on your network:
 4. With the phone on the same Wi-Fi, open `https://<LAN_HOST>:3000`. If it
    can't connect, the laptop's firewall may be blocking incoming connections
    to Node.
+
+The laptop's address changes when it joins a different network. If the web
+app fails to start with `EADDRNOTAVAIL`, `LAN_HOST` is an old address: run
+`ipconfig getifaddr en0` again and update it.
+
+The arrivals board's live connection goes through the same proxy, at
+`/socket.io/`. In development the proxy may carry it as frequent HTTP
+requests rather than a WebSocket, which works but is chattier.
 
 That authority can sign a certificate for any site, and anyone with its key
 can too, so remove it from the phone when you're done testing. Leave
