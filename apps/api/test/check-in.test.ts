@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, HttpException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@walkins/db";
+import { CHECKIN_CODE_ALPHABET, type CheckInRequest } from "@walkins/shared";
 import { ApplicationsService } from "../src/applications/applications.service";
-import { CheckInTokenService } from "../src/check-in/check-in-token.service";
+import { checkInCodeKey, CheckInTokenService } from "../src/check-in/check-in-token.service";
 import { CheckInService } from "../src/check-in/check-in.service";
+import { RateLimiterService } from "../src/common/rate-limiter.service";
 import { redis } from "../src/common/redis";
 import { displayName, LiveBoardService } from "../src/live/live-board.service";
 import { LiveGateway } from "../src/live/live.gateway";
@@ -13,7 +15,10 @@ import { createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
 const tokens = new CheckInTokenService();
-const checkIns = new CheckInService(tokens, live);
+const checkIns = new CheckInService(tokens, live, new RateLimiterService());
+// A fresh address per run, so repeated runs don't share the per-address
+// limit on wrong codes; its limiter keys are removed afterwards.
+const ip = `test-${randomUUID()}`;
 const applications = new ApplicationsService(live);
 let fixture: Fixture;
 let candidate = 0;
@@ -33,14 +38,30 @@ function farFromVenue(accuracy = 20) {
   return { lat: fixture.venue.lat + 0.01, lng: fixture.venue.lng, accuracy };
 }
 
-function freshToken() {
-  return tokens.issue(fixture.drive.id).token;
+function scan(userId: string, input: CheckInRequest) {
+  return checkIns.checkIn(userId, ip, input);
 }
 
-function tokenExpiredMinutesAgo(minutes: number) {
+async function freshCode() {
+  return (await tokens.issueCode(fixture.drive.id)).code;
+}
+
+function randomTestCode() {
+  return Array.from({ length: 8 }, () => CHECKIN_CODE_ALPHABET[Math.floor(Math.random() * 32)]).join("");
+}
+
+// Puts any token behind a code, for the cases the screen never issues: an
+// expired token, or something that isn't a check-in token at all.
+async function codeFor(token: string) {
+  const code = randomTestCode();
+  await redis.set(checkInCodeKey(code), token, "EX", 600);
+  return code;
+}
+
+function codeExpiredMinutesAgo(minutes: number) {
   const signer = new JwtService({ secret: process.env.CHECKIN_JWT_SECRET });
   const exp = Math.floor(Date.now() / 1000) - minutes * 60;
-  return signer.sign({ driveId: fixture.drive.id, exp }, { audience: "checkin", jwtid: randomUUID() });
+  return codeFor(signer.sign({ driveId: fixture.drive.id, exp }, { audience: "checkin", jwtid: randomUUID() }));
 }
 
 async function bookSeat(userId: string) {
@@ -48,10 +69,15 @@ async function bookSeat(userId: string) {
 }
 
 beforeAll(async () => {
-  fixture = await createFixture("Check-in Test", 16);
+  fixture = await createFixture("Check-in Test", 24);
 });
 
 afterAll(async () => {
+  const limiterKeys = await redis.keys(`ratelimit:checkin-code:*`);
+  const mine = limiterKeys.filter(
+    (key) => key.endsWith(ip) || fixture.candidates.some(({ userId }) => key.endsWith(`:user:${userId}`)),
+  );
+  if (mine.length) await redis.del(...mine);
   await removeFixture(fixture);
   await prisma.$disconnect();
   redis.disconnect();
@@ -61,10 +87,10 @@ describe("scanning to check in", () => {
   it("returns the existing check-in when the same person scans twice", async () => {
     const { userId, candidateId } = nextCandidate();
     const application = await bookSeat(userId);
-    const token = freshToken();
+    const code = await freshCode();
 
-    const first = await checkIns.checkIn(userId, { token, ...nearVenue() });
-    const second = await checkIns.checkIn(userId, { token, ...nearVenue() });
+    const first = await scan(userId, { code, ...nearVenue() });
+    const second = await scan(userId, { code, ...nearVenue() });
 
     expect(first.outcome).toBe("checked_in");
     expect(second.outcome).toBe("already_checked_in");
@@ -79,11 +105,11 @@ describe("scanning to check in", () => {
   it("records one check-in when two scans from the same person land together", async () => {
     const { userId, candidateId } = nextCandidate();
     const application = await bookSeat(userId);
-    const token = freshToken();
+    const code = await freshCode();
 
     const results = await Promise.all([
-      checkIns.checkIn(userId, { token, ...nearVenue() }),
-      checkIns.checkIn(userId, { token, ...nearVenue() }),
+      scan(userId, { code, ...nearVenue() }),
+      scan(userId, { code, ...nearVenue() }),
     ]);
 
     expect(results.map((r) => r.outcome).sort()).toEqual(["already_checked_in", "checked_in"]);
@@ -95,11 +121,11 @@ describe("scanning to check in", () => {
     const { userId, candidateId } = nextCandidate();
     const seatsBefore = await prisma.driveSlot.aggregate({ where: { driveId: fixture.drive.id }, _sum: { bookedCount: true } });
 
-    const offer = await checkIns.checkIn(userId, { token: freshToken(), ...nearVenue() });
+    const offer = await scan(userId, { code: await freshCode(), ...nearVenue() });
     expect(offer.outcome).toBe("needs_registration");
     expect(await prisma.application.count({ where: { candidateId } })).toBe(0);
 
-    const result = await checkIns.checkIn(userId, { token: freshToken(), ...nearVenue(), walkIn: true });
+    const result = await scan(userId, { code: await freshCode(), ...nearVenue(), walkIn: true });
     expect(result.outcome).toBe("checked_in");
     if (result.outcome !== "checked_in") return;
     expect(result.checkIn.method).toBe("WALK_IN");
@@ -112,11 +138,11 @@ describe("scanning to check in", () => {
 
   it("creates one walk-in when two walk-in scans land together", async () => {
     const { userId, candidateId } = nextCandidate();
-    const token = freshToken();
+    const code = await freshCode();
 
     const results = await Promise.all([
-      checkIns.checkIn(userId, { token, ...nearVenue(), walkIn: true }),
-      checkIns.checkIn(userId, { token, ...nearVenue(), walkIn: true }),
+      scan(userId, { code, ...nearVenue(), walkIn: true }),
+      scan(userId, { code, ...nearVenue(), walkIn: true }),
     ]);
 
     expect(results.map((r) => r.outcome).sort()).toEqual(["already_checked_in", "checked_in"]);
@@ -130,7 +156,7 @@ describe("the geofence", () => {
     const { userId, candidateId } = nextCandidate();
     await bookSeat(userId);
 
-    const err = await checkIns.checkIn(userId, { token: freshToken(), ...farFromVenue() }).catch((e) => e);
+    const err = await scan(userId, { code: await freshCode(), ...farFromVenue() }).catch((e) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect(err.message).toMatch(/You're 1\.1 km from the venue/);
@@ -142,7 +168,7 @@ describe("the geofence", () => {
     const { userId } = nextCandidate();
     await bookSeat(userId);
 
-    const result = await checkIns.checkIn(userId, { token: freshToken(), ...farFromVenue(450) });
+    const result = await scan(userId, { code: await freshCode(), ...farFromVenue(450) });
 
     expect(result.outcome).toBe("checked_in");
     if (result.outcome !== "checked_in") return;
@@ -152,20 +178,63 @@ describe("the geofence", () => {
 });
 
 describe("check-in codes", () => {
-  it("does not accept an access token as a check-in code", async () => {
+  it("does not accept an access token stored behind a code", async () => {
     const { userId } = nextCandidate();
     const accessToken = new JwtService({ secret: process.env.JWT_SECRET }).sign({ driveId: fixture.drive.id });
 
-    await expect(checkIns.checkIn(userId, { token: accessToken, ...nearVenue() })).rejects.toThrow(
+    await expect(scan(userId, { code: await codeFor(accessToken), ...nearVenue() })).rejects.toThrow(
       "That isn't a Walkins check-in code",
     );
+  });
+
+  it("reads a typed code in any case, with a space or dash, and O or L for 0 or 1", async () => {
+    const { userId } = nextCandidate();
+    await bookSeat(userId);
+    const code = await freshCode();
+    const typed = `${code.slice(0, 4)}-${code.slice(4)}`.replace(/0/g, "o").replace(/1/g, "l").toLowerCase();
+
+    const result = await scan(userId, { code: ` ${typed} `, ...nearVenue() });
+
+    expect(result.outcome).toBe("checked_in");
+  });
+
+  it("refuses a code that doesn't exist, and counts it as a wrong guess", async () => {
+    const { userId } = nextCandidate();
+
+    await expect(scan(userId, { code: randomTestCode(), ...nearVenue() })).rejects.toThrow(/That code isn't right/);
+    expect(await redis.zcard(`ratelimit:checkin-code:user:${userId}`)).toBe(1);
+  });
+
+  it("stops looking codes up after ten wrong ones, even a right one", async () => {
+    const { userId } = nextCandidate();
+    await bookSeat(userId);
+    for (let i = 0; i < 10; i++) {
+      await expect(scan(userId, { code: randomTestCode(), ...nearVenue() })).rejects.toBeInstanceOf(BadRequestException);
+    }
+
+    const err = await scan(userId, { code: await freshCode(), ...nearVenue() }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(HttpException);
+    expect(err.getStatus()).toBe(429);
+    expect(await prisma.checkIn.count({ where: { application: { candidate: { userId } } } })).toBe(0);
+  });
+
+  it("doesn't count a right code against the limit", async () => {
+    const { userId } = nextCandidate();
+    await bookSeat(userId);
+    for (let i = 0; i < 9; i++) {
+      await expect(scan(userId, { code: randomTestCode(), ...nearVenue() })).rejects.toBeInstanceOf(BadRequestException);
+    }
+
+    await expect(scan(userId, { code: await freshCode(), ...nearVenue() })).resolves.toMatchObject({ outcome: "checked_in" });
+    expect(await redis.zcard(`ratelimit:checkin-code:user:${userId}`)).toBe(9);
   });
 
   it("refuses a code that expired more than 30 minutes ago", async () => {
     const { userId } = nextCandidate();
     await bookSeat(userId);
 
-    await expect(checkIns.checkIn(userId, { token: tokenExpiredMinutesAgo(31), ...nearVenue() })).rejects.toThrow(
+    await expect(scan(userId, { code: await codeExpiredMinutesAgo(31), ...nearVenue() })).rejects.toThrow(
       /This code has expired/,
     );
   });
@@ -174,8 +243,8 @@ describe("check-in codes", () => {
     const { userId } = nextCandidate();
     await bookSeat(userId);
 
-    const result = await checkIns.checkIn(userId, {
-      token: tokenExpiredMinutesAgo(5),
+    const result = await scan(userId, {
+      code: await codeExpiredMinutesAgo(5),
       ...nearVenue(),
       capturedAt: new Date(Date.now() - 6 * 60_000),
     });
@@ -206,7 +275,7 @@ describe("the employer's side", () => {
   it("confirms a flagged check-in and records who confirmed it", async () => {
     const { userId } = nextCandidate();
     await bookSeat(userId);
-    const flagged = await checkIns.checkIn(userId, { token: freshToken(), ...farFromVenue(300) });
+    const flagged = await scan(userId, { code: await freshCode(), ...farFromVenue(300) });
     if (flagged.outcome !== "checked_in") throw new Error("expected a flagged check-in");
 
     const confirmed = await checkIns.confirmFlagged(fixture.company.id, fixture.employer.id, flagged.checkIn.id);
@@ -234,9 +303,10 @@ describe("the employer's side", () => {
     expect(desk).toHaveProperty("awaiting");
     if (!("awaiting" in desk)) return;
     // Booked arrivals so far in this file: two duplicate-scan tests, the
-    // poor-accuracy scan, the late sync, the manual mark and the confirmed
-    // flag. The refused far-away scan adds none; walk-ins are counted apart.
-    expect(desk.counts).toMatchObject({ checkedIn: 6, walkIns: 2, hired: 0 });
+    // poor-accuracy scan, the typed code, the right code after wrong ones, the
+    // late sync, the manual mark and the confirmed flag. Refused scans add
+    // none; walk-ins are counted apart.
+    expect(desk.counts).toMatchObject({ checkedIn: 8, walkIns: 2, hired: 0 });
     expect(desk.arrivals.some((a) => a.flagReason !== null)).toBe(true);
   });
 
@@ -252,7 +322,7 @@ describe("the employer's side", () => {
     expect(owner.join).toHaveBeenCalledWith(`drive:${fixture.drive.id}:board`);
     expect(board).toHaveProperty("arrivals");
     if (!("arrivals" in board) || "awaiting" in board) throw new Error("expected the board projection");
-    expect(board.counts).toMatchObject({ checkedIn: 6, walkIns: 2 });
+    expect(board.counts).toMatchObject({ checkedIn: 8, walkIns: 2 });
     const serialised = JSON.stringify(board);
     for (const { candidateId } of fixture.candidates) {
       const user = await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, include: { user: true } });
