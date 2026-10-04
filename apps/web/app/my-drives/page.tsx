@@ -21,6 +21,7 @@ const OUTCOME: Record<ApplicationState, string> = {
   REJECTED: "Not selected",
   NO_SHOW: "Marked absent",
   WITHDRAWN: "Seat released",
+  SCREENED_OUT: "Not a match for this drive",
 };
 
 function outcome(application: MyApplication): string {
@@ -69,7 +70,16 @@ function UpcomingPass({
           <dt className="type-meta text-ink-muted">Status</dt>
           <dd className="type-meta">{outcome(application)}</dd>
         </div>
+        {application.screenedOutReason && (
+          <div className="flex flex-wrap gap-x-2">
+            <dt className="type-meta text-ink-muted">It asks for</dt>
+            <dd className="type-meta">{application.screenedOutReason}</dd>
+          </div>
+        )}
       </dl>
+      {(application.state === "SCREENED_OUT" || application.state === "REJECTED") && (
+        <p className="type-meta text-ink-muted">No seat is held for you, so there&apos;s no need to travel to this one.</p>
+      )}
       <div className="flex flex-wrap gap-3">
         {booked && checkInOpen && (
           <Link href="/checkin" className={boardButtonClass("stock")}>

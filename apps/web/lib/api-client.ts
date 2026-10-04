@@ -1,17 +1,21 @@
 "use client";
 
 import type {
+  Applicants,
+  ApplicantsAction,
   CandidateProfile,
   CheckIn,
   CheckInRequest,
   CheckInResult,
   CheckInCode,
+  CompanySettings,
   CreateDriveInput,
   CursorPage,
   DriveDetail,
   DriveSearchPage,
   EmployerApplicationUpdate,
   EmployerDriveRow,
+  KnockoutAnswers,
   LiveBoard,
   LiveDisplay,
   MyApplication,
@@ -23,6 +27,9 @@ import type {
   UpdateCandidateProfileInput,
   UpdateDriveInput,
   VenuePinInput,
+  VoiceContentType,
+  VoiceIntro,
+  VoiceUpload,
 } from "@walkins/shared";
 
 // Same-origin, proxied to the API by next.config.ts; see lib/api-internal-url.ts.
@@ -213,6 +220,29 @@ export const apiClient = {
     );
   },
 
+  async listApplicants(driveId: string, weight: number): Promise<Applicants> {
+    return parseOrThrow(await request(`/drives/${driveId}/applicants?weight=${weight}`));
+  },
+
+  async actOnApplicants(
+    driveId: string,
+    input: ApplicantsAction,
+  ): Promise<{ updated: number; skipped: { applicationId: string; reason: string }[] }> {
+    return parseOrThrow(await request(`/drives/${driveId}/applicants/actions`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async getIntroAudio(applicationId: string): Promise<{ url: string }> {
+    return parseOrThrow(await request(`/applications/${applicationId}/intro-audio`));
+  },
+
+  async getCompanySettings(): Promise<CompanySettings> {
+    return parseOrThrow(await request("/companies/me"));
+  },
+
+  async updateCompanySettings(input: CompanySettings): Promise<CompanySettings> {
+    return parseOrThrow(await request("/companies/me", { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
   async listMyDrives(cursor?: string): Promise<CursorPage<EmployerDriveRow>> {
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
     return parseOrThrow(await request(`/drives/mine${query}`));
@@ -234,12 +264,38 @@ export const apiClient = {
     return parseOrThrow(await request("/candidates/me", { method: "PATCH", body: JSON.stringify(input) }));
   },
 
+  async getMyVoiceIntro(): Promise<VoiceIntro | null> {
+    return parseOrThrow(await request("/candidates/me/voice-intro"));
+  },
+
+  // The recording goes from the browser to storage on a presigned policy,
+  // never through the API; the API is only told once it has arrived.
+  async uploadVoiceIntro(recording: Blob, contentType: VoiceContentType): Promise<VoiceIntro> {
+    const upload = await parseOrThrow<VoiceUpload>(
+      await request("/candidates/me/voice-intro/uploads", { method: "POST", body: JSON.stringify({ contentType }) }),
+    );
+    const form = new FormData();
+    for (const [key, value] of Object.entries(upload.fields)) form.append(key, value);
+    form.append("file", recording);
+    const stored = await fetch(upload.url, { method: "POST", body: form });
+    if (!stored.ok) {
+      throw new ApiError(
+        recording.size > upload.maxBytes ? "That recording is too large. Record a shorter one." : "The recording didn't upload. Try again.",
+        stored.status,
+        null,
+      );
+    }
+    return parseOrThrow(await request(`/candidates/me/voice-intro/uploads/${upload.introId}/complete`, { method: "POST" }));
+  },
+
   async createTelegramLink(): Promise<TelegramLink> {
     return parseOrThrow(await request("/candidates/me/telegram-link", { method: "POST" }));
   },
 
-  async apply(driveId: string, slotId: string): Promise<MyApplication> {
-    return parseOrThrow(await request(`/drives/${driveId}/apply`, { method: "POST", body: JSON.stringify({ slotId }) }));
+  async apply(driveId: string, slotId: string, answers: KnockoutAnswers): Promise<MyApplication> {
+    return parseOrThrow(
+      await request(`/drives/${driveId}/apply`, { method: "POST", body: JSON.stringify({ slotId, answers }) }),
+    );
   },
 
   async releaseApplication(id: string): Promise<MyApplication> {
