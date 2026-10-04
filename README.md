@@ -11,6 +11,8 @@ optional and only switches alerts from the console to real messages.
 - apps/worker — Node + BullMQ queues, cron schedules and the Telegram bot
 - packages/db — Prisma schema, client, migrations, seed script
 - packages/shared — shared TypeScript types and zod schemas
+- services/ml — Python FastAPI sidecar: speech-to-text (faster-whisper) and
+  multilingual text embeddings (ONNX Runtime)
 
 
 ## Features
@@ -170,6 +172,185 @@ page's own refresh and logs the candidate out. Where Background Sync exists
 on iOS has no Background Sync, so there the scan goes when Walkins is next
 open with signal. What the phone keeps is cleared on logout.
 
+### Screening, voice intros and matching
+
+**Screening questions.** An employer can set up to five pass/fail questions on
+a drive: yes/no, a number with a minimum and/or maximum, or one answer from a
+list. Each carries a requirement the employer words for the candidate who
+doesn't meet it ("A valid two-wheeler licence"). Answers are checked as the
+candidate books. Anyone who doesn't meet one gets no seat and is told the
+requirement in plain words, so they don't travel for nothing. Their
+application is `SCREENED_OUT`, a state of its own rather than `REJECTED`,
+because no person decided it. Answering again after learning the requirement
+doesn't book. If they turn up and scan anyway, the scan is refused with the
+reason. The employer can still let them in from the applicants page ("Mark
+present anyway"), and that is recorded against the employer. Someone who
+walks in without ever applying skips the questions; the desk screens them in
+person.
+
+**Voice intros.** Most candidates for these jobs have no CV, and many are more
+at ease speaking than writing, often not in English. So the profile has a
+45-second voice intro instead, recorded in the browser in whatever language
+the candidate likes. The recording goes from the phone straight to MinIO on a
+presigned POST policy that MinIO itself caps at 2 MB. It never passes through
+the API, which is only told once it has arrived. A worker job then sends it to
+the sidecar, which decodes and transcribes it with Whisper (the `small` model,
+language detected rather than assumed) and refuses anything over 50 seconds.
+The candidate's page shows the status live: received, transcribing, ready, or
+why it failed. A failed transcript never hides the candidate: employers can
+always listen to the recording.
+
+**Matching.** Candidates and drives are embedded into 384-dimensional vectors
+by `paraphrase-multilingual-MiniLM-L12-v2`, stored with pgvector. It is
+multilingual, so a transcript in Hindi lands near a drive written in English.
+A candidate is described by their roles, experience, city and, when it was
+transcribed confidently, their intro. A drive is described by its role, pay,
+experience band and venue. The applicants page ranks by
+
+    score = w × similarity + (1 − w) × nearness
+
+where similarity is cosine similarity (`1 − (a <=> b)`), nearness is
+`1 − distance / 50 km`, and `w` is a slider the employer moves. `w = 0` is
+plain nearest-first. Someone with no embedding yet is given the drive's median
+similarity, so a missing intro neither lifts nor sinks them, and their row
+says "Ranked by distance only". Any change to a profile, intro or drive queues
+a fresh embedding, and the worker embeds anything missing when it starts.
+
+**Shortlisting.** The applicants page (`/employer/drives/<id>/applicants`)
+lists everyone who applied: answers to each question and whether they met it,
+match score, distance, and the intro. Shortlisting is a private flag for the
+employer, not a state, so the candidate sees nothing change. Marking booked
+candidates "not selected" in bulk frees their seats and sends each of them a
+message telling them not to travel.
+
+**Retention.** A recording is someone's voice, so it is kept only while it is
+their current intro and never longer than 180 days. Replaced recordings and
+old ones are deleted, object and transcript together, by the existing nightly
+maintenance job at 00:30. Uploads that were never confirmed are not yet
+cleaned up; a MinIO lifecycle rule on the `voice-intros/` prefix would do it.
+
+#### Transcripts are a guess, and the interface says so
+
+We used Whisper, measured its error rate on our users' language, and built the
+interface so it cannot quietly mislead an employer.
+
+What we measured, on this machine's CPU (Apple Silicon, 4 threads), with
+macOS's built-in text-to-speech voices reading prepared scripts:
+
+| Clip | Model | Result |
+| --- | --- | --- |
+| Hindi, 9.3 s and 27.5 s | base | Language detected correctly ("hi", 97%), but written in Urdu (Perso-Arabic) script, not Devanagari. Forcing Hindi still gave Urdu script, and prompting with Devanagari gave nonsense. An employer couldn't read it, and search and matching couldn't use it. |
+| Same two Hindi clips | small | Devanagari. **25.2% word error rate** (27 errors in 107 words). 21.5% if a missing nukta or chandrabindu (ज for ज़, हूं for हूँ) isn't counted as an error. Language "hi" at 94–96%. 6.4 s and 11.6 s to transcribe. |
+| English, 8.6 s | small | 0% word error rate, language "en" at 90%, 2.5 s |
+
+`small` is what runs. `base` was dropped because of the Urdu-script result:
+handling it gracefully in the interface didn't change the fact that the
+transcript, the search and the embedding were all useless for the candidates
+this feature exists for.
+
+The first run of `small` also turned up a silent failure. Whisper decodes at
+most 448 tokens per 30-second window, and Devanagari costs several tokens a
+character, so on the 27.5 s clip it stopped two-thirds of the way through, in
+the middle of a letter, with no error. The sidecar now splits speech at pauses
+into pieces of at most 15 seconds, and the whole clip is now transcribed.
+
+**These figures are from synthetic audio, not real candidates.** A clear
+studio voice reading a script is the easiest case there is. Real recordings
+made on cheap phones, in noisy places, with regional accents and Hindi mixed
+with English, will do worse, and we have not measured by how much.
+Whisper's own published results also show Hindi error rates several times
+higher than English for the smaller models. `services/ml/eval/wer.py` runs
+the same measurement on a folder of real recordings with hand-written
+reference transcripts, and should only be run on recordings whose speakers
+agreed.
+
+#### The first real recording: Hinglish
+
+The first real intro, about 31 seconds recorded in a browser, was the case the
+synthetic clips couldn't reach: Hindi mixed with English, which is how most
+candidates speak. Whisper put it at 48% Urdu, 44% Hindi and 7% English. It
+wrote the English sentences in Latin script and the Hindi in Perso-Arabic
+script, which a Hindi reader can't read. The interface did what it should:
+low confidence, labelled, recording first. We then tried each way of
+re-running it, on the same model and settings:
+
+| Pass | Avg log-prob | Time | What came out |
+| --- | --- | --- | --- |
+| Auto-detect (Urdu) | −0.315 | 10.6 s | English in Latin, Hindi in Perso-Arabic script |
+| Forced Hindi | −0.386 | 16.3 s | All Devanagari. The Hindi is readable but misspelled ("प्रोड़व मैंज्मेंट" for product management). The English became phonetic Devanagari ("अलो मैंने में संचित अई आम सुट्टेंट" for "Hello, my name is Sanchit, I am a student") |
+| Forced Urdu | −0.315 | 7.7 s | Identical to auto-detect |
+| Forced English | −0.284 | 7.1 s | Fluent English, but a **translation** of the Hindi, although the task was set to transcribe |
+
+The obvious fix was a second pass: when Urdu is detected with low confidence,
+force Hindi and keep whichever result has the better log-probability. It
+would never switch. Forced Hindi scores worse, because log-probabilities from
+different scripts and vocabularies aren't comparable, so they can't be the
+judge between them. Whether to show forced Hindi to Hindi-reading employers is
+held until it has been scored against a hand-written reference of the same
+recording. Garbling the English half, the job titles included, may make it
+worse than showing no text at all.
+
+**Forced English was tested and rejected, even though it scored best.** It
+had the best log-probability of any pass and the most readable text. It was
+also not what the candidate said: Whisper translated the Hindi on its own,
+even though it was asked to transcribe. Showing it would present a machine's
+paraphrase in the candidate's name, in a language they didn't speak in, which
+is exactly what the label on every transcript promises not to do. A score
+measures how sure the model is of its own output, not whether that output is
+the thing that was asked for.
+
+Then we checked the assumption that a transcript in the wrong script makes a
+bad vector. We embedded each version and compared it with the same words in
+English and with three drives:
+
+| Transcript embedded | vs. the English meaning | Product manager drive | Warehouse drive | Delivery driver drive |
+| --- | --- | --- | --- | --- |
+| Urdu script (auto-detect) | **0.81** | 0.54 | 0.43 | 0.35 |
+| Forced Hindi (Devanagari) | 0.49 | 0.33 | 0.35 | 0.27 |
+| English | 1.00 | 0.54 | 0.43 | 0.29 |
+
+The Perso-Arabic transcript embeds almost exactly like the English meaning and
+ranks the drives the same way. The words were heard right and only the script
+is unexpected, and the multilingual model reads Urdu. The Devanagari version
+is the one that damages matching: its misspellings break the model's tokens,
+and it puts a warehouse job above product management.
+
+So the one confidence score is now two:
+
+- **Can an employer read it?** Display uses all four signals below. Low
+  language confidence counts, because it means the text may have come out in
+  a script the reader can't use.
+- **Were the words heard right?** The embedding uses only average
+  log-probability, no-speech probability and compression ratio. Low language
+  confidence means "unsure which script", not "unsure what was said". All
+  three word-level signals were healthy on this recording, and under the old
+  single threshold its best possible input to matching was being thrown away.
+
+This rests on one recording. It is a direction to keep measuring, not a
+settled result.
+
+So, wherever a transcript appears:
+
+- It is labelled "Automatic transcript, may contain errors" every time it is
+  shown, never once in a tooltip. It is never presented as what the candidate
+  said.
+- The detected language and how sure Whisper was of it sit next to it.
+- When the transcript looks unreliable, the recording comes first and the text
+  is folded away under a note saying it is likely to be wrong. "Unreliable"
+  means any of: average log-probability below −0.7, no-speech probability
+  above 0.5, compression ratio above 2.4 (Whisper repeating itself), or
+  language confidence below 60%.
+- Readability is judged by the script the text actually came out in, not by
+  the language Whisper detected. `base` wrote Hindi in Urdu script, and
+  `small` does the same with Hinglish. Each company records which languages
+  its team reads (English and Hindi by default). A transcript in a script nobody there reads is not shown
+  at all. The employer is told which script it came out in and offered the
+  recording instead.
+- A transcript whose words look unreliable (the first three signals) is left
+  out of the candidate's embedding, so wrong words don't decide their match
+  score. One whose only problem is the language is kept, for the reasons
+  above.
+
 ## Prerequisites
 
 - Node.js 20 or later
@@ -191,13 +372,24 @@ open with signal. What the phone keeps is cleared on logout.
    pnpm install
    ```
 
-3. Start Postgres, Redis, and MinIO:
+3. Start Postgres, Redis, MinIO and the ML sidecar:
 
    ```
    pnpm docker:up
    ```
 
-   Check `docker compose ps` until all containers report healthy.
+   Check `docker compose ps` until all containers report healthy. The first
+   run builds two images: Postgres with pgvector added (about 190 MB on top
+   of the PostGIS image), and the ML sidecar (about 700 MB). The sidecar then
+   downloads its models into the `ml_models` volume, about 590 MB: Whisper
+   small (464 MB) and the quantised embedding model with its tokenizer
+   (122 MB). That takes a few minutes on a fast connection and is skipped
+   on every later start. Jobs that reach the sidecar before it is ready are
+   retried a few times. An intro that still can't be transcribed is shown as
+   such (employers can still listen to it), and anything left without an
+   embedding is ranked by distance until the worker next starts and fills
+   it in. The sidecar idles at about 750 MB of memory, reaches about 1 GB
+   while transcribing, and is capped at 1.5 GB.
 
 4. Run database migrations:
 
@@ -232,7 +424,7 @@ pnpm docker:down
 ```
 
 Data persists in named Docker volumes (`postgres_data`, `redis_data`,
-`minio_data`) until removed explicitly with `docker compose down -v`.
+`minio_data`, and `ml_models` for the downloaded models) until removed explicitly with `docker compose down -v`.
 
 ## Notes
 
@@ -242,6 +434,12 @@ Data persists in named Docker volumes (`postgres_data`, `redis_data`,
   `packages/db/prisma/migrations/20260828000001_postgis` and kept in sync
   with the Float lat/lng columns by database triggers, so application code
   only ever needs to write the Float columns.
+- Postgres runs from `docker/postgres`, the PostGIS 16 image with pgvector
+  installed. That image is Debian bullseye, whose PostgreSQL apt repository
+  has moved to apt-archive.postgresql.org, so the Dockerfile points there.
+  The base image was kept, rather than moved to a newer Debian, because a
+  different C library under an existing data volume can silently corrupt
+  text indexes.
 - `packages/shared` exists so `apps/web` never depends on `@walkins/db`,
   which keeps the Prisma client out of the frontend bundle.
 - MapLibre locates its web worker from `import.meta.url`, which the Next.js
