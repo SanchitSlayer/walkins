@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-// Discovery (a drive near you) and commitment (you said you'd come today)
-// are different messages to different people, so they are different keys.
-export type TemplateKey = "drive_48h" | "drive_morning_of";
+// Discovery (a drive near you), commitment (you said you'd come today) and
+// release (the employer isn't going ahead with you, so don't travel) are
+// different messages to different people, so they are different keys.
+export type TemplateKey = "drive_48h" | "drive_morning_of" | "application_rejected";
 
 export type Recipient = {
   candidateId: string;

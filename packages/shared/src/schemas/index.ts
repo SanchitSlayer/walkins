@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionSchema } from "../knockout";
+import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
 
 export const verificationStatusSchema = z.enum(["PENDING", "VERIFIED", "REJECTED"]);
 
@@ -15,6 +17,7 @@ export const applicationStateSchema = z.enum([
   "NO_SHOW",
   "REJECTED",
   "WITHDRAWN",
+  "SCREENED_OUT",
 ]);
 
 export const phoneSchema = z
@@ -44,11 +47,13 @@ const driveCoreShape = {
   capacity: z.number().int().positive(),
   experienceMin: z.number().nonnegative(),
   experienceMax: z.number().nonnegative(),
+  knockoutQuestions: knockoutQuestionsSchema,
 };
 
 export const createDriveSchema = z
   .object({
     ...driveCoreShape,
+    knockoutQuestions: knockoutQuestionsSchema.default([]),
     slotDurationMinutes: z.number().int().positive(),
     capacityPerSlot: z.number().int().positive(),
   })
@@ -135,6 +140,7 @@ export const driveSummarySchema = z.object({
 export const driveDetailSchema = driveSummarySchema.extend({
   slots: z.array(driveSlotSchema),
   venuePinnedAt: z.string().nullable(),
+  knockoutQuestions: knockoutQuestionsSchema,
   city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),
 });
 
@@ -155,6 +161,7 @@ export const driveSearchPageSchema = z.object({
 
 export const publicDriveDetailSchema = driveSearchResultSchema.extend({
   slots: z.array(driveSlotSchema),
+  knockoutQuestions: z.array(publicKnockoutQuestionSchema),
 });
 
 const latitude = z.number().min(-90).max(90);
@@ -162,6 +169,7 @@ const longitude = z.number().min(-180).max(180);
 
 export const applySchema = z.object({
   slotId: z.string().min(1),
+  answers: knockoutAnswersSchema.default({}),
 });
 
 // Employers move applicants forward after they arrive; the transition table
@@ -229,6 +237,7 @@ export const checkInCodeSchema = z.object({
 export const myApplicationSchema = z.object({
   id: z.string(),
   state: applicationStateSchema,
+  screenedOutReason: z.string().nullable(),
   slotStartsAt: z.string().nullable(),
   drive: z.object({
     id: z.string(),
@@ -307,6 +316,92 @@ export const liveDisplaySchema = z.object({
   ),
 });
 
+export const voiceUploadRequestSchema = z.object({
+  // MediaRecorder reports e.g. "audio/webm;codecs=opus"; only the type counts.
+  contentType: z
+    .string()
+    .transform((value) => value.split(";")[0].trim().toLowerCase())
+    .pipe(z.enum(VOICE_CONTENT_TYPES)),
+});
+
+export const voiceUploadSchema = z.object({
+  introId: z.string(),
+  // A same-origin path (proxied to MinIO) and the form fields of a presigned
+  // POST policy; the file goes straight to storage, never through the API.
+  url: z.string(),
+  fields: z.record(z.string(), z.string()),
+  maxBytes: z.number().int(),
+});
+
+export const voiceIntroStatusSchema = z.enum(["UPLOADED", "PROCESSING", "DONE", "FAILED"]);
+
+export const voiceIntroSchema = z.object({
+  id: z.string(),
+  status: voiceIntroStatusSchema,
+  transcript: z.string().nullable(),
+  language: z.string().nullable(),
+  languageProbability: z.number().nullable(),
+  durationSeconds: z.number().nullable(),
+  confidence: z.enum(["high", "low"]).nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  processedAt: z.string().nullable(),
+});
+
+export const companySettingsSchema = z.object({
+  readsLanguages: z.array(z.enum(READABLE_LANGUAGES as [string, ...string[]])).min(1),
+});
+
+export const applicantsQuerySchema = z.object({
+  // 0 ranks by distance alone, 1 by semantic similarity alone.
+  weight: z.coerce.number().min(0).max(1).default(0.5),
+});
+
+export const applicantSchema = z.object({
+  applicationId: z.string(),
+  candidateName: z.string(),
+  state: applicationStateSchema,
+  slotStartsAt: z.string().nullable(),
+  shortlisted: z.boolean(),
+  distanceKm: z.number(),
+  experienceYears: z.number(),
+  screenedOutReason: z.string().nullable(),
+  knockout: z.array(z.object({ prompt: z.string(), answer: z.string(), met: z.boolean() })),
+  match: z.object({
+    score: z.number(),
+    distanceScore: z.number(),
+    similarity: z.number().nullable(),
+    // "distance_only": no embedding yet, so the drive's median similarity
+    // stands in and the row says so rather than looking semantically ranked.
+    basis: z.enum(["semantic", "distance_only"]),
+  }),
+  intro: z
+    .object({
+      status: voiceIntroStatusSchema,
+      transcript: z.string().nullable(),
+      language: z.string().nullable(),
+      languageProbability: z.number().nullable(),
+      durationSeconds: z.number().nullable(),
+      confidence: z.enum(["high", "low"]).nullable(),
+      error: z.string().nullable(),
+      hasAudio: z.boolean(),
+    })
+    .nullable(),
+});
+
+export const applicantsSchema = z.object({
+  driveId: z.string(),
+  weight: z.number(),
+  medianSimilarity: z.number().nullable(),
+  readsLanguages: z.array(z.string()),
+  applicants: z.array(applicantSchema),
+});
+
+export const applicantsActionSchema = z.object({
+  applicationIds: z.array(z.string().min(1)).min(1).max(200),
+  action: z.enum(["shortlist", "unshortlist", "reject"]),
+});
+
 export type DriveSlot = z.infer<typeof driveSlotSchema>;
 export type DriveSummary = z.infer<typeof driveSummarySchema>;
 export type DriveDetail = z.infer<typeof driveDetailSchema>;
@@ -333,3 +428,10 @@ export type MyApplication = z.infer<typeof myApplicationSchema>;
 export type MyApplications = z.infer<typeof myApplicationsSchema>;
 export type LiveBoard = z.infer<typeof liveBoardSchema>;
 export type LiveDisplay = z.infer<typeof liveDisplaySchema>;
+export type VoiceUploadRequest = z.infer<typeof voiceUploadRequestSchema>;
+export type VoiceUpload = z.infer<typeof voiceUploadSchema>;
+export type VoiceIntro = z.infer<typeof voiceIntroSchema>;
+export type CompanySettings = z.infer<typeof companySettingsSchema>;
+export type Applicant = z.infer<typeof applicantSchema>;
+export type Applicants = z.infer<typeof applicantsSchema>;
+export type ApplicantsAction = z.infer<typeof applicantsActionSchema>;

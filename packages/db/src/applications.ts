@@ -7,8 +7,17 @@ type Rule = { from: ApplicationState | null; to: ApplicationState; by: Actor["ki
 // Every legal move an application can make; anything not listed throws.
 // `from: null` is creation. Arriving at CHECKED_IN from anywhere other than
 // CONFIRMED or NO_SHOW is a walk-in: no slot, no seat taken.
+//
+// SCREENED_OUT is reached only by failing a knockout question when applying,
+// takes no seat, and is final for that drive, so answers can't be retried
+// until they pass. An employer turning someone down is REJECTED; from
+// CONFIRMED that happens before they arrive and frees their seat.
 export const APPLICATION_TRANSITIONS: readonly Rule[] = [
   { from: null, to: "CONFIRMED", by: ["candidate"] },
+  { from: null, to: "SCREENED_OUT", by: ["candidate"] },
+  { from: "INTERESTED", to: "SCREENED_OUT", by: ["candidate"] },
+  { from: "WITHDRAWN", to: "SCREENED_OUT", by: ["candidate"] },
+  { from: "CONFIRMED", to: "REJECTED", by: ["employer"] },
   { from: null, to: "CHECKED_IN", by: ["candidate"] },
   { from: "INTERESTED", to: "CONFIRMED", by: ["candidate"] },
   { from: "INTERESTED", to: "CHECKED_IN", by: ["candidate"] },
@@ -19,6 +28,8 @@ export const APPLICATION_TRANSITIONS: readonly Rule[] = [
   { from: "WITHDRAWN", to: "CONFIRMED", by: ["candidate"] },
   { from: "WITHDRAWN", to: "CHECKED_IN", by: ["candidate"] },
   { from: "NO_SHOW", to: "CHECKED_IN", by: ["employer"] },
+  // The exception made at the desk for someone the questions screened out.
+  { from: "SCREENED_OUT", to: "CHECKED_IN", by: ["employer"] },
   { from: "CHECKED_IN", to: "INTERVIEWED", by: ["employer"] },
   { from: "CHECKED_IN", to: "REJECTED", by: ["employer"] },
   { from: "INTERVIEWED", to: "REJECTED", by: ["employer"] },
@@ -124,7 +135,7 @@ export async function transitionApplication(
     if (!input.slotId) throw new IllegalTransitionError("Confirming needs a slot");
     slotId = input.slotId;
     await takeSeat(tx, current.driveId, slotId);
-  } else if (input.to === "WITHDRAWN") {
+  } else if (input.to === "WITHDRAWN" || (input.to === "REJECTED" && current.state === "CONFIRMED")) {
     if (current.state === "CONFIRMED" && current.slotId) await releaseSeat(tx, current.slotId);
     slotId = null;
   } else if (walkIn) {
