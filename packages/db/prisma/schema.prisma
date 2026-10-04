@@ -35,6 +35,10 @@ model Company {
   contactPhone       String
   cityId             String
   createdAt          DateTime           @default(now())
+  // ISO 639-1 codes of the languages this company's staff read. A voice
+  // transcript in any other language is not shown as text to them, only
+  // flagged, because script they can't read is worse than no transcript.
+  readsLanguages     String[]           @default(["en", "hi"])
 
   city   City    @relation(fields: [cityId], references: [id])
   users  User[]
@@ -82,12 +86,18 @@ model Candidate {
   reliabilityUpdatedAt DateTime?
   // Populated by a DB trigger from homeLat/homeLng; not writable through Prisma.
   geom            Unsupported("geography(Point, 4326)")?
+  // Multilingual MiniLM over roles, experience and the voice transcript;
+  // written by the worker. Null until first embedded, and ranking then
+  // falls back to distance alone.
+  embedding       Unsupported("vector(384)")?
+  embeddedAt      DateTime?
 
   user         User            @relation(fields: [userId], references: [id])
   city         City            @relation(fields: [cityId], references: [id])
   roles         CandidateRole[]
   applications  Application[]
   notifications Notification[]
+  voiceIntros   VoiceIntro[]
 
   @@index([cityId])
   @@index([geom], type: Gist, map: "candidates_geom_gist")
@@ -145,8 +155,16 @@ model Drive {
   // geocoding can be a kilometre off, so a pinned point is kept until the
   // address itself changes.
   venuePinnedAt      DateTime?
+  // Up to five pass/fail questions answered when applying; shape and
+  // evaluation are defined by knockoutQuestionsSchema in @walkins/shared.
+  // Editable only while DRAFT or PENDING, so answers are always judged
+  // against the questions the candidate saw.
+  knockoutQuestions  Json                                   @default("[]")
   // Populated by a DB trigger from venueLat/venueLng; not writable through Prisma.
   geom               Unsupported("geography(Point, 4326)")?
+  // Multilingual MiniLM over role, pay band and venue area; written by the worker.
+  embedding          Unsupported("vector(384)")?
+  embeddedAt         DateTime?
 
   company      Company       @relation(fields: [companyId], references: [id])
   role         Role          @relation(fields: [roleId], references: [id])
@@ -184,6 +202,10 @@ enum ApplicationState {
   NO_SHOW
   REJECTED
   WITHDRAWN
+  // Failed a knockout question when applying. Kept apart from REJECTED, an
+  // employer's decision about someone they met, so neither the counts nor
+  // the reliability score mix the two.
+  SCREENED_OUT
 }
 
 model Application {
@@ -193,6 +215,13 @@ model Application {
   slotId         String?
   state          ApplicationState @default(INTERESTED)
   stateChangedAt DateTime         @default(now())
+  // The answers given when applying, keyed by question id.
+  knockoutAnswers   Json?
+  // Shown to the candidate: what the requirement was, so they don't travel.
+  screenedOutReason String?
+  // The employer's private note, not part of the application's state.
+  shortlistedAt     DateTime?
+  shortlistedBy     String?
 
   drive     Drive      @relation(fields: [driveId], references: [id])
   candidate Candidate  @relation(fields: [candidateId], references: [id])
@@ -207,6 +236,44 @@ model Application {
   @@index([candidateId])
   @@index([slotId])
   @@map("applications")
+}
+
+enum VoiceIntroStatus {
+  UPLOADED
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// A candidate's recorded introduction. The audio is in MinIO under objectKey;
+// the newest one is current and an older one is replacedAt the moment a new
+// one is uploaded, after which the maintenance job deletes it, as it does any
+// recording older than 180 days.
+model VoiceIntro {
+  id                  String           @id @default(cuid())
+  candidateId         String
+  objectKey           String           @unique
+  contentType         String
+  status              VoiceIntroStatus @default(UPLOADED)
+  // An automatic transcript: never shown as what the candidate said.
+  transcript          String?
+  language            String?
+  languageProbability Float?
+  durationSeconds     Float?
+  // Whisper's own confidence signals, kept so the interface can decide when
+  // to lead with the audio instead of the text.
+  avgLogprob          Float?
+  noSpeechProb        Float?
+  compressionRatio    Float?
+  error               String?
+  createdAt           DateTime         @default(now())
+  processedAt         DateTime?
+  replacedAt          DateTime?
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId, createdAt])
+  @@map("voice_intros")
 }
 
 enum CheckInMethod {
