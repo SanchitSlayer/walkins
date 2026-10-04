@@ -115,6 +115,17 @@ export class CheckInService {
     if (application?.state === "NO_SHOW") {
       throw new ConflictException("You were marked as not attending. Ask the employer at the desk to check you in.");
     }
+    // Without these, both would fall through to the walk-in offer, which skips
+    // the questions they failed or reverses the employer's decision. The desk
+    // can still make an exception in person.
+    if (application?.state === "SCREENED_OUT") {
+      throw new ConflictException(
+        `You applied earlier, and this drive asks for: ${application.screenedOutReason}. If you think that's wrong, speak to the employer at the desk.`,
+      );
+    }
+    if (application?.state === "REJECTED") {
+      throw new ConflictException("The employer isn't taking your application forward for this drive.");
+    }
     if (!booked && !input.walkIn) {
       return checkInResultSchema.parse({
         outcome: "needs_registration",

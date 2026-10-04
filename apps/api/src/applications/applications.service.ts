@@ -1,6 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { type Actor, createApplication, prisma, transitionApplication } from "@walkins/db";
-import { type EmployerApplicationUpdate, type MyApplication, type MyApplications, myApplicationsSchema } from "@walkins/shared";
+import {
+  type EmployerApplicationUpdate,
+  evaluateKnockouts,
+  type KnockoutAnswers,
+  knockoutQuestionsSchema,
+  type MyApplication,
+  type MyApplications,
+  myApplicationsSchema,
+} from "@walkins/shared";
 import { isUniqueViolation } from "../common/prisma-errors";
 import { LiveGateway } from "../live/live.gateway";
 import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
@@ -9,7 +17,7 @@ import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
 export class ApplicationsService {
   constructor(private readonly live: LiveGateway) {}
 
-  async apply(userId: string, driveId: string, slotId: string): Promise<MyApplication> {
+  async apply(userId: string, driveId: string, slotId: string, answers: KnockoutAnswers): Promise<MyApplication> {
     const candidate = await this.requireCandidate(userId);
     const drive = await prisma.drive.findFirst({ where: { id: driveId, status: "LIVE" } });
     if (!drive) throw new NotFoundException("Drive not found");
@@ -19,6 +27,14 @@ export class ApplicationsService {
     if (!slot) throw new BadRequestException("That slot isn't part of this drive");
     if (slot.startsAt <= now) throw new BadRequestException("That slot has already started; pick a later one");
 
+    // Judged before any seat is touched. A malformed answer is a bad request;
+    // an unmet requirement is a decision, recorded with the employer's own
+    // wording of what was needed so the candidate knows not to travel.
+    const verdict = evaluateKnockouts(knockoutQuestionsSchema.parse(drive.knockoutQuestions), answers);
+    if (!verdict.passed && "invalid" in verdict) throw new BadRequestException(verdict.invalid);
+    const screenedOutReason = verdict.passed ? null : verdict.reason;
+    const to = screenedOutReason ? "SCREENED_OUT" : "CONFIRMED";
+
     const actor: Actor = { kind: "candidate", userId };
     let applicationId: string;
     try {
@@ -27,9 +43,13 @@ export class ApplicationsService {
           where: { driveId_candidateId: { driveId, candidateId: candidate.id } },
         });
         if (existing?.state === "CONFIRMED") throw new ConflictException("You're already booked for this drive");
+        if (existing?.state === "SCREENED_OUT") {
+          throw new ConflictException(`You applied earlier, and this drive asks for: ${existing.screenedOutReason}`);
+        }
         const application = existing
-          ? await transitionApplication(tx, { applicationId: existing.id, to: "CONFIRMED", actor, slotId })
-          : await createApplication(tx, { driveId, candidateId: candidate.id, to: "CONFIRMED", slotId, actor });
+          ? await transitionApplication(tx, { applicationId: existing.id, to, actor, ...(to === "CONFIRMED" ? { slotId } : {}) })
+          : await createApplication(tx, { driveId, candidateId: candidate.id, to, slotId: to === "CONFIRMED" ? slotId : null, actor });
+        await tx.application.update({ where: { id: application.id }, data: { knockoutAnswers: answers, screenedOutReason } });
         return application.id;
       });
     } catch (err) {

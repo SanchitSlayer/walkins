@@ -23,14 +23,18 @@ export class LiveBoardService {
 
   // Confirmed counts everyone who took a booked seat, including those who
   // since arrived or were marked no-show; walk-ins never took a seat, so they
-  // are counted apart rather than inflating either number.
+  // are counted apart rather than inflating either number. Screened-out
+  // applicants never held a seat, and someone rejected before arriving gave
+  // theirs back, so neither counts as booked.
   private async counts(driveId: string): Promise<Counts> {
     const [counts] = await prisma.$queryRaw<Counts[]>`
       SELECT
         (SELECT count(DISTINCT n."candidateId") FROM notifications n
           WHERE n."driveId" = ${driveId} AND n."templateKey" = 'drive_48h' AND n.status = 'SENT')::int AS alerted,
         count(*) FILTER (
-          WHERE a.state NOT IN ('INTERESTED', 'WITHDRAWN') AND (ci.method IS NULL OR ci.method <> 'WALK_IN')
+          WHERE a.state NOT IN ('INTERESTED', 'WITHDRAWN', 'SCREENED_OUT')
+            AND NOT (a.state = 'REJECTED' AND ci.id IS NULL)
+            AND (ci.method IS NULL OR ci.method <> 'WALK_IN')
         )::int AS confirmed,
         count(*) FILTER (WHERE ci.id IS NOT NULL AND ci.method <> 'WALK_IN')::int AS "checkedIn",
         count(*) FILTER (WHERE ci.method = 'WALK_IN')::int AS "walkIns",

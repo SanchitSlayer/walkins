@@ -31,6 +31,7 @@ export function toMyApplication(row: MyApplicationRow): MyApplication {
   return {
     id: row.id,
     state: row.state,
+    screenedOutReason: row.screenedOutReason,
     slotStartsAt: row.slot?.startsAt.toISOString() ?? null,
     drive: {
       id: row.drive.id,

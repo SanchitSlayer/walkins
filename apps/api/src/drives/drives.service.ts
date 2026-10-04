@@ -10,9 +10,12 @@ import {
   type VenuePinInput,
   driveSearchPageSchema,
   haversineDistanceKm,
+  knockoutQuestionsSchema,
   MAX_TRAVEL_KM,
+  publicKnockoutQuestions,
   publicDriveDetailSchema,
 } from "@walkins/shared";
+import { JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
 
 type RawSearchRow = {
@@ -104,7 +107,10 @@ const DRIVE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class DrivesService {
-  constructor(private readonly geocoding: GeocodingService) {}
+  constructor(
+    private readonly geocoding: GeocodingService,
+    private readonly jobs: JobsService,
+  ) {}
 
   async create(companyId: string, input: CreateDriveInput) {
     const numberOfSlots = this.computeSlotCount(input.startsAt, input.endsAt, input.slotDurationMinutes);
@@ -121,7 +127,7 @@ export class DrivesService {
       input.venueAddress,
     );
 
-    return prisma.drive.create({
+    const drive = await prisma.drive.create({
       data: {
         companyId,
         roleId: input.roleId,
@@ -137,6 +143,7 @@ export class DrivesService {
         experienceMin: input.experienceMin,
         experienceMax: input.experienceMax,
         needsManualGeocode,
+        knockoutQuestions: input.knockoutQuestions,
         status: "DRAFT",
         slots: {
           create: this.buildSlots(input.startsAt, numberOfSlots, input.slotDurationMinutes, input.capacityPerSlot),
@@ -144,6 +151,8 @@ export class DrivesService {
       },
       include: DRIVE_DETAIL_INCLUDE,
     });
+    await this.jobs.reembed({ kind: "drive", id: drive.id });
+    return drive;
   }
 
   async update(companyId: string, driveId: string, input: UpdateDriveInput) {
@@ -168,11 +177,13 @@ export class DrivesService {
       geocodePatch = { ...(await this.resolveCoordinates(cityId, venueAddress)), venuePinnedAt: null };
     }
 
-    return prisma.drive.update({
+    const drive = await prisma.drive.update({
       where: { id: driveId },
       data: { ...input, ...geocodePatch },
       include: DRIVE_DETAIL_INCLUDE,
     });
+    await this.jobs.reembed({ kind: "drive", id: drive.id });
+    return drive;
   }
 
   // Set from a device at the venue, usually on the day, so unlike other edits
@@ -208,7 +219,7 @@ export class DrivesService {
       });
     }
 
-    return prisma.$transaction(async (tx) => {
+    const pinned = await prisma.$transaction(async (tx) => {
       const drive = await tx.drive.update({
         where: { id: driveId },
         data: { venueLat: input.lat, venueLng: input.lng, needsManualGeocode: false, venuePinnedAt: new Date() },
@@ -231,6 +242,8 @@ export class DrivesService {
       });
       return drive;
     });
+    await this.jobs.reembed({ kind: "drive", id: driveId });
+    return pinned;
   }
 
   async submit(companyId: string, driveId: string) {
@@ -357,7 +370,7 @@ export class DrivesService {
     // expiry job starts writing EXPIRED. Drafts and pending drives stay private.
     const drive = await prisma.drive.findFirst({
       where: { id: driveId, status: { in: ["LIVE", "EXPIRED"] } },
-      select: { cityId: true },
+      select: { cityId: true, knockoutQuestions: true },
     });
     if (!drive) {
       throw new NotFoundException("Drive not found");
@@ -386,6 +399,7 @@ export class DrivesService {
     return publicDriveDetailSchema.parse({
       ...toSearchResult(row),
       slots: slots.map((slot) => ({ ...slot, startsAt: slot.startsAt.toISOString() })),
+      knockoutQuestions: publicKnockoutQuestions(knockoutQuestionsSchema.parse(drive.knockoutQuestions)),
     });
   }
 
