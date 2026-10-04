@@ -9,12 +9,15 @@ import {
   telegramLinkSchema,
   type UpdateCandidateProfileInput,
 } from "@walkins/shared";
+import { JobsService } from "../common/jobs.service";
 import { redis } from "../common/redis";
 
 const REQUIRED_ON_CREATE = ["cityId", "homeLat", "homeLng", "maxTravelKm", "experienceYears", "roleIds"] as const;
 
 @Injectable()
 export class CandidatesService {
+  constructor(private readonly jobs: JobsService) {}
+
   async getMe(userId: string): Promise<CandidateProfile | null> {
     const candidate = await prisma.candidate.findUnique({
       where: { userId },
@@ -59,7 +62,12 @@ export class CandidatesService {
     });
 
     // getMe never returns null here: we just created or updated this exact row.
-    return (await this.getMe(userId)) as CandidateProfile;
+    // Roles, experience and city feed the candidate's embedding, so any save
+    // can change it; the worker rebuilds it from the saved row.
+    const profile = (await this.getMe(userId)) as CandidateProfile;
+    const { id } = await prisma.candidate.findUniqueOrThrow({ where: { userId }, select: { id: true } });
+    await this.jobs.reembed({ kind: "candidate", id });
+    return profile;
   }
 
   // The token is the only thing tying a Telegram chat to this account, so it
