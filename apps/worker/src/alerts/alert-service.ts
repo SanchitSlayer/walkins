@@ -1,7 +1,6 @@
 import type { Queue } from "bullmq";
 import { findCandidatesForDrive, prisma } from "@walkins/db";
-import type { TemplateKey } from "@walkins/shared";
-import { type AlertJob, alertJobId } from "../queues";
+import { type AlertJob, alertJobId, type TemplateKey } from "@walkins/shared";
 
 const PAGE_SIZE = 500;
 

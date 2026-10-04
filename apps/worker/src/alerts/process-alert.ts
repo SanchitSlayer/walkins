@@ -1,6 +1,8 @@
 import { UnrecoverableError } from "bullmq";
 import { Prisma, prisma } from "@walkins/db";
 import {
+  type AlertJob,
+  alertJobId,
   ChannelRateLimitedError,
   DeliveryOutcomeUnknownError,
   NotImplementedError,
@@ -8,7 +10,6 @@ import {
   RecipientUnreachableError,
 } from "@walkins/shared";
 import type { ChannelResolver } from "../channels/channel-resolver";
-import { type AlertJob, alertJobId } from "../queues";
 import { type AlertContext, renderAlert } from "./templates";
 
 export type AlertAttempt = {
@@ -49,6 +50,9 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
     });
     if (!application) return { skip: "candidate is no longer confirmed" };
     slotStartsAt = application.slot?.startsAt.toISOString() ?? null;
+  } else if (templateKey === "application_rejected") {
+    const rejected = await prisma.application.count({ where: { driveId, candidateId, state: "REJECTED" } });
+    if (rejected === 0) return { skip: "application is no longer rejected" };
   }
 
   const [{ distanceMeters }] = await prisma.$queryRaw<{ distanceMeters: number }[]>`
@@ -69,7 +73,9 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
       startsAt: drive.startsAt.toISOString(),
       endsAt: drive.endsAt.toISOString(),
       slotStartsAt,
-      driveUrl: `${webUrl}/drives/${driveId}`,
+      // A rejection points to other drives rather than the one that turned
+      // them down.
+      driveUrl: templateKey === "application_rejected" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
     },
   };
 }

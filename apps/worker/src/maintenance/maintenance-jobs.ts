@@ -1,12 +1,19 @@
 import type { Queue } from "bullmq";
 import { prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
-import { dayKey } from "@walkins/shared";
+import { dayKey, type EmbedJob } from "@walkins/shared";
 import type { AlertService } from "../alerts/alert-service";
+
+export type MaintenanceDeps = {
+  alerts: AlertService;
+  removeObject: (key: string) => Promise<void>;
+  reembed: (job: EmbedJob) => Promise<void>;
+};
 
 // Every drive is in India, so "daily at 07:00" means 07:00 there, whatever
 // zone the worker's host happens to run in.
 const SCHEDULE_TZ = "Asia/Kolkata";
 const ALERT_WINDOW_MS = 48 * 3600_000;
+const VOICE_RETENTION_MS = 180 * 24 * 3600_000;
 
 const SCHEDULES = [
   { name: "scan-upcoming-drives", pattern: "*/15 * * * *" },
@@ -84,13 +91,44 @@ export async function markNoShows(): Promise<{ noShows: number; changedMeanwhile
   return { noShows, changedMeanwhile };
 }
 
-async function expireDrives(): Promise<string> {
+// A recording is someone's voice, so it is kept only while it is their
+// current intro, and never past 180 days. The object goes first: a row left
+// behind by a crash is retried tomorrow, an object left behind would not be.
+export async function purgeVoiceIntros(deps: Pick<MaintenanceDeps, "removeObject" | "reembed">, now = new Date()) {
+  const expired = await prisma.voiceIntro.findMany({
+    where: { OR: [{ replacedAt: { not: null } }, { createdAt: { lt: new Date(now.getTime() - VOICE_RETENTION_MS) } }] },
+    select: { id: true, candidateId: true, objectKey: true, replacedAt: true },
+  });
+  for (const intro of expired) {
+    await deps.removeObject(intro.objectKey);
+    await prisma.voiceIntro.delete({ where: { id: intro.id } });
+    // Their transcript was part of their embedding; without it they are
+    // placed by roles and experience alone again.
+    if (!intro.replacedAt) await deps.reembed({ kind: "candidate", id: intro.candidateId });
+  }
+  return expired.length;
+}
+
+// Rows created before matching existed, or whose embed job ran out of
+// attempts, have no vector and rank by distance only until this runs.
+export async function backfillEmbeddings(reembed: MaintenanceDeps["reembed"]): Promise<number> {
+  const [candidates, drives] = await Promise.all([
+    prisma.$queryRaw<{ id: string }[]>`SELECT id FROM candidates WHERE embedding IS NULL`,
+    prisma.$queryRaw<{ id: string }[]>`SELECT id FROM drives WHERE embedding IS NULL`,
+  ]);
+  for (const { id } of candidates) await reembed({ kind: "candidate", id });
+  for (const { id } of drives) await reembed({ kind: "drive", id });
+  return candidates.length + drives.length;
+}
+
+async function expireDrives(deps: MaintenanceDeps): Promise<string> {
   const drives = await prisma.drive.updateMany({
     where: { status: "LIVE", endsAt: { lte: new Date() } },
     data: { status: "EXPIRED" },
   });
   const { noShows, changedMeanwhile } = await markNoShows();
-  return `${drives.count} drives expired, ${noShows} confirmed applications marked no-show, ${changedMeanwhile} changed meanwhile`;
+  const recordings = await purgeVoiceIntros(deps);
+  return `${drives.count} drives expired, ${noShows} confirmed applications marked no-show, ${changedMeanwhile} changed meanwhile, ${recordings} voice recordings deleted`;
 }
 
 // REJECTED is left out of both counts: it can come before or after an
@@ -119,14 +157,14 @@ async function recomputeReliability(): Promise<string> {
   return `${updated} candidates rescored`;
 }
 
-export function runMaintenance(name: string, alerts: AlertService): Promise<string> {
+export function runMaintenance(name: string, deps: MaintenanceDeps): Promise<string> {
   switch (name) {
     case "scan-upcoming-drives":
-      return scanUpcomingDrives(alerts);
+      return scanUpcomingDrives(deps.alerts);
     case "morning-reminders":
-      return sendMorningReminders(alerts);
+      return sendMorningReminders(deps.alerts);
     case "expire-drives":
-      return expireDrives();
+      return expireDrives(deps);
     case "recompute-reliability":
       return recomputeReliability();
     default:

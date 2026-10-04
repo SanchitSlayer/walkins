@@ -19,7 +19,16 @@ export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Da
   const when = formatWhen(ctx.startsAt, ctx.endsAt, now);
   const where = `${ctx.venueAddress} (${formatDistance(ctx.distanceKm)} from your home)`;
   const lines =
-    templateKey === "drive_48h"
+    templateKey === "application_rejected"
+      ? [
+          `Update on ${ctx.roleTitle} at ${ctx.companyName}`,
+          "",
+          `${ctx.companyName} isn't taking your application forward for this drive, so please don't travel to it.`,
+          "Your slot has been released.",
+          "",
+          "Thank you for your interest. Other walk-ins near you are on the link below.",
+        ]
+      : templateKey === "drive_48h"
       ? [
           "New walk-in near you",
           `${ctx.roleTitle} at ${ctx.companyName}`,

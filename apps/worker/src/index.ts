@@ -1,17 +1,31 @@
 import { RateLimitError, Worker } from "bullmq";
 import { Api, Bot } from "node-telegram-bot-api";
 import { prisma } from "@walkins/db";
-import type { NotificationChannel } from "@walkins/shared";
+import {
+  type AlertJob,
+  ALERTS_QUEUE,
+  EMBED_QUEUE,
+  type EmbedJob,
+  MAINTENANCE_QUEUE,
+  type NotificationChannel,
+  VOICE_JOB_OPTIONS,
+  VOICE_QUEUE,
+  type VoiceJob,
+} from "@walkins/shared";
 import { AlertService } from "./alerts/alert-service";
 import { processAlert } from "./alerts/process-alert";
 import { registerBotCommands } from "./bot/telegram-bot";
 import { ChannelResolver } from "./channels/channel-resolver";
 import { ConsoleChannel } from "./channels/console-channel";
+import { processEmbed } from "./embed/process-embed";
 import { TelegramChannel } from "./channels/telegram-channel";
 import { WhatsAppChannel } from "./channels/whatsapp-channel";
-import { registerSchedules, runMaintenance } from "./maintenance/maintenance-jobs";
-import { ALERTS_QUEUE, type AlertJob, createAlertsQueue, createMaintenanceQueue, MAINTENANCE_QUEUE } from "./queues";
+import { backfillEmbeddings, registerSchedules, runMaintenance } from "./maintenance/maintenance-jobs";
+import { embed, transcribe } from "./ml/sidecar";
+import { createAlertsQueue, createEmbedQueue, createMaintenanceQueue } from "./queues";
 import { connection } from "./redis";
+import { readObject, removeObject } from "./storage";
+import { processVoice } from "./voice/process-voice";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || null;
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
@@ -34,7 +48,11 @@ function buildChannels(): NotificationChannel[] {
 async function main() {
   const alertsQueue = createAlertsQueue(connection);
   const maintenanceQueue = createMaintenanceQueue(connection);
+  const embedQueue = createEmbedQueue(connection);
   const alertService = new AlertService(alertsQueue);
+  const reembed = async (job: EmbedJob) => {
+    await embedQueue.add(job.kind, job);
+  };
   const resolver = new ChannelResolver(buildChannels());
 
   const alertsWorker: Worker<AlertJob, string> = new Worker(
@@ -50,12 +68,28 @@ async function main() {
       }),
     { connection, concurrency: 5, limiter: { max: ALERTS_PER_SECOND, duration: 1000 } },
   );
-  const maintenanceWorker = new Worker(MAINTENANCE_QUEUE, (job) => runMaintenance(job.name, alertService), {
+  const maintenanceWorker = new Worker(
+    MAINTENANCE_QUEUE,
+    (job) => runMaintenance(job.name, { alerts: alertService, removeObject, reembed }),
+    { connection, concurrency: 1 },
+  );
+  // One transcription at a time: the sidecar has a 1.5GB memory cap and
+  // Whisper uses every thread it is given.
+  const voiceWorker: Worker<VoiceJob, string> = new Worker(
+    VOICE_QUEUE,
+    (job) =>
+      processVoice(
+        { data: job.data, attemptsMade: job.attemptsMade, maxAttempts: job.opts.attempts ?? VOICE_JOB_OPTIONS.attempts },
+        { read: readObject, transcribe, reembed },
+      ),
+    { connection, concurrency: 1, lockDuration: 5 * 60_000 },
+  );
+  const embedWorker: Worker<EmbedJob, string> = new Worker(EMBED_QUEUE, (job) => processEmbed(job, { embed }), {
     connection,
     concurrency: 1,
   });
 
-  for (const worker of [alertsWorker, maintenanceWorker]) {
+  for (const worker of [alertsWorker, maintenanceWorker, voiceWorker, embedWorker]) {
     worker.on("completed", (job, result) => console.log(`worker: ${worker.name} ${job.id} ${result}`));
     worker.on("failed", (job, err) =>
       console.error(`worker: ${worker.name} ${job?.id} failed (attempt ${job?.attemptsMade}): ${err.message}`),
@@ -63,6 +97,8 @@ async function main() {
   }
 
   await registerSchedules(maintenanceQueue);
+  const missing = await backfillEmbeddings(reembed);
+  if (missing > 0) console.log(`worker: queued embeddings for ${missing} candidates and drives`);
 
   let bot: Bot | null = null;
   if (TELEGRAM_BOT_TOKEN) {
@@ -76,8 +112,8 @@ async function main() {
 
   const shutdown = async () => {
     bot?.stop();
-    await Promise.all([alertsWorker.close(), maintenanceWorker.close()]);
-    await Promise.all([alertsQueue.close(), maintenanceQueue.close()]);
+    await Promise.all([alertsWorker.close(), maintenanceWorker.close(), voiceWorker.close(), embedWorker.close()]);
+    await Promise.all([alertsQueue.close(), maintenanceQueue.close(), embedQueue.close()]);
     await prisma.$disconnect();
     connection.disconnect();
     process.exit(0);
