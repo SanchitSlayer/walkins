@@ -1,13 +1,15 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@walkins/db";
+import type { JobsService } from "../src/common/jobs.service";
 import { redis } from "../src/common/redis";
 import { DrivesService } from "../src/drives/drives.service";
 import type { GeocodingService } from "../src/drives/geocoding.service";
 import { createFixture, type Fixture, removeFixture } from "./fixtures";
 
-// Pinning never geocodes, so the geocoder is never reached.
-const drives = new DrivesService({} as GeocodingService);
+// Pinning never geocodes, so the geocoder is never reached; re-embedding is
+// the worker's business.
+const drives = new DrivesService({} as GeocodingService, { reembed: async () => {} } as unknown as JobsService);
 const JODHPUR = { lat: 26.2389, lng: 73.0243 };
 let fixture: Fixture;
 

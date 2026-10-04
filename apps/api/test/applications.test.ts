@@ -29,7 +29,7 @@ describe("applying for a slot", () => {
     const racers = fixture.candidates.slice(0, 10);
 
     const results = await Promise.allSettled(
-      racers.map(({ userId }) => applications.apply(userId, fixture.drive.id, fixture.lastSeatSlot.id)),
+      racers.map(({ userId }) => applications.apply(userId, fixture.drive.id, fixture.lastSeatSlot.id, {})),
     );
 
     const won = results.filter((r) => r.status === "fulfilled");
@@ -46,8 +46,8 @@ describe("applying for a slot", () => {
     const roomyBefore = await bookedCount(fixture.roomySlot.id);
 
     const results = await Promise.allSettled([
-      applications.apply(userId, fixture.drive.id, fixture.roomySlot.id),
-      applications.apply(userId, fixture.drive.id, fixture.roomySlot.id),
+      applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {}),
+      applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {}),
     ]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -61,7 +61,7 @@ describe("applying for a slot", () => {
     const { userId, candidateId } = fixture.candidates[11];
     const before = await bookedCount(fixture.roomySlot.id);
 
-    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id);
+    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
     expect(await bookedCount(fixture.roomySlot.id)).toBe(before + 1);
 
     const released = await applications.release(userId, applied.id);
@@ -72,7 +72,7 @@ describe("applying for a slot", () => {
     await expect(applications.release(userId, applied.id)).rejects.toBeInstanceOf(IllegalTransitionError);
     expect(await bookedCount(fixture.roomySlot.id)).toBe(before);
 
-    const reapplied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id);
+    const reapplied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
     expect(reapplied.id).toBe(applied.id);
     expect(reapplied.state).toBe("CONFIRMED");
     expect(await bookedCount(fixture.roomySlot.id)).toBe(before + 1);
@@ -85,7 +85,7 @@ describe("applying for a slot", () => {
 
   it("refuses an illegal move and leaves the application untouched", async () => {
     const { userId } = fixture.candidates[12];
-    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id);
+    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
 
     await expect(
       applications.updateByEmployer(fixture.company.id, fixture.employer.id, applied.id, { to: "HIRED" }),
@@ -98,7 +98,7 @@ describe("applying for a slot", () => {
 
   it("treats another company's application as missing", async () => {
     const { userId } = fixture.candidates[13];
-    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id);
+    const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
 
     await expect(
       applications.updateByEmployer("some-other-company", fixture.employer.id, applied.id, { to: "INTERVIEWED" }),

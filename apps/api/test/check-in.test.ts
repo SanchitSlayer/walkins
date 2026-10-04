@@ -65,7 +65,7 @@ function codeExpiredMinutesAgo(minutes: number) {
 }
 
 async function bookSeat(userId: string) {
-  return applications.apply(userId, fixture.drive.id, fixture.roomySlot.id);
+  return applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
 }
 
 beforeAll(async () => {
