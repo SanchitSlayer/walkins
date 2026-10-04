@@ -12,12 +12,14 @@ import { SlotStack } from "@/components/board/slot-stack";
 import { VenueOutsideCityNotice } from "../venue-notice";
 import { ArrivalsDesk } from "./arrivals-desk";
 import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields } from "../drive-fields";
+import { driveIssue, type KnockoutDraft, knockoutDrafts, KnockoutEditor, knockoutQuestions } from "../knockout-editor";
 
 export default function EditDrivePage() {
   const params = useParams<{ id: string }>();
   const [drive, setDrive] = useState<DriveDetail | null>(null);
   const [fields, setFields] = useState<DriveFieldValues | null>(null);
   const [capacity, setCapacity] = useState("");
+  const [knockouts, setKnockouts] = useState<KnockoutDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -27,6 +29,7 @@ export default function EditDrivePage() {
     setDrive(next);
     setFields(driveFieldValues(next));
     setCapacity(String(next.capacity));
+    setKnockouts(knockoutDrafts(next.knockoutQuestions));
   }
 
   useEffect(() => {
@@ -54,9 +57,13 @@ export default function EditDrivePage() {
     event.preventDefault();
     if (!drive || !fields) return;
 
-    const parsed = updateDriveSchema.safeParse({ ...parseDriveFields(fields), capacity: Number(capacity) });
+    const parsed = updateDriveSchema.safeParse({
+      ...parseDriveFields(fields),
+      capacity: Number(capacity),
+      knockoutQuestions: knockoutQuestions(knockouts),
+    });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "A field is missing or invalid");
+      setError(driveIssue(parsed.error.errors[0]));
       return;
     }
     setSaved(await run(() => apiClient.updateDrive(drive.id, parsed.data), "Couldn't save the drive"));
@@ -127,6 +134,15 @@ export default function EditDrivePage() {
               </BoardField>
             </FieldGroup>
 
+            <KnockoutEditor
+              drafts={knockouts}
+              onChange={(next) => {
+                setSaved(false);
+                setKnockouts(next);
+              }}
+              disabled={!editable}
+            />
+
             {error && (
               <p role="alert" className="type-meta text-closing-lamp">
                 {error}
@@ -159,6 +175,9 @@ export default function EditDrivePage() {
               <>
                 <Link href={`/employer/drives/${drive.id}/checkin`} className={boardButtonClass()}>
                   Open check-in screen
+                </Link>
+                <Link href={`/employer/drives/${drive.id}/applicants`} className={boardButtonClass("housing", "quiet")}>
+                  Applicants
                 </Link>
                 <Link href={`/drives/${drive.id}`} className="type-meta text-stock underline underline-offset-4">
                   See the public page

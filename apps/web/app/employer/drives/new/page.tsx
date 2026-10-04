@@ -7,6 +7,7 @@ import { createDriveSchema } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput, boardButtonClass } from "@/components/board/field";
 import { DriveFields, type DriveFieldValues, EMPTY_DRIVE_FIELDS, FieldGroup, parseDriveFields } from "../drive-fields";
+import { driveIssue, type KnockoutDraft, KnockoutEditor, knockoutQuestions } from "../knockout-editor";
 
 // Mirrors the API's rule: the window must divide evenly into slots.
 function slotCount(startsAt: string, endsAt: string, slotMinutes: number): number | null {
@@ -20,6 +21,7 @@ export default function NewDrivePage() {
   const [fields, setFields] = useState<DriveFieldValues>(EMPTY_DRIVE_FIELDS);
   const [slotDurationMinutes, setSlotDurationMinutes] = useState("60");
   const [capacityPerSlot, setCapacityPerSlot] = useState("");
+  const [knockouts, setKnockouts] = useState<KnockoutDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -41,9 +43,10 @@ export default function NewDrivePage() {
       capacity: capacity ?? 0,
       slotDurationMinutes: Number(slotDurationMinutes),
       capacityPerSlot: perSlot,
+      knockoutQuestions: knockoutQuestions(knockouts),
     });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "A field is missing or invalid");
+      setError(driveIssue(parsed.error.errors[0]));
       return;
     }
 
@@ -100,6 +103,8 @@ export default function NewDrivePage() {
                 : "Total seats are worked out from the window and slot length"}
           </p>
         </FieldGroup>
+
+        <KnockoutEditor drafts={knockouts} onChange={setKnockouts} />
 
         {error && (
           <p role="alert" className="type-meta text-closing-lamp">

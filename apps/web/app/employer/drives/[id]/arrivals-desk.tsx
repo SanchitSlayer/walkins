@@ -73,9 +73,14 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
         <h2 id="desk-heading" className="type-h3">
           Arrivals desk
         </h2>
-        <Link href={`/employer/drives/${driveId}/live`} className={boardButtonClass("housing", "quiet")}>
-          Open arrivals board
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link href={`/employer/drives/${driveId}/applicants`} className={boardButtonClass("housing", "quiet")}>
+            Applicants
+          </Link>
+          <Link href={`/employer/drives/${driveId}/live`} className={boardButtonClass("housing", "quiet")}>
+            Open arrivals board
+          </Link>
+        </div>
       </div>
       <p className="type-board-sm text-housing-muted">
         {desk.counts.checkedIn} booked arrived · {desk.counts.walkIns} walk-ins · {desk.awaiting.length} still expected ·{" "}
