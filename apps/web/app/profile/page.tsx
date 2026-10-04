@@ -11,6 +11,7 @@ import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
 import { TelegramPanel } from "./telegram-panel";
+import { VoicePanel } from "./voice-panel";
 
 const PinMap = dynamic(() => import("@/components/board/pin-map"), {
   ssr: false,
@@ -200,6 +201,7 @@ export default function ProfilePage() {
               </BoardButton>
             </Slab>
 
+            <VoicePanel hasProfile={telegramConnected !== null} />
             <TelegramPanel connected={telegramConnected} />
           </div>
 
