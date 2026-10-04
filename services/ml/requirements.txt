@@ -1,0 +1,6 @@
+fastapi==0.115.*
+uvicorn==0.32.*
+faster-whisper==1.1.*
+# faster-whisper imports requests without declaring it.
+requests==2.*
+numpy<2.3

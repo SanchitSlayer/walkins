@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgis/postgis:16-3.4
+    # PostGIS plus pgvector; see docker/postgres/Dockerfile.
+    build: ./docker/postgres
+    image: walkins-postgres:16-3.4-pgvector
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -58,7 +60,31 @@ services:
       mc mb -p local/${MINIO_BUCKET}
       "
 
+  # Transcription and embeddings, called by the worker over HTTP. Model
+  # weights (~275 MB) download on the first start into ml_models and are
+  # reused after that, so only the first start is slow.
+  ml:
+    build: ./services/ml
+    image: walkins-ml:latest
+    restart: unless-stopped
+    ports:
+      - "${ML_PORT:-8001}:8000"
+    environment:
+      WHISPER_MODEL: small
+      ML_THREADS: 4
+    volumes:
+      - ml_models:/models
+    # Docker Desktop's VM has 4 GB here; a capped sidecar can't starve Postgres.
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15m
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  ml_models:
