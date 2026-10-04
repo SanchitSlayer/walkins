@@ -2,6 +2,7 @@ import { UnrecoverableError } from "bullmq";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@walkins/db";
 import {
+  type AlertJob,
   DeliveryOutcomeUnknownError,
   type NotificationChannel,
   RecipientUnreachableError,
@@ -10,7 +11,6 @@ import {
 } from "@walkins/shared";
 import { processAlert, type ProcessDeps } from "../src/alerts/process-alert";
 import { ChannelResolver } from "../src/channels/channel-resolver";
-import type { AlertJob } from "../src/queues";
 
 // Runs against the real database because the claim index is the guarantee
 // under test; the fixtures below are created here and removed afterwards.
@@ -89,6 +89,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await prisma.notification.deleteMany({ where: { driveId: ids.drive } });
+  await prisma.application.deleteMany({ where: { driveId: ids.drive } });
   await prisma.drive.delete({ where: { id: ids.drive } });
   await prisma.candidate.delete({ where: { id: ids.candidate } });
   await prisma.user.delete({ where: { id: ids.user } });
@@ -164,5 +165,24 @@ describe("processAlert", () => {
     expect(message.text).toContain("₹15,000–₹20,000");
     expect(message.text).toMatch(/Alerts Test Venue \(1\.1 km from your home\)/);
     expect(message.url).toBe(`http://localhost:3000/drives/${ids.drive}`);
+  });
+
+  it("tells a rejected candidate not to travel, and points them to other drives", async () => {
+    const rejected: AlertJob = { ...job, templateKey: "application_rejected" };
+    const application = await prisma.application.create({
+      data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED" },
+    });
+
+    await expect(processAlert({ data: rejected, attemptsMade: 0 }, deps)).resolves.toBe("skipped: application is no longer rejected");
+
+    await prisma.notification.deleteMany({ where: { driveId: ids.drive } });
+    await prisma.application.update({ where: { id: application.id }, data: { state: "REJECTED" } });
+    await expect(processAlert({ data: rejected, attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+
+    const [message] = channel.sent;
+    expect(message.text).toContain("isn't taking your application forward");
+    expect(message.text).toContain("please don't travel");
+    expect(message.url).toBe("http://localhost:3000/");
+    await prisma.application.delete({ where: { id: application.id } });
   });
 });
