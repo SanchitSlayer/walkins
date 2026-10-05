@@ -2,7 +2,7 @@ import { UnrecoverableError } from "bullmq";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@walkins/db";
 import { processEmbed } from "../src/embed/process-embed";
-import { purgeVoiceIntros } from "../src/maintenance/maintenance-jobs";
+import { purgeVoiceIntros, removeOrphanedRecordings } from "../src/maintenance/maintenance-jobs";
 import { AudioRefusedError, type Transcription } from "../src/ml/sidecar";
 import { processVoice, type VoiceDeps } from "../src/voice/process-voice";
 
@@ -165,7 +165,7 @@ describe("embedding a candidate", () => {
     expect(dims).toBe(384);
   });
 
-  it("includes a transcript whose language was uncertain but whose words were heard clearly", async () => {
+  it("includes a transcript whose language was uncertain but whose audio was clear", async () => {
     // Hindi mixed with English, detected as Urdu at 48%: the script is in
     // doubt, the words aren't.
     await prisma.voiceIntro.create({
@@ -186,7 +186,7 @@ describe("embedding a candidate", () => {
     expect(await embeddedText()).toContain("In their own words: مجھے product management");
   });
 
-  it("leaves out a transcript whose words are likely to be wrong", async () => {
+  it("leaves out a transcript whose audio was hard to make out", async () => {
     await prisma.voiceIntro.create({
       data: {
         candidateId: ids.candidate,
@@ -208,6 +208,10 @@ describe("embedding a candidate", () => {
 });
 
 describe("voice retention", () => {
+  // The purge is global; scoped to this test's candidate so it never reaches
+  // real recordings in the same database.
+  const mine = () => ({ candidateId: ids.candidate });
+
   it("deletes replaced and 180-day-old recordings, object first, and keeps the current one", async () => {
     const now = new Date();
     const replaced = await intro({ replacedAt: new Date(now.getTime() - DAY) });
@@ -215,7 +219,7 @@ describe("voice retention", () => {
     const current = await intro({ createdAt: new Date(now.getTime() - 10 * DAY) });
     const removeObject = vi.fn(async () => {});
 
-    await expect(purgeVoiceIntros({ removeObject, reembed: deps.reembed }, now)).resolves.toBe(2);
+    await expect(purgeVoiceIntros({ removeObject, reembed: deps.reembed }, now, mine())).resolves.toBe(2);
 
     expect(removeObject.mock.calls.map(([key]) => key).sort()).toEqual([expired.objectKey, replaced.objectKey].sort());
     const left = await prisma.voiceIntro.findMany({ where: { candidateId: ids.candidate } });
@@ -230,7 +234,29 @@ describe("voice retention", () => {
       throw new Error("storage unavailable");
     });
 
-    await expect(purgeVoiceIntros({ removeObject, reembed: deps.reembed })).rejects.toThrow("storage unavailable");
+    await expect(purgeVoiceIntros({ removeObject, reembed: deps.reembed }, new Date(), mine())).rejects.toThrow("storage unavailable");
     expect(await prisma.voiceIntro.findUnique({ where: { id: replaced.id } })).not.toBeNull();
+  });
+});
+
+describe("orphaned recordings", () => {
+  // Fake storage, so the real bucket is never listed or touched; the database
+  // is only read.
+  it("deletes audio a day old with no row, warns about each, and leaves the rest", async () => {
+    const now = new Date();
+    const tracked = await intro();
+    const stored = (key: string, hoursAgo: number) => ({ key, lastModified: new Date(now.getTime() - hoursAgo * 3600_000) });
+    const orphan = stored(`voice-intros/test/${crypto.randomUUID()}.webm`, 25);
+    const recent = stored(`voice-intros/test/${crypto.randomUUID()}.webm`, 23);
+    const listObjects = vi.fn(async () => [stored(tracked.objectKey, 48), orphan, recent]);
+    const removeObject = vi.fn(async () => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(removeOrphanedRecordings({ listObjects, removeObject }, now)).resolves.toBe(1);
+
+    expect(listObjects).toHaveBeenCalledWith("voice-intros/");
+    expect(removeObject).toHaveBeenCalledExactlyOnceWith(orphan.key);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(orphan.key));
+    warn.mockRestore();
   });
 });

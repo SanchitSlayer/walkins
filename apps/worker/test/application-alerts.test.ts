@@ -175,7 +175,9 @@ describe("alerts once candidates apply", () => {
 
 describe("marking no-shows after a drive", () => {
   it("moves unattended confirmations through the state machine and keeps the booked count", async () => {
-    const result = await markNoShows();
+    // Scoped to this test's drives: unscoped, it would mark real candidates
+    // in the shared database absent.
+    const result = await markNoShows({ driveId: { in: [ids.liveDrive, ids.endedDrive] } });
 
     expect(result.noShows).toBe(1);
     const application = await prisma.application.findFirstOrThrow({
