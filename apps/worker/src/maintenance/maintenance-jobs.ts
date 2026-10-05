@@ -1,10 +1,11 @@
 import type { Queue } from "bullmq";
-import { prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
+import { type Prisma, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import { dayKey, type EmbedJob } from "@walkins/shared";
 import type { AlertService } from "../alerts/alert-service";
 
 export type MaintenanceDeps = {
   alerts: AlertService;
+  listObjects: (prefix: string) => Promise<{ key: string; lastModified: Date }[]>;
   removeObject: (key: string) => Promise<void>;
   reembed: (job: EmbedJob) => Promise<void>;
 };
@@ -14,6 +15,12 @@ export type MaintenanceDeps = {
 const SCHEDULE_TZ = "Asia/Kolkata";
 const ALERT_WINDOW_MS = 48 * 3600_000;
 const VOICE_RETENTION_MS = 180 * 24 * 3600_000;
+// Where the API stores recordings (see VoiceIntroService.startUpload).
+const VOICE_PREFIX = "voice-intros/";
+// Far past the 15-minute confirm window on purpose: a slow upload, a queue
+// backlog or a row written late must never cost someone their recording, and
+// the job runs nightly, so a day's wait costs nothing.
+const ORPHAN_MIN_AGE_MS = 24 * 3600_000;
 
 const SCHEDULES = [
   { name: "scan-upcoming-drives", pattern: "*/15 * * * *" },
@@ -69,9 +76,12 @@ async function sendMorningReminders(alerts: AlertService): Promise<string> {
 // candidate checked in by the desk at the last second is skipped rather than
 // overwritten. bookedCount is left alone: it is the record of what was
 // booked, which is what an employer looking back at a drive needs to see.
-export async function markNoShows(): Promise<{ noShows: number; changedMeanwhile: number }> {
+// `scope` narrows a run, as for purgeVoiceIntros.
+export async function markNoShows(
+  scope: Prisma.ApplicationWhereInput = {},
+): Promise<{ noShows: number; changedMeanwhile: number }> {
   const unattended = await prisma.application.findMany({
-    where: { state: "CONFIRMED", checkIn: { is: null }, drive: { status: "EXPIRED" } },
+    where: { AND: [scope, { state: "CONFIRMED", checkIn: { is: null }, drive: { status: "EXPIRED" } }] },
     select: { id: true },
   });
 
@@ -94,9 +104,17 @@ export async function markNoShows(): Promise<{ noShows: number; changedMeanwhile
 // A recording is someone's voice, so it is kept only while it is their
 // current intro, and never past 180 days. The object goes first: a row left
 // behind by a crash is retried tomorrow, an object left behind would not be.
-export async function purgeVoiceIntros(deps: Pick<MaintenanceDeps, "removeObject" | "reembed">, now = new Date()) {
+// `scope` narrows a run to some recordings: tests share the database with
+// real ones, and must never purge those.
+export async function purgeVoiceIntros(
+  deps: Pick<MaintenanceDeps, "removeObject" | "reembed">,
+  now = new Date(),
+  scope: Prisma.VoiceIntroWhereInput = {},
+) {
   const expired = await prisma.voiceIntro.findMany({
-    where: { OR: [{ replacedAt: { not: null } }, { createdAt: { lt: new Date(now.getTime() - VOICE_RETENTION_MS) } }] },
+    where: {
+      AND: [scope, { OR: [{ replacedAt: { not: null } }, { createdAt: { lt: new Date(now.getTime() - VOICE_RETENTION_MS) } }] }],
+    },
     select: { id: true, candidateId: true, objectKey: true, replacedAt: true },
   });
   for (const intro of expired) {
@@ -121,6 +139,31 @@ export async function backfillEmbeddings(reembed: MaintenanceDeps["reembed"]): P
   return candidates.length + drives.length;
 }
 
+// Audio with no row can't be played, and the purge finds recordings through
+// their rows, so without this it would be kept forever. It means something
+// went wrong upstream (an upload never confirmed, or a row deleted outside the
+// purge), so each one is logged as a warning: orphans turning up regularly
+// say something about the upload flow, not housekeeping.
+export async function removeOrphanedRecordings(
+  deps: Pick<MaintenanceDeps, "listObjects" | "removeObject">,
+  now = new Date(),
+): Promise<number> {
+  const old = (await deps.listObjects(VOICE_PREFIX)).filter(
+    (o) => now.getTime() - o.lastModified.getTime() >= ORPHAN_MIN_AGE_MS,
+  );
+  const tracked = await prisma.voiceIntro.findMany({
+    where: { objectKey: { in: old.map((o) => o.key) } },
+    select: { objectKey: true },
+  });
+  const keys = new Set(tracked.map((t) => t.objectKey));
+  const orphans = old.filter((o) => !keys.has(o.key));
+  for (const orphan of orphans) {
+    await deps.removeObject(orphan.key);
+    console.warn(`worker: deleted orphaned recording ${orphan.key} (stored ${orphan.lastModified.toISOString()}, no voice_intros row)`);
+  }
+  return orphans.length;
+}
+
 async function expireDrives(deps: MaintenanceDeps): Promise<string> {
   const drives = await prisma.drive.updateMany({
     where: { status: "LIVE", endsAt: { lte: new Date() } },
@@ -128,7 +171,8 @@ async function expireDrives(deps: MaintenanceDeps): Promise<string> {
   });
   const { noShows, changedMeanwhile } = await markNoShows();
   const recordings = await purgeVoiceIntros(deps);
-  return `${drives.count} drives expired, ${noShows} confirmed applications marked no-show, ${changedMeanwhile} changed meanwhile, ${recordings} voice recordings deleted`;
+  const orphans = await removeOrphanedRecordings(deps);
+  return `${drives.count} drives expired, ${noShows} confirmed applications marked no-show, ${changedMeanwhile} changed meanwhile, ${recordings} voice recordings deleted, ${orphans} orphaned recordings deleted`;
 }
 
 // REJECTED is left out of both counts: it can come before or after an

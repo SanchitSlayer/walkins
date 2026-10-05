@@ -24,7 +24,7 @@ import { backfillEmbeddings, registerSchedules, runMaintenance } from "./mainten
 import { embed, transcribe } from "./ml/sidecar";
 import { createAlertsQueue, createEmbedQueue, createMaintenanceQueue } from "./queues";
 import { connection } from "./redis";
-import { readObject, removeObject } from "./storage";
+import { listObjects, readObject, removeObject } from "./storage";
 import { processVoice } from "./voice/process-voice";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || null;
@@ -70,7 +70,7 @@ async function main() {
   );
   const maintenanceWorker = new Worker(
     MAINTENANCE_QUEUE,
-    (job) => runMaintenance(job.name, { alerts: alertService, removeObject, reembed }),
+    (job) => runMaintenance(job.name, { alerts: alertService, listObjects, removeObject, reembed }),
     { connection, concurrency: 1 },
   );
   // One transcription at a time: the sidecar has a 1.5GB memory cap and

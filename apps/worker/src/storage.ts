@@ -24,3 +24,11 @@ export async function removeObject(key: string): Promise<void> {
     if (!(err instanceof S3Error && err.code === "NoSuchKey")) throw err;
   }
 }
+
+export async function listObjects(prefix: string): Promise<{ key: string; lastModified: Date }[]> {
+  const objects: { key: string; lastModified: Date }[] = [];
+  for await (const item of client.listObjectsV2(BUCKET, prefix, true)) {
+    if (item.name) objects.push({ key: item.name, lastModified: item.lastModified });
+  }
+  return objects;
+}
