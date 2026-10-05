@@ -24,11 +24,13 @@ export type TranscriptSignals = {
   languageProbability: number | null;
 };
 
-// Whether the words themselves are likely right. Stricter than Whisper's own
-// thresholds (-1.0 log-probability, 2.4 compression, 0.6 no-speech): those
-// decide when Whisper throws a segment away. This alone decides whether a
-// transcript feeds the candidate's embedding.
-export function transcriptWordsReliable(signals: Omit<TranscriptSignals, "languageProbability">): boolean {
+// Whether the audio was clear enough to transcribe. Not whether the words are
+// right: a clearly heard wrong word (दीन for तीन) passes every one of these.
+// Stricter than Whisper's own thresholds (-1.0 log-probability, 2.4
+// compression, 0.6 no-speech), which decide when Whisper throws a segment
+// away. This alone decides whether a transcript feeds the candidate's
+// embedding.
+export function transcriptAudioClear(signals: Omit<TranscriptSignals, "languageProbability">): boolean {
   const { avgLogprob, noSpeechProb, compressionRatio } = signals;
   if (avgLogprob === null || avgLogprob < -0.7) return false;
   if (noSpeechProb !== null && noSpeechProb > 0.5) return false;
@@ -37,13 +39,13 @@ export function transcriptWordsReliable(signals: Omit<TranscriptSignals, "langua
 }
 
 // Whether an employer should read rather than hear. Low language confidence
-// counts here but not for the embedding: on Hindi mixed with English, Whisper
-// often can't settle between Hindi and Urdu, which decides the script, not
-// whether the words were heard right. A reader can be handed a script they
-// can't read; the embedding model reads both (see README, "Transcripts are a
-// guess").
+// counts here but not for the embedding: on short Hindi clips, mixed with
+// English or not, Whisper often can't settle between Hindi and Urdu, which
+// decides the script, not whether the audio was clear. A reader can be handed
+// a script they can't read; the embedding model reads both (see README,
+// "Transcripts are a guess").
 export function transcriptConfidence(signals: TranscriptSignals): "high" | "low" {
-  if (!transcriptWordsReliable(signals)) return "low";
+  if (!transcriptAudioClear(signals)) return "low";
   if (signals.languageProbability !== null && signals.languageProbability < 0.6) return "low";
   return "high";
 }

@@ -1,5 +1,5 @@
 import { prisma } from "@walkins/db";
-import { type EmbedJob, formatExperience, formatSalary, transcriptWordsReliable } from "@walkins/shared";
+import { type EmbedJob, formatExperience, formatSalary, transcriptAudioClear } from "@walkins/shared";
 
 export type EmbedDeps = { embed: (texts: string[]) => Promise<number[][]> };
 
@@ -19,12 +19,12 @@ async function candidateText(id: string): Promise<string | null> {
   });
   if (!candidate) return null;
   const [intro] = candidate.voiceIntros;
-  // Wrong words would place the candidate somewhere they don't belong, so an
-  // unreliable transcript is left out and their roles and experience place
-  // them. Language confidence is deliberately not part of this: a Hindi
+  // A muddled transcript would place the candidate somewhere they don't
+  // belong, so one from unclear audio is left out and their roles and
+  // experience place them. Language confidence is deliberately not part of this: a Hindi
   // speaker transcribed in Urdu script embeds almost exactly like the same
   // words in English.
-  const transcript = intro && transcriptWordsReliable(intro) ? intro.transcript : null;
+  const transcript = intro && transcriptAudioClear(intro) ? intro.transcript : null;
   return [
     `Looking for work as: ${candidate.roles.map((r) => r.role.title).join(", ") || "any role"}.`,
     `Experience: ${formatExperience(candidate.experienceYears, candidate.experienceYears)}.`,
