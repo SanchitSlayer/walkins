@@ -226,13 +226,32 @@ message telling them not to travel.
 **Retention.** A recording is someone's voice, so it is kept only while it is
 their current intro and never longer than 180 days. Replaced recordings and
 old ones are deleted, object and transcript together, by the existing nightly
-maintenance job at 00:30. Uploads that were never confirmed are not yet
-cleaned up; a MinIO lifecycle rule on the `voice-intros/` prefix would do it.
+maintenance job at 00:30. The same job deletes any audio that has no row
+and is more than a day old. A file like that can't be played, and the purge,
+which finds recordings through their rows, would never remove it. It comes
+from an upload that was never confirmed, or a row deleted some other way.
+The day's margin is deliberate: a slow upload or a row written late must never
+cost someone their recording, and waiting a day costs nothing for a nightly
+job. Each one is logged as a warning with its key. Orphans turning up
+regularly point to a problem in the upload flow, not routine housekeeping.
 
 #### Transcripts are a guess, and the interface says so
 
 We used Whisper, measured its error rate on our users' language, and built the
 interface so it cannot quietly mislead an employer.
+
+**The most important finding: a transcript can pass every confidence check and
+still be substantively wrong.** A real candidate said तीन साल (three years) of
+experience, and Whisper wrote दीन साल. दीन is a real Hindi word ("poor"), so the
+transcript doesn't look wrong to anyone reading it. It was heard clearly and
+written confidently: every signal Whisper gives (log-probability, no-speech
+probability, compression ratio, language confidence) was healthy, and the
+transcript was rated high confidence. **Confidence signals detect unclear
+audio, not wrong words.** A clearly heard wrong word passes them all. That is
+why every transcript carries a permanent "Automatic transcript, may contain
+errors" label, why the recording is always one click away, and why a
+transcript is never something employers filter or shortlist on. The details
+are below, under "The first real voice measured".
 
 What we measured, on this machine's CPU (Apple Silicon, 4 threads), with
 macOS's built-in text-to-speech voices reading prepared scripts:
@@ -320,36 +339,115 @@ So the one confidence score is now two:
 - **Can an employer read it?** Display uses all four signals below. Low
   language confidence counts, because it means the text may have come out in
   a script the reader can't use.
-- **Were the words heard right?** The embedding uses only average
-  log-probability, no-speech probability and compression ratio. Low language
-  confidence means "unsure which script", not "unsure what was said". All
-  three word-level signals were healthy on this recording, and under the old
-  single threshold its best possible input to matching was being thrown away.
+- **Was the audio clear enough to transcribe?** The embedding uses only
+  average log-probability, no-speech probability and compression ratio. Low
+  language confidence means "unsure which script", not "unsure what was
+  said". All three were healthy on this recording, and under the old single
+  threshold its best possible input to matching was being thrown away. Clear
+  audio is not the same as correct words (see the दीन finding), so these
+  three keep out a muddled transcript, not every wrong one.
 
 This rests on one recording. It is a direction to keep measuring, not a
 settled result.
+
+#### The first real voice measured: Hindi read from a script
+
+This is the first error rate measured on a real human voice rather than
+synthetic audio. A person read a prepared Hindi script into the profile page's
+recorder in a browser, so the exact words were known in advance:
+
+> नमस्ते, मेरा नाम सचिन है। मैं जोधपुर में रहता हूँ। मुझे तीन साल का अनुभव है।
+> मैंने पहले एक दुकान में सेल्स का काम किया है। मैं फील्ड सेल्स एग्जीक्यूटिव के
+> लिए काम ढूंढ रहा हूँ। मैं कल से काम शुरू कर सकता हूँ।
+
+Whisper `small` detected Hindi at 79% and wrote Devanagari:
+
+> नमस ते मेरा नाम सचिन है में जोर्पूर में रहता हूं मुझे दीन साल का अनुबव है
+> मैंने पहले एक दुकान में सेल्स का गाम किया है मैं फील सेल्स अग्जिकुटिव के लिये
+> कान भूड्राम मैं कल से काम चुरू कर सकता हैं
+
+| | Word error rate |
+| --- | --- |
+| Real voice, read script, 20.3 s | **38.6%** (17 errors in 44 words) |
+| Same, not counting a missing nukta or chandrabindu | 36.4% |
+| Synthetic Hindi clips, for comparison | 25.2% |
+
+**The error rate understates the harm.** The errors fall on the words an
+employer reads a transcript for:
+
+| Said | Transcribed | What was lost |
+| --- | --- | --- |
+| तीन (three) years' experience | दीन | The number. दीन is a real word ("poor"), so it doesn't even look wrong |
+| जोधपुर | जोर्पूर | Where they live |
+| फील्ड सेल्स एग्जीक्यूटिव | फील सेल्स अग्जिकुटिव | The job they want |
+| काम ढूंढ रहा हूँ (looking for work) | कान भूड्राम | That they are looking for work at all |
+
+Of the six things this intro tells an employer, the name, the previous job (sales in a
+shop) and the start date ("from tomorrow") came through. The years of
+experience, the city and the role wanted did not. Numbers, place names and
+English job titles written in Devanagari are where Whisper is weakest and
+where a wrong word matters most: they are rare in what the model learned from,
+and तीन and दीन differ by a single consonant.
+
+None of the confidence signals noticed. Log-probability −0.33, no-speech
+probability 0.16, compression ratio 2.12 and language confidence 79% all pass,
+so this transcript is rated high confidence and shown to employers as text.
+The audio was clear, and the signals measure exactly that. They have no way to
+know that a clearly heard word is the wrong one. The only thing between an
+employer and "दीन साल" is the label on every transcript.
+
+#### Hindi or Urdu: language detection on real voices
+
+The Hinglish recording raised the question of whether code-switching is what
+makes Whisper write Hindi in Urdu script. Four real recordings, all on
+`small`:
+
+| Recording | Detected | Script written |
+| --- | --- | --- |
+| Hinglish, 31 s | Urdu 48% | Perso-Arabic for the Hindi, Latin for the English |
+| Pure Hindi, formal vocabulary, 15 s | **Urdu 78%** (Hindi 17%) | Perso-Arabic |
+| Pure Hindi, 21 s | Hindi 83% | Devanagari |
+| Pure Hindi, read script, 20 s | Hindi 79% | Devanagari |
+
+**On short clips Whisper often cannot tell Hindi from Urdu.** Code-switching
+made it worse in the one sample we have, but pure Hindi was also written in
+Urdu script once in three. The pure-Hindi recording that came out as Urdu used
+formal vocabulary (शाखा, रसायन विज्ञान), about as far from Urdu as Hindi goes,
+and it reproduced on a second run. It also passed every confidence check, at
+78% language confidence. What kept it from an employer was the script check,
+which judges the text by the script it came out in and offers the recording
+instead.
+
+These are four recordings from one speaker. Only the read-script one has a
+measured error rate. The Urdu-script recording was not scored: scoring needs a
+reference transcript, and the recording was left to be deleted under the
+retention policy rather than kept back to grow the sample. Keeping someone's voice past its
+retention to improve a statistic is the wrong trade.
 
 So, wherever a transcript appears:
 
 - It is labelled "Automatic transcript, may contain errors" every time it is
   shown, never once in a tooltip. It is never presented as what the candidate
-  said.
+  said. The label is the only guard against a confident, plausible wrong word
+  like दीन for तीन, because no signal Whisper gives can catch one.
 - The detected language and how sure Whisper was of it sit next to it.
-- When the transcript looks unreliable, the recording comes first and the text
-  is folded away under a note saying it is likely to be wrong. "Unreliable"
-  means any of: average log-probability below −0.7, no-speech probability
+- When the audio was hard to make out, the recording comes first and the text
+  is folded away under a note saying it is likely to be wrong. "Hard to make
+  out" means any of: average log-probability below −0.7, no-speech probability
   above 0.5, compression ratio above 2.4 (Whisper repeating itself), or
   language confidence below 60%.
 - Readability is judged by the script the text actually came out in, not by
-  the language Whisper detected. `base` wrote Hindi in Urdu script, and
-  `small` does the same with Hinglish. Each company records which languages
-  its team reads (English and Hindi by default). A transcript in a script nobody there reads is not shown
-  at all. The employer is told which script it came out in and offered the
+  the language Whisper detected. `base` wrote all Hindi in Urdu script, and
+  `small` did it for one pure-Hindi recording in three and for Hinglish, at
+  confidence high enough to pass every other check. Each company records
+  which languages its team reads (English and Hindi by default). A
+  transcript in a script nobody there reads is not shown at all. The employer is told which script it came out in and offered the
   recording instead.
-- A transcript whose words look unreliable (the first three signals) is left
-  out of the candidate's embedding, so wrong words don't decide their match
-  score. One whose only problem is the language is kept, for the reasons
-  above.
+- A transcript whose audio was hard to make out (the first three signals) is
+  left out of the candidate's embedding, so a muddled transcript doesn't
+  decide their match score. One whose only problem is the language is kept,
+  for the reasons above. A clearly heard wrong word still gets through, into
+  the embedding as into the text.
 
 ## Prerequisites
 
@@ -514,12 +612,21 @@ required.
 To clear OTP rate limits while testing, delete the otp-request keys from
 Redis with redis-cli.
 
-Worker tests (vitest) use the local Postgres and Redis, so start Docker first.
-They create and remove their own fixtures and use a throwaway queue:
+API and worker tests (vitest) use the local Postgres, Redis and MinIO, so
+start Docker first. They create and remove their own fixtures and use
+throwaway queues:
 
 ```
 pnpm test
 ```
+
+**Tests share the dev database with your real data.** Any test that calls a
+maintenance function (`markNoShows`, `purgeVoiceIntros`,
+`removeOrphanedRecordings` or anything else the nightly jobs run) must scope
+it to the test's own rows, or give it fake storage. Unscoped, it acts on
+everything in the database. A test that ran the real voice purge unscoped once
+deleted the rows for two real recordings, which left their audio in storage
+with nothing tracking it.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 
