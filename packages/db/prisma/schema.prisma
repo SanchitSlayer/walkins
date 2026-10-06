@@ -40,9 +40,10 @@ model Company {
   // flagged, because script they can't read is worse than no transcript.
   readsLanguages     String[]           @default(["en", "hi"])
 
-  city   City    @relation(fields: [cityId], references: [id])
-  users  User[]
-  drives Drive[]
+  city          City           @relation(fields: [cityId], references: [id])
+  users         User[]
+  drives        Drive[]
+  paymentOrders PaymentOrder[]
 
   @@index([cityId])
   @@map("companies")
@@ -62,38 +63,39 @@ model User {
   companyId String?
   createdAt DateTime @default(now())
 
-  company   Company?   @relation(fields: [companyId], references: [id])
-  candidate Candidate?
-  auditLogs AuditLog[]
+  company       Company?       @relation(fields: [companyId], references: [id])
+  candidate     Candidate?
+  auditLogs     AuditLog[]
+  paymentOrders PaymentOrder[]
 
   @@index([companyId])
   @@map("users")
 }
 
 model Candidate {
-  id              String                                 @id @default(cuid())
-  userId          String                                 @unique
-  cityId          String
-  homeLat         Float
-  homeLng         Float
-  maxTravelKm     Float
-  experienceYears Float
-  resumeKey       String?
-  telegramChatId  String?                                @unique
+  id                   String                                 @id @default(cuid())
+  userId               String                                 @unique
+  cityId               String
+  homeLat              Float
+  homeLng              Float
+  maxTravelKm          Float
+  experienceYears      Float
+  resumeKey            String?
+  telegramChatId       String?                                @unique
   // attended / confirmed over past drives, recomputed nightly; null until
   // the candidate has confirmed for at least one drive.
   reliability          Float?
   reliabilityUpdatedAt DateTime?
   // Populated by a DB trigger from homeLat/homeLng; not writable through Prisma.
-  geom            Unsupported("geography(Point, 4326)")?
+  geom                 Unsupported("geography(Point, 4326)")?
   // Multilingual MiniLM over roles, experience and the voice transcript;
   // written by the worker. Null until first embedded, and ranking then
   // falls back to distance alone.
-  embedding       Unsupported("vector(384)")?
-  embeddedAt      DateTime?
+  embedding            Unsupported("vector(384)")?
+  embeddedAt           DateTime?
 
-  user         User            @relation(fields: [userId], references: [id])
-  city         City            @relation(fields: [cityId], references: [id])
+  user          User            @relation(fields: [userId], references: [id])
+  city          City            @relation(fields: [cityId], references: [id])
   roles         CandidateRole[]
   applications  Application[]
   notifications Notification[]
@@ -166,9 +168,9 @@ model Drive {
   embedding          Unsupported("vector(384)")?
   embeddedAt         DateTime?
 
-  company      Company       @relation(fields: [companyId], references: [id])
-  role         Role          @relation(fields: [roleId], references: [id])
-  city         City          @relation(fields: [cityId], references: [id])
+  company       Company        @relation(fields: [companyId], references: [id])
+  role          Role           @relation(fields: [roleId], references: [id])
+  city          City           @relation(fields: [cityId], references: [id])
   slots         DriveSlot[]
   applications  Application[]
   notifications Notification[]
@@ -209,12 +211,12 @@ enum ApplicationState {
 }
 
 model Application {
-  id             String           @id @default(cuid())
-  driveId        String
-  candidateId    String
-  slotId         String?
-  state          ApplicationState @default(INTERESTED)
-  stateChangedAt DateTime         @default(now())
+  id                String           @id @default(cuid())
+  driveId           String
+  candidateId       String
+  slotId            String?
+  state             ApplicationState @default(INTERESTED)
+  stateChangedAt    DateTime         @default(now())
   // The answers given when applying, keyed by question id.
   knockoutAnswers   Json?
   // Shown to the candidate: what the requirement was, so they don't travel.
@@ -354,4 +356,124 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+enum LedgerOwnerType {
+  COMPANY
+  PLATFORM
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum LedgerReason {
+  TOP_UP
+  CHECK_IN_CHARGE
+  PROMO_GRANT
+}
+
+// One account per owner and currency. ownerId is a company id for COMPANY, or
+// the account's name for PLATFORM ("revenue", "gateway", "promotions"), so it
+// has no foreign key. Balances are never stored: the ledger_balances view sums
+// the entries.
+model LedgerAccount {
+  id        String          @id @default(cuid())
+  ownerType LedgerOwnerType
+  ownerId   String
+  currency  String          @default("INR")
+  createdAt DateTime        @default(now())
+
+  entries LedgerEntry[]
+
+  @@unique([ownerType, ownerId, currency])
+  @@map("ledger_accounts")
+}
+
+// Append-only, and every txnId balances: both are enforced by triggers in the
+// migration SQL, not here. txnId is predictable ("charge:checkin:<id>",
+// "topup:<paymentId>"), so the unique index turns a retried write into a
+// conflict instead of a second charge. Amounts are whole paise, always
+// positive; direction says which way they move.
+model LedgerEntry {
+  id          String          @id @default(cuid())
+  txnId       String
+  accountId   String
+  direction   LedgerDirection
+  amountPaise Int
+  reason      LedgerReason
+  refType     String?
+  refId       String?
+  createdAt   DateTime        @default(now())
+
+  account LedgerAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([txnId, accountId, direction])
+  @@index([accountId, createdAt])
+  @@index([refType, refId])
+  @@map("ledger_entries")
+}
+
+// Prices are data. A change is a new row with a later effectiveFrom, never an
+// edit, so every past charge can be traced to the price it was made at.
+model PricingRule {
+  id            String   @id @default(cuid())
+  event         String
+  unit          String
+  pricePaise    Int
+  effectiveFrom DateTime
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  @@unique([event, effectiveFrom])
+  @@map("pricing_rules")
+}
+
+enum PaymentOrderStatus {
+  CREATED
+  CAPTURED
+  FAILED
+}
+
+// A top-up the company started. Credited once, on capture, keyed on the
+// gateway's payment id: one order can see several payment attempts.
+model PaymentOrder {
+  id               String             @id @default(cuid())
+  companyId        String
+  createdById      String
+  gateway          String
+  gatewayOrderId   String             @unique
+  gatewayPaymentId String?            @unique
+  amountPaise      Int
+  currency         String             @default("INR")
+  status           PaymentOrderStatus @default(CREATED)
+  failureReason    String?
+  createdAt        DateTime           @default(now())
+  capturedAt       DateTime?
+
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("payment_orders")
+}
+
+// Every webhook delivery as received, valid or not. rawBody is text, not
+// JSON: the signature covers the exact bytes, and a JSON column would
+// re-serialise them.
+model PaymentEvent {
+  id               String   @id @default(cuid())
+  gateway          String
+  eventId          String?
+  eventType        String?
+  gatewayPaymentId String?
+  signatureValid   Boolean
+  rawBody          String
+  outcome          String?
+  receivedAt       DateTime @default(now())
+
+  @@index([eventId])
+  @@index([gatewayPaymentId])
+  @@map("payment_events")
 }
