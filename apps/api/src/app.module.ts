@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
+import { AdminModule } from "./admin/admin.module";
 import { ApplicationsModule } from "./applications/applications.module";
 import { AuthModule } from "./auth/auth.module";
+import { BillingModule } from "./billing/billing.module";
 import { CandidatesModule } from "./candidates/candidates.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { CheckInModule } from "./check-in/check-in.module";
@@ -22,6 +24,8 @@ import { LiveModule } from "./live/live.module";
     CheckInModule,
     CompaniesModule,
     LiveModule,
+    BillingModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

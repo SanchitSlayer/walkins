@@ -6,9 +6,14 @@ import {
   type AlertJob,
   alertJobId,
   ALERTS_QUEUE,
+  CHARGE_JOB_OPTIONS,
+  CHARGE_QUEUE,
+  type ChargeJob,
+  chargeJobId,
   EMBED_JOB_OPTIONS,
   EMBED_QUEUE,
   type EmbedJob,
+  MAINTENANCE_QUEUE,
   VOICE_JOB_OPTIONS,
   VOICE_QUEUE,
   type VoiceJob,
@@ -25,6 +30,9 @@ export class JobsService implements OnModuleDestroy {
   private readonly alerts = new Queue<AlertJob>(ALERTS_QUEUE, { connection: this.connection, defaultJobOptions: ALERT_JOB_OPTIONS });
   private readonly voice = new Queue<VoiceJob>(VOICE_QUEUE, { connection: this.connection, defaultJobOptions: VOICE_JOB_OPTIONS });
   private readonly embed = new Queue<EmbedJob>(EMBED_QUEUE, { connection: this.connection, defaultJobOptions: EMBED_JOB_OPTIONS });
+  private readonly charges = new Queue<ChargeJob>(CHARGE_QUEUE, { connection: this.connection, defaultJobOptions: CHARGE_JOB_OPTIONS });
+  // Never added to from here; held so the admin panel can read its failures.
+  private readonly maintenance = new Queue(MAINTENANCE_QUEUE, { connection: this.connection });
 
   async transcribe(job: VoiceJob) {
     await this.voice.add("transcribe", job, { jobId: voiceJobId(job) });
@@ -38,8 +46,17 @@ export class JobsService implements OnModuleDestroy {
     await this.alerts.add(job.templateKey, job, { jobId: alertJobId(job) });
   }
 
+  async charge(job: ChargeJob) {
+    await this.charges.add("charge", job, { jobId: chargeJobId(job) });
+  }
+
+  // Every queue's failed set is its dead-letter list.
+  queues(): Queue[] {
+    return [this.alerts, this.voice, this.embed, this.charges, this.maintenance];
+  }
+
   async onModuleDestroy() {
-    await Promise.all([this.alerts.close(), this.voice.close(), this.embed.close()]);
+    await Promise.all(this.queues().map((q) => q.close()));
     this.connection.disconnect();
   }
 }

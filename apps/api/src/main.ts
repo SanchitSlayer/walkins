@@ -6,7 +6,9 @@ import { DomainErrorFilter } from "./common/domain-error.filter";
 import { WEB_ORIGINS } from "./common/web-origins";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody keeps the exact bytes of each request beside the parsed JSON: a
+  // payment webhook's signature covers those bytes, not a re-serialisation.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.use(cookieParser());
   app.enableCors({ origin: WEB_ORIGINS, credentials: true });
   app.useGlobalFilters(new DomainErrorFilter(app.get(HttpAdapterHost).httpAdapter));
