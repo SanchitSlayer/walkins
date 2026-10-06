@@ -3,8 +3,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { updateDriveSchema } from "@walkins/shared";
-import type { DriveDetail } from "@walkins/shared";
+import { formatPaise, updateDriveSchema } from "@walkins/shared";
+import type { DriveDetail, Wallet } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
@@ -20,6 +20,7 @@ export default function EditDrivePage() {
   const [fields, setFields] = useState<DriveFieldValues | null>(null);
   const [capacity, setCapacity] = useState("");
   const [knockouts, setKnockouts] = useState<KnockoutDraft[]>([]);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,6 +35,7 @@ export default function EditDrivePage() {
 
   useEffect(() => {
     apiClient.getDrive(params.id).then(show);
+    apiClient.getWallet().then(setWallet);
   }, [params.id]);
 
   const editable = drive?.status === "DRAFT" || drive?.status === "PENDING";
@@ -166,6 +168,20 @@ export default function EditDrivePage() {
           <section className="grid gap-3">
             <h2 className="type-meta text-housing-muted">Status</h2>
             <StatusMark state={state} surface="housing" className="type-body" />
+            {drive.reviewNote && (
+              <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">
+                Sent back by review: {drive.reviewNote}. Fix it and send it for review again.
+              </p>
+            )}
+            {(drive.status === "DRAFT" || drive.status === "PENDING") && wallet && !wallet.canGoLive && (
+              <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">
+                Your balance is {formatPaise(wallet.balancePaise)}, below the {formatPaise(wallet.pricePerCheckInPaise ?? 0)} cost
+                of one check-in, so review can&apos;t put this drive live yet.{" "}
+                <Link href="/employer/billing" className="underline underline-offset-4">
+                  Top up
+                </Link>
+              </p>
+            )}
             {drive.status === "DRAFT" && (
               <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "Couldn't send for review")}>
                 Send for review
