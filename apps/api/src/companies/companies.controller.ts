@@ -19,6 +19,11 @@ export class CompaniesController {
     return this.companies.settings(requireCompanyId(user));
   }
 
+  @Get("me/analytics")
+  analytics(@CurrentUser() user: AccessTokenPayload) {
+    return this.companies.analytics(requireCompanyId(user));
+  }
+
   @Patch("me")
   updateSettings(
     @CurrentUser() user: AccessTokenPayload,

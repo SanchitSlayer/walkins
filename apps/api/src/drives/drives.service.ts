@@ -430,7 +430,14 @@ export class DrivesService {
     if (!drive) {
       throw new NotFoundException("Drive not found");
     }
-    return drive;
+    // A drive sent back from review returns to DRAFT; the reviewer's reason is
+    // in the audit log, and the employer needs it to fix the drive.
+    const review = await prisma.auditLog.findFirst({
+      where: { entityType: "drive", entityId: driveId, action: "PENDING->DRAFT" },
+      orderBy: { createdAt: "desc" },
+    });
+    const reason = (review?.after as { reason?: string } | null)?.reason;
+    return { ...drive, reviewNote: drive.status === "DRAFT" && review ? (reason ?? "Sent back by review without a reason") : null };
   }
 
   // Company-scoping enforcement point: every by-id operation (update, submit,

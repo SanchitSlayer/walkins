@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { type Actor, createApplication, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import {
   type CheckInRequest,
@@ -9,6 +9,7 @@ import {
   formatTime,
 } from "@walkins/shared";
 import { toCheckIn } from "../applications/application.mapper";
+import { JobsService } from "../common/jobs.service";
 import { isUniqueViolation } from "../common/prisma-errors";
 import { RateLimiterService } from "../common/rate-limiter.service";
 import { redis } from "../common/redis";
@@ -42,11 +43,26 @@ function describeMeters(meters: number) {
 
 @Injectable()
 export class CheckInService {
+  private readonly logger = new Logger(CheckInService.name);
+
   constructor(
     private readonly tokens: CheckInTokenService,
     private readonly live: LiveGateway,
     private readonly limiter: RateLimiterService,
+    private readonly jobs: JobsService,
   ) {}
+
+  // Billing never holds up the person at the gate. The check-in has already
+  // committed, and this isn't awaited: the queue's Redis connection waits out
+  // an outage rather than failing, which would otherwise hang the response.
+  // If queueing fails, the 15-minute sweep finds the uncharged check-in. A
+  // flagged check-in isn't charged until the employer confirms it.
+  private queueCharge(checkIn: { id: string; isValid: boolean }) {
+    if (!checkIn.isValid) return;
+    this.jobs
+      .charge({ checkInId: checkIn.id })
+      .catch((err) => this.logger.error(`Couldn't queue the charge for check-in ${checkIn.id}; the sweep will pick it up`, err));
+  }
 
   async issueCode(companyId: string, driveId: string): Promise<CheckInCode> {
     const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId } });
@@ -188,6 +204,7 @@ export class CheckInService {
       });
       const ttlSeconds = Math.ceil((token.expiresAt.getTime() + OFFLINE_GRACE_MS - Date.now()) / 1000);
       await redis.set(key, "1", "EX", Math.max(ttlSeconds, 1));
+      this.queueCharge(checkIn);
       await this.live.publish(drive.id);
       return checkInResultSchema.parse({ outcome: "checked_in", checkIn: toCheckIn(checkIn) });
     } catch (err) {
@@ -215,6 +232,9 @@ export class CheckInService {
         });
         return tx.checkIn.create({ data: { applicationId, method: "MANUAL", isValid: true } });
       });
+      // Charged like any other: the employer is vouching that this person
+      // came, and if their word were free the desk could mark a room present.
+      this.queueCharge(checkIn);
       await this.live.publish(application.driveId);
       return checkInResultSchema.parse({ outcome: "checked_in", checkIn: toCheckIn(checkIn) });
     } catch (err) {
@@ -244,6 +264,7 @@ export class CheckInService {
       });
       return updated;
     });
+    this.queueCharge(confirmed);
     await this.live.publish(checkIn.application.driveId);
     return toCheckIn(confirmed);
   }
