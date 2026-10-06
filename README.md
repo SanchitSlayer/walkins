@@ -449,6 +449,240 @@ So, wherever a transcript appears:
   for the reasons above. A clearly heard wrong word still gets through, into
   the embedding as into the text.
 
+### Billing: employers pay for verified show-ups
+
+An employer pays for one thing: a person who actually arrived. That is what
+the system can prove (the QR, the geofence and the employer's own desk exist
+to establish it) and what an employer values. Applications, alerts and
+bookings are free. A check-in costs ₹200, set as data in `pricing_rules`, not
+in code. A check-in is charged when it is verified, and every kind counts:
+- a scan inside the venue's geofence;
+- a walk-in;
+- someone the desk marks present, including "mark present anyway" for a
+  screened-out candidate. The employer is vouching that this person came, and
+  if their word were free, the desk could mark the whole room present.
+
+A flagged check-in (a loose GPS reading, or an offline scan sent late) isn't
+charged until the employer confirms it.
+
+#### The ledger
+
+Money lives in a double-entry ledger: `ledger_accounts`, `ledger_entries` and
+`pricing_rules`. Each company has a wallet account. The platform has three:
+- `revenue`, for check-in charges;
+- `gateway`, for money received through the payment gateway;
+- `promotions`, for credit the platform has given away.
+
+The rules are enforced by Postgres itself, in the migration's SQL, so no code
+path, script or psql session can break them by accident:
+
+- **Every transaction balances.** A deferred constraint trigger checks, for
+  each `txnId`, that debits equal credits and every account shares a currency.
+  It runs when the transaction commits rather than per row, so both legs can
+  be inserted first. A later transaction adding an unbalanced leg to an old
+  `txnId` is refused the same way.
+- **Append-only.** Triggers refuse UPDATE, DELETE and TRUNCATE on entries,
+  accounts and prices. A mistake is fixed by a new, reversing transaction,
+  never by editing history. A price change is a new row with a later
+  `effectiveFrom`.
+- **Whole paise only.** `amountPaise` is an integer, checked positive; a
+  direction says which way the money moves. Every API schema insists on
+  integers. Paise become rupees in exactly one place, `formatPaise`, and only
+  as text.
+- **Balances are never stored.** The `ledger_balances` view computes credits
+  minus debits for every account. Under that one rule, platform accounts that
+  hold money read negative; the admin ledger says so rather than flipping signs.
+- **No double charges.** `txnId` is predictable (`charge:checkin:<id>`,
+  `topup:<payment id>`, `promo:launch:<company>`), and a unique index on
+  `(txnId, accountId, direction)` turns a retry, a redelivered job or a
+  replayed webhook into a no-op.
+
+The limit, stated honestly: the app connects to Postgres as the tables' owner,
+so revoking UPDATE and DELETE (which the migration does) changes nothing for
+it. The triggers are the real guard. A database superuser can disable
+triggers. These rules protect the ledger from the application, not from
+someone with full control of the database.
+
+**Prisma hides commit-time errors.** Building this turned up a Prisma
+behaviour that would have defeated the balance rule silently. When the
+deferred trigger rejects a transaction at COMMIT, Postgres rolls it back,
+but Prisma's interactive `$transaction` reports success. A charge job would
+have logged "charged ₹200" with nothing written. So `postTransaction` runs
+`SET CONSTRAINTS ledger_entries_balanced IMMEDIATE` after inserting its
+legs. That fires the check inside the transaction, as an ordinary error Prisma
+does report. `apps/api/test/ledger.test.ts` pins down both halves: the
+database still refuses the write left to commit, and the immediate check
+raises. If a Prisma upgrade starts reporting commit errors, that test fails,
+and the workaround can be reconsidered.
+
+#### Charging
+
+1. The check-in transaction commits and the candidate gets their answer.
+   Billing runs after that and can neither undo it nor slow it down.
+2. The API queues a `charge` job and **doesn't wait for it**. BullMQ's
+   connection waits out a Redis outage rather than failing, which would
+   otherwise hang the response at the gate. If queueing fails, it is logged
+   and the check-in stands.
+3. The worker's charge job debits the company's wallet and credits platform
+   revenue, at the price **in effect when the person arrived** (`effectiveFrom
+   ≤ scannedAt`), not when the job runs.
+4. **The guarantee:** every 15 minutes, the existing maintenance schedule
+   sweeps for verified check-ins since billing began that have no charge, and
+   queues them again. A dropped job delays a charge; it never loses one.
+5. Failures retry with backoff. A job that runs out of retries stays in the
+   charge queue's failed set, which the admin panel shows and can retry.
+
+Check-ins from before the launch price existed are never charged. Payment
+outages can't touch any of this: charges only move money between ledger
+accounts, and the gateway is only used for top-ups.
+
+**A wallet can go negative during a live drive.** The show-up happened and is
+owed. Refusing to record it would let a billing state affect a person standing
+at a gate, which this project has avoided throughout. A negative or short
+balance shows on the employer's billing page and blocks any new drive from
+going live.
+
+One known gap: if a price of ₹0 is ever set, a check-in at that price has no
+charge to record, so the sweep keeps re-queueing it every 15 minutes. That is
+harmless, but wasteful.
+
+#### Wallet and top-ups
+
+Employers top up through Razorpay test mode or a mock gateway, both behind
+`IPaymentGateway` (`apps/api/src/billing/`), the same pattern as the
+notification channels. `PAYMENT_GATEWAY` picks the gateway:
+
+- **`mock` (the default)** runs the whole flow with no network and no keys.
+  It produces orders, payments, checkout signatures and signed webhooks shaped
+  exactly like Razorpay's, so a demo runs the real verification and crediting
+  code. The billing page shows a panel ("Pay", "Decline the payment") where
+  Razorpay's checkout window would be. Its secrets are generated afresh each
+  time the API starts, and it refuses to start in production.
+- **`razorpay`** uses Razorpay's REST API directly, with no SDK. It needs
+  `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET`. The
+  webhook secret is the one set on the webhook in Razorpay's dashboard, not the
+  key secret. The account must capture payments automatically: an authorised
+  but uncaptured payment is never credited.
+
+Money is credited in one place, keyed on the gateway's payment id. Two paths
+lead there, and using both still credits once:
+
+1. **The webhook** (`POST /api/billing/webhooks/razorpay`). Every delivery is
+   stored first, exactly as received, valid or not: the raw bytes go in a text
+   column, because a JSON column would re-serialise them. Then:
+   - The signature is checked over the raw request bytes with a constant-time
+     comparison. A bad signature gets a 400 and nothing else happens.
+   - Only `payment.captured` and `order.paid` credit. `payment.failed` marks
+     the order failed only if it is still open, so a captured order never moves
+     back to failed, whatever order events arrive in.
+   - Retries, duplicate events and replays (Razorpay's signature has no
+     timestamp) all reach the same payment id and change nothing.
+   - The captured amount and currency must match an order we created for that
+     company.
+   - A second, different payment on an order that's already paid is refused
+     and logged for a refund.
+2. **Confirmation after checkout.** The page's word is never enough. The API
+   verifies the checkout signature, then asks Razorpay directly whether the
+   payment was captured.
+
+**The webhook is correct but unexercised against live deliveries.** Razorpay
+can't reach a webhook on a laptop without a tunnel, and none is used, so in
+local development money arrives through the second path. The webhook handler
+is fully implemented. `apps/api/test/billing.test.ts` covers it with signed
+payloads: duplicates, racing deliveries, forged and edited bodies, events out
+of order, a failed attempt followed by a successful one, and the wrong amount.
+Every mock top-up also delivers a signed webhook through the same handler
+before the page confirms. It has never received a delivery from Razorpay
+itself.
+
+Refunds and disputes (`refund.*` events) are stored but not acted on; a refund
+would be a reversing ledger transaction. **A drive can't go live while the
+company's balance is below the cost of one check-in.** The admin's approval
+refuses it and says why, and the employer's drive page and billing page say
+so as well.
+
+#### Admin panel
+
+`/admin` is for the ADMIN role only. Nothing created an ADMIN before this
+phase, and sign-in still can't, on purpose. An admin is made with a script:
+
+```
+pnpm admin:create <10-digit phone> <name>
+```
+
+It is a script rather than a seed flag so it runs once against any database
+without reseeding. It changes nothing if the phone is already an admin, and
+refuses a phone that belongs to a candidate or employer. Sign in with that
+phone, and the login page sends admins to `/admin`. The panel has four pages:
+
+- **Verification.** "Check" asks the verification provider and applies its
+  answer; "reject" records the admin's own reason. Both go in the audit log.
+  The provider is `MockVerificationProvider`, behind `IVerificationProvider`.
+  It only checks that a GSTIN is present and well formed (a valid state code,
+  then PAN, entity number and check character). It looks nothing up, and its
+  answer says so. The seed adds three pending companies, one GSTIN of each
+  kind it tells apart.
+- **Drives.** Approving is how a drive goes live. It needs a verified company
+  with at least one check-in's worth of credit, and every blocker is listed
+  on the drive at once. Sending a drive back returns it to draft with the
+  reason, which the employer sees on their drive page.
+- **Failed jobs.** Every queue's dead-letter set: alerts, charges, voice,
+  embeddings and maintenance. Each job has a "Retry" button with a
+  confirmation. Retrying is safe: alerts claim a slot before sending, and
+  charges and top-ups are keyed so a second run changes nothing.
+- **Ledger.** Every account's balance, entries filterable by account or
+  transaction, a line saying whether every transaction balances, and the price
+  history with a form for a new price. A new price takes effect from now or
+  later, never earlier.
+
+#### Employer analytics
+
+`/employer/analytics` reads two materialised views. The worker refreshes them
+every 15 minutes from the existing maintenance schedule, using `CONCURRENTLY`
+so they stay readable while refreshing. A busy dashboard never queries the
+live tables check-in depends on. Per drive:
+
+- **Alerted:** candidates sent the 48-hour alert.
+- **Applied:** applied in any way other than walking in.
+- **Booked:** ever booked a seat, taken from the audit log. A hired or absent
+  candidate did book; their current state has forgotten it, and the
+  append-only audit log has not.
+- **Checked in:** booked candidates with a verified check-in. Walk-ins are
+  counted apart, outside the funnel.
+- **Hired.**
+- **Show-up rate:** checked in divided by booked.
+
+A second view counts verified check-ins and hires per day, by India's
+calendar day, for the 30-day chart. The charts use two colours of their own,
+`--chart-1` and `--chart-2`, validated for colour-blind separation and
+contrast on the desk's dark surface. The state lamps stay reserved for state.
+
+#### What is live and what is scaffolding
+
+Parts of the data model existed before anything used them. This phase made
+these live:
+
+| In the schema | Before Phase 7 | Now |
+| --- | --- | --- |
+| `UserRole.ADMIN` | Nothing created or checked it | `pnpm admin:create`, and the `/admin` panel |
+| `Company.verificationStatus` | Only the seed set it; nothing read it | Changed through the verification provider; approving a drive needs VERIFIED |
+| `Company.gstin` | Stored, never read | Read by the verification provider |
+| `DriveStatus.PENDING → LIVE` | Employers could submit, but nothing moved a drive live; seeded drives were simply created LIVE | Admin approval, after the verification and balance checks |
+
+Still scaffolding after this phase:
+
+- **Employer self sign-up.** Companies and employers come only from the seed.
+  The verification queue is filled by seeded companies until employers can
+  register themselves.
+- **The verification provider** checks GSTIN format, not a registry.
+- **`ApplicationState.INTERESTED`.** No transition leads into it, so no
+  application can be in it. The transitions out of it, and the screens that
+  handle it, are waiting for a "save for later" feature.
+- **`Candidate.reliability`** is recomputed every night and shown nowhere.
+- **`Notification.deliveredAt`** is never written: Telegram doesn't report
+  delivery, and WhatsApp, which would, is not implemented.
+- **Refunds and disputes.** Webhook events are stored, nothing more.
+
 ## Prerequisites
 
 - Node.js 20 or later
@@ -514,6 +748,15 @@ So, wherever a transcript appears:
    - web: http://localhost:3000
    - api: http://localhost:4000/health
    - MinIO console: http://localhost:9001
+
+7. Optional: make an admin for `/admin`:
+
+   ```
+   pnpm admin:create <10-digit phone> <name>
+   ```
+
+   Top-ups use the mock payment gateway unless `PAYMENT_GATEWAY=razorpay` and
+   the three `RAZORPAY_*` keys are set in `.env` (see "Wallet and top-ups").
 
 ## Stopping
 
@@ -612,21 +855,38 @@ required.
 To clear OTP rate limits while testing, delete the otp-request keys from
 Redis with redis-cli.
 
-API and worker tests (vitest) use the local Postgres, Redis and MinIO, so
-start Docker first. They create and remove their own fixtures and use
-throwaway queues:
+API and worker tests (vitest) use the local Redis and their own Postgres
+database, `TEST_DATABASE_URL`. Create it once, and again after any new
+migration:
+
+```
+pnpm test:db
+```
+
+Then:
 
 ```
 pnpm test
 ```
 
-**Tests share the dev database with your real data.** Any test that calls a
-maintenance function (`markNoShows`, `purgeVoiceIntros`,
-`removeOrphanedRecordings` or anything else the nightly jobs run) must scope
-it to the test's own rows, or give it fake storage. Unscoped, it acts on
-everything in the database. A test that ran the real voice purge unscoped once
-deleted the rows for two real recordings, which left their audio in storage
-with nothing tracking it.
+Tests never run against `DATABASE_URL`: each suite's `test/setup.ts` refuses
+to start if `TEST_DATABASE_URL` is missing or the same. There are two reasons:
+- The ledger is append-only, so every charge or top-up a test commits stays
+  there forever.
+- Tests call maintenance functions that act on whole tables.
+
+The test database collects ledger rows from every run, which is expected.
+Drop it and run `pnpm test:db` to start clean. Fixtures other than ledger
+rows are created and removed by each test.
+
+**Scope every maintenance function a test calls.** Test files run in
+parallel against one test database. Any test that calls a maintenance
+function (`markNoShows`, `purgeVoiceIntros`, `removeOrphanedRecordings`,
+`sweepCharges` or anything else the nightly jobs run) must scope it to the
+test's own rows, or give it fake storage. Unscoped, it acts on everything in
+the database. Before tests had their own database, a test that ran the real
+voice purge unscoped deleted the rows for two real recordings, which left
+their audio in storage with nothing tracking it.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 
