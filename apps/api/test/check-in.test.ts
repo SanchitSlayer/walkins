@@ -7,6 +7,7 @@ import { CHECKIN_CODE_ALPHABET, type CheckInRequest } from "@walkins/shared";
 import { ApplicationsService } from "../src/applications/applications.service";
 import { checkInCodeKey, CheckInTokenService } from "../src/check-in/check-in-token.service";
 import { CheckInService } from "../src/check-in/check-in.service";
+import type { JobsService } from "../src/common/jobs.service";
 import { RateLimiterService } from "../src/common/rate-limiter.service";
 import { redis } from "../src/common/redis";
 import { displayName, LiveBoardService } from "../src/live/live-board.service";
@@ -15,7 +16,8 @@ import { createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
 const tokens = new CheckInTokenService();
-const checkIns = new CheckInService(tokens, live, new RateLimiterService());
+const jobs = { charge: vi.fn(async () => {}) } as unknown as JobsService;
+const checkIns = new CheckInService(tokens, live, new RateLimiterService(), jobs);
 // A fresh address per run, so repeated runs don't share the per-address
 // limit on wrong codes; its limiter keys are removed afterwards.
 const ip = `test-${randomUUID()}`;

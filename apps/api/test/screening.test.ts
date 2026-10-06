@@ -42,11 +42,11 @@ const QUESTIONS: KnockoutQuestion[] = [
 const PASSING = { licence: true, age: 22, shift: "Either" };
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
-const jobs = { alert: vi.fn(async () => {}), reembed: vi.fn(async () => {}) } as unknown as JobsService;
+const jobs = { alert: vi.fn(async () => {}), reembed: vi.fn(async () => {}), charge: vi.fn(async () => {}) } as unknown as JobsService;
 const applications = new ApplicationsService(live);
 const applicants = new ApplicantsService({} as StorageService, jobs, live);
 const tokens = new CheckInTokenService();
-const checkIns = new CheckInService(tokens, live, new RateLimiterService());
+const checkIns = new CheckInService(tokens, live, new RateLimiterService(), jobs);
 const IP = "screening-test";
 let fixture: Fixture;
 let candidate = 0;
