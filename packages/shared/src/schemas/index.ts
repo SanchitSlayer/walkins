@@ -139,6 +139,8 @@ export const driveSummarySchema = z.object({
 
 export const driveDetailSchema = driveSummarySchema.extend({
   slots: z.array(driveSlotSchema),
+  // Why review sent the drive back, while it is a draft again.
+  reviewNote: z.string().nullable().optional(),
   venuePinnedAt: z.string().nullable(),
   knockoutQuestions: knockoutQuestionsSchema,
   city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),

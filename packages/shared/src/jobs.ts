@@ -60,3 +60,23 @@ export const EMBED_JOB_OPTIONS = {
   removeOnComplete: true,
   removeOnFail: false,
 } as const;
+
+export const CHARGE_QUEUE = "charge";
+
+export type ChargeJob = { checkInId: string };
+
+// The job id only saves a duplicate run while one is queued; a second charge
+// is ruled out by the ledger's unique txnId, not by this.
+export function chargeJobId({ checkInId }: ChargeJob): string {
+  return `charge.${checkInId}`;
+}
+
+// More attempts than other jobs and kept when they fail: an uncharged
+// show-up is money the platform is owed, and the failed set is where an
+// admin finds it. The 15-minute sweep queues it again regardless.
+export const CHARGE_JOB_OPTIONS = {
+  attempts: 5,
+  backoff: { type: "exponential", delay: 30_000 },
+  removeOnComplete: { age: 7 * 24 * 3600 },
+  removeOnFail: false,
+} as const;

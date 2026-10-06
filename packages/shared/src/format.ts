@@ -50,6 +50,15 @@ export function formatSalary(min: number, max: number): string {
   return min === max ? `₹${rupees.format(min)}` : `₹${rupees.format(min)}–₹${rupees.format(max)}`;
 }
 
+// Paise are whole numbers end to end; this is the only place they become
+// rupees, and only as text.
+export function formatPaise(paise: number): string {
+  const sign = paise < 0 ? "−" : "";
+  const abs = Math.abs(paise);
+  const fraction = abs % 100;
+  return `${sign}₹${rupees.format(Math.trunc(abs / 100))}${fraction ? `.${String(fraction).padStart(2, "0")}` : ""}`;
+}
+
 export function formatExperience(min: number, max: number): string {
   if (max === 0) return "No experience needed";
   const years = (n: number) => `${n} ${n === 1 ? "year" : "years"}`;
