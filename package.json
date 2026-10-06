@@ -9,6 +9,8 @@
     "dev": "dotenv -e .env -- pnpm --parallel --filter=./apps/* run dev",
     "db:migrate": "dotenv -e .env -- pnpm --filter @walkins/db run migrate",
     "db:seed": "dotenv -e .env -- pnpm --filter @walkins/db run seed",
+    "test:db": "dotenv -e .env -- sh -c 'DATABASE_URL=\"$TEST_DATABASE_URL\" pnpm --filter @walkins/db exec prisma migrate deploy && DATABASE_URL=\"$TEST_DATABASE_URL\" pnpm --filter @walkins/db run seed'",
+    "admin:create": "dotenv -e .env -- pnpm --filter @walkins/db exec tsx scripts/create-admin.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test": "pnpm --filter @walkins/api --filter @walkins/worker run test",

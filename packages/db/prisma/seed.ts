@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { ledgerAccount, PLATFORM_ACCOUNT, postTransaction } from "../src/ledger";
 
 const prisma = new PrismaClient();
 
@@ -16,6 +17,14 @@ function mulberry32(seed: number) {
 }
 
 const CANDIDATE_SEED = 42;
+
+const LAUNCH_CREDIT_PAISE = 10_000_00;
+
+const PENDING_COMPANIES = [
+  { name: "Swift Couriers", gstin: "29ABCDE1234F1Z5", phone: "9888800001", city: "Bengaluru" },
+  { name: "Metro Warehousing", gstin: "27ABC1234", phone: "9888800002", city: "Pune" },
+  { name: "FreshCart Retail", gstin: null, phone: "9888800003", city: "Hyderabad" },
+];
 
 // Named residential areas, not uniform scatter, so radius search clusters
 // look realistic in a demo instead of scattering evenly across each city.
@@ -128,6 +137,35 @@ async function main() {
     await prisma.user.create({
       data: { phone: employerPhone, name: "Test Employer", role: "EMPLOYER", companyId: company.id },
     });
+  }
+
+  // Launch credit from the platform's promotions account, so the demo
+  // company's drives can be approved without a top-up first. The txnId makes
+  // it once-only however often the seed runs.
+  await prisma.$transaction(async (tx) =>
+    postTransaction(tx, {
+      txnId: `promo:launch:${company.id}`,
+      reason: "PROMO_GRANT",
+      refType: "company",
+      refId: company.id,
+      legs: [
+        { accountId: await ledgerAccount(tx, "PLATFORM", PLATFORM_ACCOUNT.promotions), direction: "DEBIT", amountPaise: LAUNCH_CREDIT_PAISE },
+        { accountId: await ledgerAccount(tx, "COMPANY", company.id), direction: "CREDIT", amountPaise: LAUNCH_CREDIT_PAISE },
+      ],
+    }),
+  );
+
+  // Companies waiting for verification, so the admin queue has something in
+  // it until employers can sign up themselves. One GSTIN of each kind the
+  // mock provider distinguishes: well formed, malformed, missing.
+  for (const pending of PENDING_COMPANIES) {
+    const exists = await prisma.company.findFirst({ where: { name: pending.name } });
+    if (!exists) {
+      const city = await prisma.city.findFirstOrThrow({ where: { name: pending.city } });
+      await prisma.company.create({
+        data: { name: pending.name, gstin: pending.gstin, contactPhone: pending.phone, cityId: city.id, verificationStatus: "PENDING" },
+      });
+    }
   }
 
   const seededCandidateCount = await prisma.user.count({ where: { phone: { startsWith: "70" }, role: "CANDIDATE" } });
