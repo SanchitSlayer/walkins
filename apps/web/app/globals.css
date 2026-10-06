@@ -58,6 +58,12 @@
     --pending-lamp: #7fa6cc;
     --pending-ink: #2a4d6e;
 
+    /* Chart series, on housing only. Separate from the state lamps, which
+       stay reserved for state; validated for lightness, chroma, colour-blind
+       separation and 3:1 contrast on housing. */
+    --chart-1: #3987e5;
+    --chart-2: #c98500;
+
     /* Chosen to clear 3:1 against housing, raised housing and stock alike. */
     --focus: #4a7fb5;
 

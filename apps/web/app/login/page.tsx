@@ -59,7 +59,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { role } = await apiClient.verifyOtp(parsed.data);
-      router.push(returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : "/profile"));
+      router.push(returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't check the code");
     } finally {

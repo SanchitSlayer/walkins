@@ -12,6 +12,7 @@ const NAV_BY_ROLE: Record<string, { href: string; label: string }[]> = {
     { href: "/profile", label: "Your profile" },
   ],
   EMPLOYER: [{ href: "/employer/drives", label: "Your drives" }],
+  ADMIN: [{ href: "/admin", label: "Admin" }],
 };
 
 export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {

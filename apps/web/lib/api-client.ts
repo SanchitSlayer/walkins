@@ -1,6 +1,9 @@
 "use client";
 
 import type {
+  AdminCompany,
+  AdminDrive,
+  Analytics,
   Applicants,
   ApplicantsAction,
   CandidateProfile,
@@ -9,27 +12,37 @@ import type {
   CheckInResult,
   CheckInCode,
   CompanySettings,
+  CreatePricingRule,
   CreateDriveInput,
   CursorPage,
   DriveDetail,
   DriveSearchPage,
   EmployerApplicationUpdate,
   EmployerDriveRow,
+  FailedJob,
   KnockoutAnswers,
+  LedgerExplorer,
   LiveBoard,
   LiveDisplay,
   MyApplication,
   MyApplications,
+  ModerateDrive,
   OtpRequestInput,
   OtpVerifyInput,
+  PricingRuleView,
   PublicDriveDetail,
   TelegramLink,
+  TopUpOrder,
+  TopUpStatus,
   UpdateCandidateProfileInput,
   UpdateDriveInput,
   VenuePinInput,
+  VerificationOutcome,
+  VerifyCompany,
   VoiceContentType,
   VoiceIntro,
   VoiceUpload,
+  Wallet,
 } from "@walkins/shared";
 
 // Same-origin, proxied to the API by next.config.ts; see lib/api-internal-url.ts.
@@ -241,6 +254,71 @@ export const apiClient = {
 
   async updateCompanySettings(input: CompanySettings): Promise<CompanySettings> {
     return parseOrThrow(await request("/companies/me", { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
+  async getAnalytics(): Promise<Analytics> {
+    return parseOrThrow(await request("/companies/me/analytics"));
+  },
+
+  async getWallet(): Promise<Wallet> {
+    return parseOrThrow(await request("/billing/wallet"));
+  },
+
+  async createTopUp(amountPaise: number): Promise<TopUpOrder> {
+    return parseOrThrow(await request("/billing/top-ups", { method: "POST", body: JSON.stringify({ amountPaise }) }));
+  },
+
+  async confirmTopUp(orderId: string, gatewayPaymentId: string, signature: string): Promise<TopUpStatus> {
+    return parseOrThrow(
+      await request(`/billing/top-ups/${orderId}/confirm`, { method: "POST", body: JSON.stringify({ gatewayPaymentId, signature }) }),
+    );
+  },
+
+  async getTopUp(orderId: string): Promise<TopUpStatus> {
+    return parseOrThrow(await request(`/billing/top-ups/${orderId}`));
+  },
+
+  async mockCheckout(orderId: string, outcome: "success" | "failure"): Promise<{ gatewayPaymentId: string; signature: string }> {
+    return parseOrThrow(await request(`/billing/top-ups/${orderId}/mock-checkout`, { method: "POST", body: JSON.stringify({ outcome }) }));
+  },
+
+  async adminCompanies(): Promise<AdminCompany[]> {
+    return parseOrThrow(await request("/admin/companies"));
+  },
+
+  async adminVerifyCompany(companyId: string, input: VerifyCompany): Promise<VerificationOutcome> {
+    return parseOrThrow(await request(`/admin/companies/${companyId}/verification`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async adminDrives(): Promise<AdminDrive[]> {
+    return parseOrThrow(await request("/admin/drives"));
+  },
+
+  async adminModerateDrive(driveId: string, input: ModerateDrive): Promise<AdminDrive> {
+    return parseOrThrow(await request(`/admin/drives/${driveId}/moderation`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async adminFailedJobs(): Promise<FailedJob[]> {
+    return parseOrThrow(await request("/admin/jobs/failed"));
+  },
+
+  async adminRetryJob(queue: string, jobId: string): Promise<{ retried: boolean }> {
+    return parseOrThrow(
+      await request(`/admin/jobs/${encodeURIComponent(queue)}/${encodeURIComponent(jobId)}/retry`, { method: "POST" }),
+    );
+  },
+
+  async adminLedger(filter: { accountId?: string; txnId?: string }): Promise<LedgerExplorer> {
+    const query = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();
+    return parseOrThrow(await request(`/admin/ledger${query ? `?${query}` : ""}`));
+  },
+
+  async adminPricing(): Promise<PricingRuleView[]> {
+    return parseOrThrow(await request("/admin/pricing"));
+  },
+
+  async adminCreatePricing(input: CreatePricingRule): Promise<PricingRuleView> {
+    return parseOrThrow(await request("/admin/pricing", { method: "POST", body: JSON.stringify(input) }));
   },
 
   async listMyDrives(cursor?: string): Promise<CursorPage<EmployerDriveRow>> {

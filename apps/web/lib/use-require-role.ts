@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { apiClient } from "./api-client";
 import { isNetworkError, lastSession, rememberSession } from "./offline";
 
-export function useRequireRole(role: "EMPLOYER" | "CANDIDATE"): boolean {
+export function useRequireRole(role: "EMPLOYER" | "CANDIDATE" | "ADMIN"): boolean {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
