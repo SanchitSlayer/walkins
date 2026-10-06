@@ -4,6 +4,9 @@ import {
   ALERT_JOB_OPTIONS,
   type AlertJob,
   ALERTS_QUEUE,
+  CHARGE_JOB_OPTIONS,
+  CHARGE_QUEUE,
+  type ChargeJob,
   EMBED_JOB_OPTIONS,
   EMBED_QUEUE,
   type EmbedJob,
@@ -26,6 +29,10 @@ export function createVoiceQueue(connection: Redis, name = VOICE_QUEUE) {
 
 export function createEmbedQueue(connection: Redis, name = EMBED_QUEUE) {
   return new Queue<EmbedJob>(name, { connection, defaultJobOptions: EMBED_JOB_OPTIONS });
+}
+
+export function createChargeQueue(connection: Redis, name = CHARGE_QUEUE) {
+  return new Queue<ChargeJob>(name, { connection, defaultJobOptions: CHARGE_JOB_OPTIONS });
 }
 
 export function createMaintenanceQueue(connection: Redis) {

@@ -1,6 +1,6 @@
 import type { Queue } from "bullmq";
-import { type Prisma, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
-import { dayKey, type EmbedJob } from "@walkins/shared";
+import { CHECK_IN_PRICE_EVENT, Prisma, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
+import { type ChargeJob, dayKey, type EmbedJob } from "@walkins/shared";
 import type { AlertService } from "../alerts/alert-service";
 
 export type MaintenanceDeps = {
@@ -8,6 +8,8 @@ export type MaintenanceDeps = {
   listObjects: (prefix: string) => Promise<{ key: string; lastModified: Date }[]>;
   removeObject: (key: string) => Promise<void>;
   reembed: (job: EmbedJob) => Promise<void>;
+  charge: (job: ChargeJob) => Promise<void>;
+  markAnalyticsRefreshed: (at: Date) => Promise<void>;
 };
 
 // Every drive is in India, so "daily at 07:00" means 07:00 there, whatever
@@ -27,6 +29,8 @@ const SCHEDULES = [
   { name: "morning-reminders", pattern: "0 7 * * *" },
   { name: "expire-drives", pattern: "30 0 * * *" },
   { name: "recompute-reliability", pattern: "0 1 * * *" },
+  { name: "sweep-charges", pattern: "*/15 * * * *" },
+  { name: "refresh-analytics", pattern: "*/15 * * * *" },
 ];
 
 // Upserting by a fixed id keeps exactly one scheduler per job however many
@@ -201,6 +205,39 @@ async function recomputeReliability(): Promise<string> {
   return `${updated} candidates rescored`;
 }
 
+// The guarantee behind charging. The check-in flow queues a charge after it
+// commits but never waits for it, so a Redis blip can drop one; this finds
+// every verified check-in since billing began that has no charge and queues
+// it again. Queueing an already-charged one would be harmless anyway.
+// `driveIds` narrows a run, as `scope` does for purgeVoiceIntros.
+const SWEEP_BATCH = 1000;
+
+export async function sweepCharges(charge: MaintenanceDeps["charge"], driveIds?: string[]): Promise<number> {
+  const scope = driveIds ? Prisma.sql`AND a."driveId" IN (${Prisma.join(driveIds)})` : Prisma.empty;
+  const uncharged = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT ci.id
+    FROM check_ins ci
+    JOIN applications a ON a.id = ci."applicationId"
+    WHERE ci."isValid"
+      AND ci."scannedAt" >= (SELECT min("effectiveFrom") FROM pricing_rules WHERE event = ${CHECK_IN_PRICE_EVENT})
+      AND NOT EXISTS (SELECT 1 FROM ledger_entries le WHERE le."txnId" = 'charge:checkin:' || ci.id)
+      ${scope}
+    ORDER BY ci."scannedAt"
+    LIMIT ${SWEEP_BATCH}
+  `;
+  for (const { id } of uncharged) await charge({ checkInId: id });
+  return uncharged.length;
+}
+
+// CONCURRENTLY keeps the views readable while they refresh, which is why
+// each has a unique index.
+async function refreshAnalytics(markRefreshed: MaintenanceDeps["markAnalyticsRefreshed"]): Promise<string> {
+  await prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY drive_funnel`;
+  await prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY company_daily`;
+  await markRefreshed(new Date());
+  return "analytics refreshed";
+}
+
 export function runMaintenance(name: string, deps: MaintenanceDeps): Promise<string> {
   switch (name) {
     case "scan-upcoming-drives":
@@ -211,6 +248,10 @@ export function runMaintenance(name: string, deps: MaintenanceDeps): Promise<str
       return expireDrives(deps);
     case "recompute-reliability":
       return recomputeReliability();
+    case "sweep-charges":
+      return sweepCharges(deps.charge).then((n) => `${n} uncharged check-ins queued`);
+    case "refresh-analytics":
+      return refreshAnalytics(deps.markAnalyticsRefreshed);
     default:
       throw new Error(`Unknown maintenance job "${name}"`);
   }

@@ -4,6 +4,10 @@ import { prisma } from "@walkins/db";
 import {
   type AlertJob,
   ALERTS_QUEUE,
+  ANALYTICS_REFRESHED_KEY,
+  CHARGE_QUEUE,
+  type ChargeJob,
+  chargeJobId,
   EMBED_QUEUE,
   type EmbedJob,
   MAINTENANCE_QUEUE,
@@ -17,12 +21,13 @@ import { processAlert } from "./alerts/process-alert";
 import { registerBotCommands } from "./bot/telegram-bot";
 import { ChannelResolver } from "./channels/channel-resolver";
 import { ConsoleChannel } from "./channels/console-channel";
+import { processCharge } from "./charge/process-charge";
 import { processEmbed } from "./embed/process-embed";
 import { TelegramChannel } from "./channels/telegram-channel";
 import { WhatsAppChannel } from "./channels/whatsapp-channel";
 import { backfillEmbeddings, registerSchedules, runMaintenance } from "./maintenance/maintenance-jobs";
 import { embed, transcribe } from "./ml/sidecar";
-import { createAlertsQueue, createEmbedQueue, createMaintenanceQueue } from "./queues";
+import { createAlertsQueue, createChargeQueue, createEmbedQueue, createMaintenanceQueue } from "./queues";
 import { connection } from "./redis";
 import { listObjects, readObject, removeObject } from "./storage";
 import { processVoice } from "./voice/process-voice";
@@ -49,9 +54,16 @@ async function main() {
   const alertsQueue = createAlertsQueue(connection);
   const maintenanceQueue = createMaintenanceQueue(connection);
   const embedQueue = createEmbedQueue(connection);
+  const chargeQueue = createChargeQueue(connection);
   const alertService = new AlertService(alertsQueue);
   const reembed = async (job: EmbedJob) => {
     await embedQueue.add(job.kind, job);
+  };
+  const charge = async (job: ChargeJob) => {
+    await chargeQueue.add("charge", job, { jobId: chargeJobId(job) });
+  };
+  const markAnalyticsRefreshed = async (at: Date) => {
+    await connection.set(ANALYTICS_REFRESHED_KEY, at.toISOString());
   };
   const resolver = new ChannelResolver(buildChannels());
 
@@ -70,7 +82,7 @@ async function main() {
   );
   const maintenanceWorker = new Worker(
     MAINTENANCE_QUEUE,
-    (job) => runMaintenance(job.name, { alerts: alertService, listObjects, removeObject, reembed }),
+    (job) => runMaintenance(job.name, { alerts: alertService, listObjects, removeObject, reembed, charge, markAnalyticsRefreshed }),
     { connection, concurrency: 1 },
   );
   // One transcription at a time: the sidecar has a 1.5GB memory cap and
@@ -89,7 +101,12 @@ async function main() {
     concurrency: 1,
   });
 
-  for (const worker of [alertsWorker, maintenanceWorker, voiceWorker, embedWorker]) {
+  const chargeWorker: Worker<ChargeJob, string> = new Worker(CHARGE_QUEUE, (job) => processCharge(job), {
+    connection,
+    concurrency: 2,
+  });
+
+  for (const worker of [alertsWorker, maintenanceWorker, voiceWorker, embedWorker, chargeWorker]) {
     worker.on("completed", (job, result) => console.log(`worker: ${worker.name} ${job.id} ${result}`));
     worker.on("failed", (job, err) =>
       console.error(`worker: ${worker.name} ${job?.id} failed (attempt ${job?.attemptsMade}): ${err.message}`),
@@ -112,8 +129,8 @@ async function main() {
 
   const shutdown = async () => {
     bot?.stop();
-    await Promise.all([alertsWorker.close(), maintenanceWorker.close(), voiceWorker.close(), embedWorker.close()]);
-    await Promise.all([alertsQueue.close(), maintenanceQueue.close(), embedQueue.close()]);
+    await Promise.all([alertsWorker.close(), maintenanceWorker.close(), voiceWorker.close(), embedWorker.close(), chargeWorker.close()]);
+    await Promise.all([alertsQueue.close(), maintenanceQueue.close(), embedQueue.close(), chargeQueue.close()]);
     await prisma.$disconnect();
     connection.disconnect();
     process.exit(0);

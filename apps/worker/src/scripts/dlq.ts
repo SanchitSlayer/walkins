@@ -1,8 +1,14 @@
-import { createAlertsQueue, createMaintenanceQueue } from "../queues";
+import { createAlertsQueue, createChargeQueue, createEmbedQueue, createMaintenanceQueue, createVoiceQueue } from "../queues";
 import { connection } from "../redis";
 
 async function main() {
-  const queues = [createAlertsQueue(connection), createMaintenanceQueue(connection)];
+  const queues = [
+    createAlertsQueue(connection),
+    createChargeQueue(connection),
+    createVoiceQueue(connection),
+    createEmbedQueue(connection),
+    createMaintenanceQueue(connection),
+  ];
   for (const queue of queues) {
     const failed = await queue.getFailed();
     console.log(`${queue.name}: ${failed.length} dead-lettered`);
