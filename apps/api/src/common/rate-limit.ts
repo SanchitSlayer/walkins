@@ -112,8 +112,14 @@ export const LIMITS = {
   // looping here floods that queue.
   driveEdit: { name: "drive-edit", scope: "user", limit: 60, windowSeconds: HOUR },
   profileEdit: { name: "profile-edit", scope: "user", limit: 60, windowSeconds: HOUR },
-  // Bulk "not selected" messages every booked candidate.
-  applicantActions: { name: "applicant-actions", scope: "company", limit: 30, windowSeconds: HOUR },
+  // Bulk "not selected" messages every booked candidate. Per person, since
+  // several recruiters work one drive on the day; the company ceiling stops
+  // a script on any one account from flooding the alert queue.
+  applicantActions: { name: "applicant-actions", scope: "user", limit: 30, windowSeconds: HOUR },
+  applicantActionsCompany: { name: "applicant-actions", scope: "company", limit: 150, windowSeconds: HOUR },
+  // A team is a handful of people; thirty invitations a day is a hiring
+  // agency onboarding, not a script.
+  invitations: { name: "invitations", scope: "company", limit: 30, windowSeconds: 24 * HOUR },
   // Each order opens one at the payment gateway; each confirmation calls it.
   topUpOrder: { name: "top-up-order", scope: "company", limit: 10, windowSeconds: 10 * MINUTE },
   topUpConfirm: { name: "top-up-confirm", scope: "company", limit: 30, windowSeconds: 10 * MINUTE },
