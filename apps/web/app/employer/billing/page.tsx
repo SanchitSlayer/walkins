@@ -11,6 +11,7 @@ import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { useMembership } from "@/lib/membership";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 
@@ -63,6 +64,7 @@ function MockCheckout({ order, onDone }: { order: TopUpOrder; onDone: (outcome: 
 export default function BillingPage() {
   const t = useTranslations("billing");
   const errorText = useErrorText();
+  const { can } = useMembership();
   const { dayLabel, formatPaise, formatTime } = useFormat();
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [rupees, setRupees] = useState("5000");
@@ -179,54 +181,61 @@ export default function BillingPage() {
           )}
         </div>
 
-        <div className="grid content-start gap-3 border border-housing-rule p-4">
-          <h2 className="type-h3">{t("topUp")}</h2>
-          <div className="flex flex-wrap gap-2">
-            {PRESETS_RUPEES.map((preset) => (
-              <BoardButton
-                key={preset}
-                variant={rupees === String(preset) ? "primary" : "quiet"}
-                className="min-h-9 px-3"
-                onClick={() => setRupees(String(preset))}
-                disabled={busy || !!order}
-              >
-                {formatPaise(preset * 100)}
-              </BoardButton>
-            ))}
-          </div>
-          <BoardField label={t("amount")}>
-            <BoardInput
-              board
-              type="number"
-              inputMode="numeric"
-              min={MIN_TOP_UP_PAISE / 100}
-              max={MAX_TOP_UP_PAISE / 100}
-              step={1}
-              value={rupees}
-              onChange={(e) => setRupees(e.target.value)}
-              disabled={busy || !!order}
-            />
-          </BoardField>
-          {order ? (
-            <MockCheckout order={order} onDone={mockDone} />
-          ) : (
-            <div>
-              <BoardButton onClick={startTopUp} disabled={busy}>
-                {busy ? t("opening") : t("continue")}
-              </BoardButton>
+        {can("manageBilling") ? (
+          <div className="grid content-start gap-3 border border-housing-rule p-4">
+            <h2 className="type-h3">{t("topUp")}</h2>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS_RUPEES.map((preset) => (
+                <BoardButton
+                  key={preset}
+                  variant={rupees === String(preset) ? "primary" : "quiet"}
+                  className="min-h-9 px-3"
+                  onClick={() => setRupees(String(preset))}
+                  disabled={busy || !!order}
+                >
+                  {formatPaise(preset * 100)}
+                </BoardButton>
+              ))}
             </div>
-          )}
-          {notice && (
-            <p role="status" className="type-meta text-live-lamp">
-              {notice}
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="type-meta text-closing-lamp">
-              {error}
-            </p>
-          )}
-        </div>
+            <BoardField label={t("amount")}>
+              <BoardInput
+                board
+                type="number"
+                inputMode="numeric"
+                min={MIN_TOP_UP_PAISE / 100}
+                max={MAX_TOP_UP_PAISE / 100}
+                step={1}
+                value={rupees}
+                onChange={(e) => setRupees(e.target.value)}
+                disabled={busy || !!order}
+              />
+            </BoardField>
+            {order ? (
+              <MockCheckout order={order} onDone={mockDone} />
+            ) : (
+              <div>
+                <BoardButton onClick={startTopUp} disabled={busy}>
+                  {busy ? t("opening") : t("continue")}
+                </BoardButton>
+              </div>
+            )}
+            {notice && (
+              <p role="status" className="type-meta text-live-lamp">
+                {notice}
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="type-meta text-closing-lamp">
+                {error}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="grid content-start gap-2 border border-housing-rule p-4">
+            <h2 className="type-h3">{t("topUp")}</h2>
+            <p className="type-meta text-housing-muted">{t("ownerOnly")}</p>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="statement-heading" className="grid gap-3">

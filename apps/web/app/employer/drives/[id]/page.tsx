@@ -3,10 +3,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type DriveDetail, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
+import { type DriveDetail, type Member, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
-import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
+import { BoardButton, boardButtonClass, BoardField, BoardInput, BoardSelect } from "@/components/board/field";
 import { SlotStack } from "@/components/board/slot-stack";
 import { VenueOutsideCityNotice } from "../venue-notice";
 import { ArrivalsDesk } from "./arrivals-desk";
@@ -15,10 +15,73 @@ import { type KnockoutDraft, knockoutDrafts, KnockoutEditor, knockoutQuestions, 
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { useMembership } from "@/lib/membership";
+import { PersonName } from "@/components/person-name";
+
+// Who answers for the drive. Owners can hand it to anyone who runs drives;
+// everyone else just sees the name.
+function DriveOwner({ drive, onChange }: { drive: DriveDetail; onChange: (next: DriveDetail) => void }) {
+  const t = useTranslations("editDrive.owner");
+  const errorText = useErrorText();
+  const { can } = useMembership();
+  const [candidates, setCandidates] = useState<Member[]>([]);
+  const [chosen, setChosen] = useState(drive.owner.userId);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const manages = can("managePeople");
+
+  useEffect(() => {
+    if (manages) apiClient.getPeople().then((people) => setCandidates(people.members.filter((m) => m.role !== "VIEWER")));
+  }, [manages]);
+
+  async function handOver() {
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await apiClient.reassignDrive(drive.id, chosen));
+    } catch (err) {
+      setError(errorText(err, "editDrive.owner.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="grid gap-2">
+      <h2 className="type-meta text-housing-muted">{t("heading")}</h2>
+      <p className="type-body">
+        <PersonName person={drive.owner} />
+      </p>
+      {manages && candidates.length > 1 && (
+        <div className="flex flex-wrap items-end gap-2">
+          <BoardField label={t("handTo")}>
+            <BoardSelect value={chosen} onChange={(e) => setChosen(e.target.value)}>
+              {candidates.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                </option>
+              ))}
+            </BoardSelect>
+          </BoardField>
+          <BoardButton variant="quiet" disabled={busy || chosen === drive.owner.userId} onClick={handOver}>
+            {t("handOver")}
+          </BoardButton>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="type-meta text-closing-lamp">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
 
 export default function EditDrivePage() {
   const t = useTranslations("editDrive");
   const errorText = useErrorText();
+  const { can } = useMembership();
+  const runs = can("runDrives");
   const driveIssue = useDriveIssue();
   const { formatPaise } = useFormat();
   const params = useParams<{ id: string }>();
@@ -44,7 +107,7 @@ export default function EditDrivePage() {
     apiClient.getWallet().then(setWallet);
   }, [params.id]);
 
-  const editable = drive?.status === "DRAFT" || drive?.status === "PENDING";
+  const editable = runs && (drive?.status === "DRAFT" || drive?.status === "PENDING");
 
   async function run(action: () => Promise<DriveDetail>, fallback: MessageKey) {
     setLoading(true);
@@ -101,7 +164,7 @@ export default function EditDrivePage() {
               {t("back")}
             </Link>
             <h1 className="type-h2 mt-1">{drive.role.title}</h1>
-            <p className="type-meta mt-1 text-housing-muted">{editable ? t("editable") : t("notEditable")}</p>
+            <p className="type-meta mt-1 text-housing-muted">{editable ? t("editable") : runs ? t("notEditable") : t("viewOnly")}</p>
           </div>
 
           <VenueOutsideCityNotice drive={drive} />
@@ -169,8 +232,10 @@ export default function EditDrivePage() {
           <section className="grid gap-3">
             <h2 className="type-meta text-housing-muted">{t("status")}</h2>
             <StatusMark state={state} surface="housing" className="type-body" />
-            {drive.reviewNote && (
-              <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">{t("sentBack", { note: drive.reviewNote })}</p>
+            {drive.reviewNote != null && (
+              <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">
+                {drive.reviewNote ? t("sentBack", { note: drive.reviewNote }) : t("sentBackNoReason")}
+              </p>
             )}
             {(drive.status === "DRAFT" || drive.status === "PENDING") && wallet && !wallet.canGoLive && (
               <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">
@@ -185,16 +250,18 @@ export default function EditDrivePage() {
                 })}
               </p>
             )}
-            {drive.status === "DRAFT" && (
+            {runs && drive.status === "DRAFT" && (
               <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "editDrive.submitFailed")}>
                 {t("submit")}
               </BoardButton>
             )}
             {drive.status === "LIVE" && (
               <>
-                <Link href={`/employer/drives/${drive.id}/checkin`} className={boardButtonClass()}>
-                  {t("checkInScreen")}
-                </Link>
+                {runs && (
+                  <Link href={`/employer/drives/${drive.id}/checkin`} className={boardButtonClass()}>
+                    {t("checkInScreen")}
+                  </Link>
+                )}
                 <Link href={`/employer/drives/${drive.id}/applicants`} className={boardButtonClass("housing", "quiet")}>
                   {t("applicants")}
                 </Link>
@@ -209,6 +276,8 @@ export default function EditDrivePage() {
               </BoardButton>
             )}
           </section>
+
+          <DriveOwner drive={drive} onChange={show} />
 
           <section aria-labelledby="slots-heading">
             <h2 id="slots-heading" className="type-meta text-housing-muted">

@@ -9,6 +9,8 @@ import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { useMembership } from "@/lib/membership";
+import { PersonName } from "@/components/person-name";
 
 function Seats({ capacity, booked }: { capacity: number; booked: number }) {
   const t = useTranslations("employerDrives");
@@ -25,6 +27,7 @@ function Seats({ capacity, booked }: { capacity: number; booked: number }) {
 export default function EmployerDrivesPage() {
   const t = useTranslations("employerDrives");
   const errorText = useErrorText();
+  const { can, membership } = useMembership();
   const { formatWhen } = useFormat();
   const [drives, setDrives] = useState<EmployerDriveRow[]>([]);
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined]);
@@ -57,10 +60,13 @@ export default function EmployerDrivesPage() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="type-h2">{t("heading")}</h1>
-        <Link href="/employer/drives/new" className={boardButtonClass()}>
-          {t("new")}
-        </Link>
+        {can("runDrives") && (
+          <Link href="/employer/drives/new" className={boardButtonClass()}>
+            {t("new")}
+          </Link>
+        )}
       </div>
+      {!can("runDrives") && <p className="type-meta text-housing-muted">{t("viewOnly", { company: membership.company.name })}</p>}
 
       {error && (
         <p role="alert" className="type-meta text-closing-lamp">
@@ -98,6 +104,9 @@ export default function EmployerDrivesPage() {
                       {drive.role.title}
                     </Link>
                     <span className="type-meta block truncate text-housing-muted">{drive.venueAddress}</span>
+                    <span className="type-meta block text-housing-muted">
+                      {t.rich("owner", { name: () => <PersonName person={drive.owner} /> })}
+                    </span>
                     {drive.needsManualGeocode && (
                       <span className="type-meta block text-filling-lamp">{t("approximatePin")}</span>
                     )}

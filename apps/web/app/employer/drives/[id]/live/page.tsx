@@ -134,7 +134,7 @@ export default function ArrivalsBoardPage() {
                 </td>
                 <td className="w-full py-2 pr-4">
                   <FlapDisplay
-                    value={arrival ? fit(arrival.displayName, NAME_CELLS) : ""}
+                    value={arrival ? fit(arrival.displayName ?? t("unnamed"), NAME_CELLS) : ""}
                     length={NAME_CELLS}
                     className="text-[clamp(1.25rem,2.6vw,2rem)]"
                     cellWidth={0.62}

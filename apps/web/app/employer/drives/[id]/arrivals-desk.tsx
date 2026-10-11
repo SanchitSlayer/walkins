@@ -9,6 +9,8 @@ import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { useMembership } from "@/lib/membership";
+import { usePersonName } from "@/components/person-name";
 
 // The moves the transition table allows an employer from each state.
 const NEXT: Partial<Record<ApplicationState, ("INTERVIEWED" | "HIRED" | "REJECTED")[]>> = {
@@ -30,6 +32,8 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
   const state = useTranslations("deskState");
   const errorText = useErrorText();
   const { formatTime } = useFormat();
+  const runs = useMembership().can("runDrives");
+  const personName = usePersonName();
   const { data: desk, refresh } = useLiveFeed(driveId, "desk", () => apiClient.getLiveDesk(driveId));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,9 +92,11 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                     {t("flaggedLine", { method: a.method, time: formatTime(a.scannedAt), reason: a.flagReason ?? "" })}
                   </p>
                 </div>
-                <BoardButton onClick={() => act(a.checkInId, () => apiClient.confirmCheckIn(a.checkInId))} disabled={busy !== null}>
-                  {busy === a.checkInId ? t("confirming") : t("confirm")}
-                </BoardButton>
+                {runs && (
+                  <BoardButton onClick={() => act(a.checkInId, () => apiClient.confirmCheckIn(a.checkInId))} disabled={busy !== null}>
+                    {busy === a.checkInId ? t("confirming") : t("confirm")}
+                  </BoardButton>
+                )}
               </Row>
             ))}
           </ul>
@@ -111,15 +117,17 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                     {a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : t("noSlot")} · {state(a.state)}
                   </p>
                 </div>
-                <BoardButton
-                  variant="quiet"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    act(a.applicationId, () => apiClient.markPresent(a.applicationId), t("markPresentConfirm", { name: a.name }))
-                  }
-                >
-                  {busy === a.applicationId ? t("marking") : t("markPresent")}
-                </BoardButton>
+                {runs && (
+                  <BoardButton
+                    variant="quiet"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      act(a.applicationId, () => apiClient.markPresent(a.applicationId), t("markPresentConfirm", { name: a.name }))
+                    }
+                  >
+                    {busy === a.applicationId ? t("marking") : t("markPresent")}
+                  </BoardButton>
+                )}
               </Row>
             ))}
           </ul>
@@ -142,13 +150,15 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                       a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : null,
                       state(a.state),
                       a.isValid ? null : t("awaitingConfirmation"),
+                      a.recordedBy ? t("markedBy", { name: personName(a.recordedBy) }) : null,
+                      a.confirmedBy ? t("confirmedBy", { name: personName(a.confirmedBy) }) : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {(NEXT[a.state] ?? []).map((to) => (
+                  {(runs ? (NEXT[a.state] ?? []) : []).map((to) => (
                     <BoardButton
                       key={to}
                       variant={to === "REJECTED" ? "quiet" : "primary"}

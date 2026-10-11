@@ -11,6 +11,8 @@ import { IntroCell } from "./intro-cell";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { useMembership } from "@/lib/membership";
+import { usePersonName } from "@/components/person-name";
 
 const percent = (n: number) => Math.round(n * 100);
 
@@ -49,6 +51,7 @@ function LanguageSettings({ reads, onSaved }: { reads: string[]; onSaved: () => 
   const t = useTranslations("applicants.languages");
   const errorText = useErrorText();
   const { languageName } = useFormat();
+  const ownsSettings = useMembership().can("manageCompany");
   const [selected, setSelected] = useState(reads);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,38 +65,43 @@ function LanguageSettings({ reads, onSaved }: { reads: string[]; onSaved: () => 
       </summary>
       <div className="mt-3 grid gap-3">
         <p className="type-meta text-housing-muted">{t("explain")}</p>
-        <div className="flex flex-wrap gap-2">
-          {READABLE_LANGUAGES.map((code) => (
-            <label key={code} className="type-meta flex min-h-9 items-center gap-2 border border-housing-rule px-3">
-              <input
-                type="checkbox"
-                checked={selected.includes(code)}
-                onChange={(e) => setSelected(e.target.checked ? [...selected, code] : selected.filter((l) => l !== code))}
-              />
-              {languageName(code)}
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-3">
-          <BoardButton
-            disabled={!changed || saving}
-            onClick={async () => {
-              setSaving(true);
-              setError(null);
-              try {
-                await apiClient.updateCompanySettings({ readsLanguages: selected });
-                await onSaved();
-              } catch (err) {
-                setError(errorText(err, "applicants.languages.saveFailed"));
-              } finally {
-                setSaving(false);
-              }
-            }}
-          >
-            {saving ? t("saving") : t("save")}
-          </BoardButton>
-          {error && <span className="type-meta text-closing-lamp">{error}</span>}
-        </div>
+        {!ownsSettings && <p className="type-meta text-housing-muted">{t("ownerOnly")}</p>}
+        {ownsSettings && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {READABLE_LANGUAGES.map((code) => (
+                <label key={code} className="type-meta flex min-h-9 items-center gap-2 border border-housing-rule px-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(code)}
+                    onChange={(e) => setSelected(e.target.checked ? [...selected, code] : selected.filter((l) => l !== code))}
+                  />
+                  {languageName(code)}
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <BoardButton
+                disabled={!changed || saving}
+                onClick={async () => {
+                  setSaving(true);
+                  setError(null);
+                  try {
+                    await apiClient.updateCompanySettings({ readsLanguages: selected });
+                    await onSaved();
+                  } catch (err) {
+                    setError(errorText(err, "applicants.languages.saveFailed"));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? t("saving") : t("save")}
+              </BoardButton>
+              {error && <span className="type-meta text-closing-lamp">{error}</span>}
+            </div>
+          </>
+        )}
       </div>
     </details>
   );
@@ -105,6 +113,8 @@ export default function ApplicantsPage() {
   const all = useTranslations();
   const errorText = useErrorText();
   const { formatDistance, formatTime } = useFormat();
+  const runs = useMembership().can("runDrives");
+  const personName = usePersonName();
   const { id } = useParams<{ id: string }>();
   const [weight, setWeight] = useState(0.5);
   const [data, setData] = useState<Applicants | null>(null);
@@ -204,28 +214,35 @@ export default function ApplicantsPage() {
 
       {data && <LanguageSettings reads={data.readsLanguages} onSaved={load} />}
 
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-housing-line bg-housing py-2">
-        <span className="type-meta text-housing-muted">{t("selected", { count: selected.size })}</span>
-        <BoardButton disabled={busy || selected.size === 0} onClick={() => act("shortlist")} className="min-h-9 px-3">
-          {t("shortlist")}
-        </BoardButton>
-        <BoardButton variant="quiet" disabled={busy || selected.size === 0} onClick={() => act("unshortlist")} className="min-h-9 px-3">
-          {t("unshortlist")}
-        </BoardButton>
-        <BoardButton variant="quiet" disabled={busy || selected.size === 0} onClick={() => act("reject")} className="min-h-9 px-3">
-          {t("reject")}
-        </BoardButton>
-        {notice && (
-          <span role="status" className="type-meta">
-            {notice}
-          </span>
-        )}
-        {error && (
-          <span role="alert" className="type-meta text-closing-lamp">
-            {error}
-          </span>
-        )}
-      </div>
+      {runs && (
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-housing-line bg-housing py-2">
+          <span className="type-meta text-housing-muted">{t("selected", { count: selected.size })}</span>
+          <BoardButton disabled={busy || selected.size === 0} onClick={() => act("shortlist")} className="min-h-9 px-3">
+            {t("shortlist")}
+          </BoardButton>
+          <BoardButton variant="quiet" disabled={busy || selected.size === 0} onClick={() => act("unshortlist")} className="min-h-9 px-3">
+            {t("unshortlist")}
+          </BoardButton>
+          <BoardButton variant="quiet" disabled={busy || selected.size === 0} onClick={() => act("reject")} className="min-h-9 px-3">
+            {t("reject")}
+          </BoardButton>
+          {notice && (
+            <span role="status" className="type-meta">
+              {notice}
+            </span>
+          )}
+          {error && (
+            <span role="alert" className="type-meta text-closing-lamp">
+              {error}
+            </span>
+          )}
+        </div>
+      )}
+      {!runs && error && (
+        <p role="alert" className="type-meta text-closing-lamp">
+          {error}
+        </p>
+      )}
 
       {!data ? (
         <p role="status" className="type-meta text-housing-muted">
@@ -239,12 +256,14 @@ export default function ApplicantsPage() {
             <thead>
               <tr className="type-meta border-b border-housing-rule text-housing-muted">
                 <th className="w-8 py-2 pr-2">
-                  <input
-                    type="checkbox"
-                    aria-label={t("selectAll")}
-                    checked={selected.size > 0 && selected.size === applicants.length}
-                    onChange={(e) => setSelected(e.target.checked ? new Set(applicants.map((a) => a.applicationId)) : new Set())}
-                  />
+                  {runs && (
+                    <input
+                      type="checkbox"
+                      aria-label={t("selectAll")}
+                      checked={selected.size > 0 && selected.size === applicants.length}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(applicants.map((a) => a.applicationId)) : new Set())}
+                    />
+                  )}
                 </th>
                 <th className="py-2 pr-4 font-normal">{t("candidate")}</th>
                 <th className="py-2 pr-4 font-normal">{t("match")}</th>
@@ -260,12 +279,14 @@ export default function ApplicantsPage() {
                   className={cn("border-b border-housing-line align-top", a.state === "SCREENED_OUT" && "text-housing-muted")}
                 >
                   <td className="py-3 pr-2">
-                    <input
-                      type="checkbox"
-                      aria-label={t("select", { name: a.candidateName })}
-                      checked={selected.has(a.applicationId)}
-                      onChange={() => toggle(a.applicationId)}
-                    />
+                    {runs && (
+                      <input
+                        type="checkbox"
+                        aria-label={t("select", { name: a.candidateName })}
+                        checked={selected.has(a.applicationId)}
+                        onChange={() => toggle(a.applicationId)}
+                      />
+                    )}
                   </td>
                   <td className="py-3 pr-4">
                     <div className="grid gap-0.5">
@@ -275,8 +296,12 @@ export default function ApplicantsPage() {
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
-                      {a.shortlisted && <span className="type-meta text-live-lamp">{t("shortlisted")}</span>}
-                      {a.state === "SCREENED_OUT" && (
+                      {a.shortlisted && (
+                        <span className="type-meta text-live-lamp">
+                          {a.shortlistedBy ? t("shortlistedBy", { name: personName(a.shortlistedBy) }) : t("shortlisted")}
+                        </span>
+                      )}
+                      {runs && a.state === "SCREENED_OUT" && (
                         <BoardButton
                           variant="quiet"
                           disabled={busy}
