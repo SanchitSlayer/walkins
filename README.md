@@ -157,7 +157,9 @@ The arrivals board (`/employer/drives/<id>/live`) is built to be put on a
 screen facing the queue: split-flap counts and the latest arrivals as first
 name and last initial with their slot time. It receives its own, narrower
 data than the employer gets, so full names, distances and flag reasons can't
-reach it. Confirming flagged check-ins, marking people present, and marking
+reach it. Someone whose account has no name yet is shown as "Arrived".
+Their account name is their phone number, and until Phase 9 the board
+printed that number in full on the screen facing the queue. Confirming flagged check-ins, marking people present, and marking
 them interviewed, hired or not selected all happen on the drive page, which
 is the employer's own screen.
 
@@ -671,9 +673,10 @@ these live:
 
 Still scaffolding after this phase:
 
-- **Employer self sign-up.** Companies and employers come only from the seed.
-  The verification queue is filled by seeded companies until employers can
-  register themselves.
+- **Company self sign-up.** Companies, and each company's first owner, come
+  only from the seed. Everyone after the first owner joins by invitation
+  (see "Teams"). The verification queue is filled by seeded companies until
+  companies can register themselves.
 - **The verification provider** checks GSTIN format, not a registry.
 - **`ApplicationState.INTERESTED`.** No transition leads into it, so no
   application can be in it. The transitions out of it, and the screens that
@@ -682,6 +685,175 @@ Still scaffolding after this phase:
 - **`Notification.deliveredAt`** is never written: Telegram doesn't report
   delivery, and WhatsApp, which would, is not implemented.
 - **Refunds and disputes.** Webhook events are stored, nothing more.
+
+### Teams: owners, recruiters and viewers
+
+A company used to be one login. Now it is several people, each with a role.
+
+**Two axes of authority.** `UserRole` (CANDIDATE, EMPLOYER, ADMIN) still
+says which side of the product someone uses. `CompanyRole` (OWNER,
+RECRUITER, VIEWER) is a separate column on `users`, next to `companyId`.
+A check constraint keeps the two either both set or both empty. It says
+what someone may do inside their company:
+
+| Permission | Owner | Recruiter | Viewer |
+| --- | --- | --- | --- |
+| Read: drives, applicants, desk, analytics, wallet balance, the team | yes | yes | yes |
+| Run drives: create, edit, submit, cancel, pin the venue, show the check-in code, shortlist, reject, desk actions | yes | yes | no |
+| Billing: top-ups | yes | no | no |
+| Company settings: the languages the team reads | yes | no | no |
+| People: invite, revoke, change roles, remove, reassign drives | yes | no | no |
+
+The table is `COMPANY_PERMISSIONS` in `packages/shared/src/people.ts`. The
+API enforces it, and the web reads the same table to hide what a role
+can't do.
+
+A membership table was considered and not used. A person belongs to at
+most one company, so a join table would add many-to-many lookups for
+nothing. The history of who joined, changed role or left is in
+`audit_logs`, which is what it's for.
+
+Any recruiter can run any of the company's drives, not only their own. On
+a walk-in day, whoever is at the desk works the drive. Each drive has an
+`ownerId`, the person answerable for it. It is the creator by default, and
+an owner can hand it to someone else from the drive's page. The owner
+field records accountability; it doesn't block anyone.
+
+**Where the check lives.** Every employer service method starts with
+`requireCompanyAccess(userId, permission)`
+(`apps/api/src/common/require-company.ts`). It reads the person's company
+and role from the database, not from the access token. Removing someone,
+or changing their role, therefore takes effect on their next request. It
+doesn't wait up to 15 minutes for their token to expire. The cost is one
+primary-key lookup per employer request. Controllers only pass the user's
+id along.
+
+`apps/api/test/people.test.ts` calls every employer service method as each
+role. It checks that each call is allowed or refused exactly as the table
+says, and that someone in no company is refused everything.
+
+#### Invitations
+
+1. An owner invites a colleague by the 10-digit number they sign in with,
+   with a name and a role.
+2. Nothing is sent to that phone, because there is no SMS provider. The
+   People page shows the owner what to tell them: sign in at this address
+   with this number.
+3. The colleague signs in with an OTP like anyone else. If an invitation is
+   open for that number, login takes them to `/join`.
+4. `/join` shows the company's name and city, who sent the invitation, and
+   what the role can do. They join with one tap.
+
+A tap is needed, rather than joining automatically. Indian carriers reissue
+phone numbers, so an invitation can reach a stranger who now holds a former
+employee's number. Seeing the company's name before joining is the only
+guard against that, and the page tells them to leave an invitation they
+don't recognise.
+
+The rules an invitation follows:
+- **It expires after 7 days.** An expired invitation for a number is
+  replaced when the owner sends a new one.
+- **An owner can revoke it**, and the invitations a person sent are revoked
+  when they leave.
+- **It can be accepted once.** Accepting is one conditional update
+  (open, unexpired, unrevoked). Two taps at once, or a tap racing a revoke,
+  can't both succeed. A partial unique index allows one open invitation per
+  company and number.
+- **Someone can join only one company.** Accepting two companies'
+  invitations at once joins exactly one.
+- **Joining waits while the invitee has a booked interview still ahead.**
+  Joining turns the account into an employer's, which would quietly cost
+  them the seat. The join screen names each booking and points to My
+  drives. The API refuses the join until the bookings have been attended
+  or released.
+- **Joining hides the candidate profile.** The profile stays, hidden, and
+  the person stops getting job alerts: targeting now excludes anyone who
+  isn't a candidate.
+- **The invited name takes over** if the account's name is still its phone
+  number.
+
+#### Removing someone, or leaving
+
+The user's row is never deleted. Their name is on the audit trail, on
+shortlists, on the drives they ran and on payment orders, and all of that
+stays as it was.
+
+Removing someone, in one transaction:
+- moves their **open drives** (draft, in review, live) to a successor the
+  owner picks, by default the person doing the removal. Finished drives
+  keep their name as history;
+- leaves their **shortlists** in place. A shortlist belongs to the
+  application, and "Shortlisted by" keeps their name, marked "(left)";
+- leaves the **audit trail** untouched. `actorUserId` keeps pointing at
+  them;
+- revokes the invitations they sent;
+- turns the account back into a candidate account.
+
+After the transaction, any open live-board socket of theirs is
+disconnected. The desk view shows candidates' names, so a board left open
+must not outlive their place in the company. Joining checks membership in
+the database, as HTTP requests do.
+
+Two more rules:
+- **Demoting someone to viewer hands their open drives on** the same way,
+  because a viewer can't run a drive.
+- **A company always has an owner.** The last owner can't leave, be removed
+  or be demoted. Membership changes lock the company row, so two owners
+  removing each other at the same moment leave exactly one.
+
+#### Who did what
+
+With one login per company, every audit row's actor was the same account.
+Now the actor field records something, and more is recorded:
+- **Drive changes are audited**, naming who did them: created, edited,
+  submitted, cancelled, owner changed. Before this, only venue pins were.
+- **Shortlisting is audited**, and `applications.shortlistedById` is a real
+  foreign key. Before, it was an untyped string nothing read. The
+  applicants page shows who shortlisted each person.
+- **The arrivals desk shows who did each action:** who marked someone
+  present and who confirmed a flagged check-in, read from the audit log.
+  Two people at one desk can see each other's work.
+- **Membership events are audited on the company:** invited, revoked,
+  joined, role changed, removed, left.
+
+#### Accounts after the migration
+
+Migration `20261011090000_company_roles` gives every existing employer a
+role:
+- the user whose phone is the company's contact phone becomes OWNER. If no
+  user has that phone, the company's longest-standing employer does;
+- every other employer at a company becomes RECRUITER;
+- an employer with no company, who could open the console but do nothing
+  in it, becomes a candidate again;
+- each existing drive is owned by its company's owner, because who created
+  it was never recorded.
+
+The seed then adds one account per role, and a second company:
+
+| Phone | Company | Role |
+| --- | --- | --- |
+| 9999999999 | Test Company | OWNER |
+| 9111111111 | Test Company | RECRUITER |
+| 9222222222 | Test Company | VIEWER |
+| 9666666666 | Rival Company (Bengaluru, verification PENDING) | OWNER |
+
+Rival Company gives the admin verification queue a real entry. It also
+provides drives that Test Company's people must never see.
+
+#### Known gaps
+
+- **Employers can't set their own name.** OTP sign-up names an account by
+  its phone number. An invitation's name replaces that when the person
+  joins, but employers who were in a company before this phase (9555555555,
+  9876543210, 9111111111) still show their numbers on the People page.
+- **The access token still says EMPLOYER** for up to 15 minutes after
+  someone is removed. The API refuses them at once, because it reads the
+  database. The web shell shows "Not part of a company" until the token is
+  refreshed.
+- **A company's contact phone is separate from its owners.** It stays
+  whatever the company registered with, and the admin panel shows it.
+- **A phone number can belong to only one account.** Someone who wants to
+  be both a recruiter and a job seeker needs two numbers.
 
 ## Rate limits
 
@@ -708,7 +880,8 @@ later is never unlimited by accident.
 | `voice-upload` | user | 20 / hour | Each take is up to 2 MB of storage |
 | `drive-create` | user, and company | 20 / hour, and 100 / day | Desk work, never a burst |
 | `drive-edit`, `profile-edit` | user | 60 / hour | Each save queues an embedding; a script looping here floods that queue |
-| `applicant-actions` | company | 30 / hour | A bulk "not selected" messages every booked candidate |
+| `applicant-actions` | user, and company | 30 / hour, and 150 / hour | A bulk "not selected" messages every booked candidate. Per person, because several recruiters work one drive; the company ceiling stops one script |
+| `invitations` | company | 30 / day | A team is a handful of people |
 | `top-up-order` | company | 10 / 10 minutes | Each order opens one at the payment gateway |
 | `top-up-confirm` | company | 30 / 10 minutes | Each confirmation calls the gateway |
 | `webhook` | address | 300 / minute | Public and unauthenticated; Razorpay's own retries stay far below it |
@@ -850,9 +1023,12 @@ Descriptions use absolute dates, because a search result outlives "today".
 
 ### The check
 
-`apps/web/test/i18n.test.ts` runs with the rest of `pnpm test`. It parses
-every file under `apps/web/app`, `components` and `lib` with the TypeScript
-compiler and fails on:
+`apps/web/test/i18n.test.ts` runs with the rest of `pnpm test`. It covers
+the web app thoroughly and the API and worker partly. Both parts are
+described below.
+
+**The web app.** The check parses every file under `apps/web/app`,
+`components` and `lib` with the TypeScript compiler and fails on:
 
 - **Hardcoded wording:** text in JSX, user-facing attributes (`placeholder`,
   `aria-label`, `title`, `alt`, `label` and similar), strings passed to
@@ -863,9 +1039,35 @@ compiler and fails on:
   other bare formatters into the web app instead of using `useFormat()`.
 - **A key the catalog doesn't have.**
 - **A catalog key nothing uses.** The server-only namespaces (`errors`,
-  `alerts`, `fields`, `format`) are exempt.
+  `alerts`, `bot`, `fields`, `format`) are exempt.
 - **A phrase written into the worker's alert templates** rather than the
   catalog.
+
+**The API and worker.** The check covers the places where they speak to a
+person directly:
+- an HTTP refusal (`new ...Exception(...)`), whose body must come from
+  `apiError`;
+- a live socket's `{ error }` reply;
+- a Telegram message (`ctx.reply`, `sendMessage`).
+
+A phrase anywhere inside one of these fails, however it is built.
+Phase 8's web-only check had missed two leaks this way: the live gateway's
+`"Unknown view"`, and every reply the Telegram bot sends. Both now come from
+the catalog, and the bot's wording is under `bot.*`.
+
+What the check does **not** cover on the server:
+- **Words built in one place and sent from another.** The check sees a
+  phrase only inside one of the calls above. Text assigned to a variable
+  first and passed in later goes unseen.
+- **Words stored to show later.** Syntax can't tell these from internal
+  text. They are:
+  - `check_ins.flagReason`;
+  - a payment's `failureReason`, as the gateway sent it;
+  - the verification provider's reason;
+  - an admin's rejection note, and its default `"Rejected by an admin"`.
+  These are listed under the Hindi phase's known work below.
+- **Log lines, job outcomes and embedding input.** These are for operators
+  and the model, not people, and stay in English on purpose.
 
 There are three escape hatches, each visible in review:
 - `/design` is exempt as a whole. It is the design system's specimen page,
@@ -906,7 +1108,8 @@ not fixed: each needs real Hindi text and real screens to judge.
   change: a list of flag codes with their values. Until then, the employer
   board and the candidate's check-in result show it in English whatever the
   locale. Rejection reasons from the payment gateway and the verification
-  provider are stored as those services send them.
+  provider are stored as those services send them, and an admin's
+  rejection note defaults to the English "Rejected by an admin".
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override
