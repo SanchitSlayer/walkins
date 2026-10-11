@@ -40,33 +40,51 @@ model Company {
   // flagged, because script they can't read is worse than no transcript.
   readsLanguages     String[]           @default(["en", "hi"])
 
-  city          City           @relation(fields: [cityId], references: [id])
+  city          City                @relation(fields: [cityId], references: [id])
   users         User[]
   drives        Drive[]
   paymentOrders PaymentOrder[]
+  invitations   CompanyInvitation[]
 
   @@index([cityId])
   @@map("companies")
 }
 
+// Which side of the product a person uses.
 enum UserRole {
   CANDIDATE
   EMPLOYER
   ADMIN
 }
 
+// What a person may do inside their company: a second axis next to
+// UserRole, set together with companyId (a check constraint in the migration
+// holds the pair). What each role allows is COMPANY_PERMISSIONS in
+// @walkins/shared, read by the API and the web alike.
+enum CompanyRole {
+  OWNER
+  RECRUITER
+  VIEWER
+}
+
 model User {
   id        String   @id @default(cuid())
   phone     String   @unique
   name      String
-  role      UserRole
-  companyId String?
-  createdAt DateTime @default(now())
+  role        UserRole
+  companyId   String?
+  companyRole CompanyRole?
+  createdAt   DateTime     @default(now())
 
-  company       Company?       @relation(fields: [companyId], references: [id])
-  candidate     Candidate?
-  auditLogs     AuditLog[]
-  paymentOrders PaymentOrder[]
+  company             Company?            @relation(fields: [companyId], references: [id])
+  candidate           Candidate?
+  auditLogs           AuditLog[]
+  paymentOrders       PaymentOrder[]
+  ownedDrives         Drive[]             @relation("DriveOwner")
+  shortlisted         Application[]       @relation("ShortlistedBy")
+  invitationsSent     CompanyInvitation[] @relation("InvitedBy")
+  invitationsAccepted CompanyInvitation[] @relation("AcceptedBy")
+  invitationsRevoked  CompanyInvitation[] @relation("RevokedBy")
 
   @@index([companyId])
   @@map("users")
@@ -152,6 +170,11 @@ model Drive {
   experienceMin      Float
   experienceMax      Float
   status             DriveStatus                            @default(DRAFT)
+  // The recruiter answerable for the drive: its creator, until an owner
+  // reassigns it or the person leaves. Accountability only: any recruiter
+  // at the company may run any of its drives, since on the day whoever is
+  // at the desk works it.
+  ownerId            String
   needsManualGeocode Boolean                                @default(false)
   // Set when the employer placed the venue from a device at the venue. Area
   // geocoding can be a kilometre off, so a pinned point is kept until the
@@ -169,6 +192,7 @@ model Drive {
   embeddedAt         DateTime?
 
   company       Company        @relation(fields: [companyId], references: [id])
+  owner         User           @relation("DriveOwner", fields: [ownerId], references: [id])
   role          Role           @relation(fields: [roleId], references: [id])
   city          City           @relation(fields: [cityId], references: [id])
   slots         DriveSlot[]
@@ -176,6 +200,7 @@ model Drive {
   notifications Notification[]
 
   @@index([companyId])
+  @@index([ownerId])
   @@index([roleId])
   @@index([geom], type: Gist, map: "drives_geom_gist")
   @@map("drives")
@@ -223,11 +248,12 @@ model Application {
   screenedOutReason String?
   // The employer's private note, not part of the application's state.
   shortlistedAt     DateTime?
-  shortlistedBy     String?
+  shortlistedById   String?
 
-  drive     Drive      @relation(fields: [driveId], references: [id])
-  candidate Candidate  @relation(fields: [candidateId], references: [id])
-  slot      DriveSlot? @relation(fields: [slotId], references: [id])
+  drive         Drive      @relation(fields: [driveId], references: [id])
+  candidate     Candidate  @relation(fields: [candidateId], references: [id])
+  slot          DriveSlot? @relation(fields: [slotId], references: [id])
+  shortlistedBy User?      @relation("ShortlistedBy", fields: [shortlistedById], references: [id])
   checkIn   CheckIn?
 
   // One application per candidate per drive, enforced here rather than by a
@@ -340,6 +366,40 @@ model Notification {
 
   @@index([driveId, candidateId])
   @@map("notifications")
+}
+
+// An owner's invitation to a phone number, the identity used everywhere
+// else. The invitee signs in with OTP as anyone does and then joins with one
+// tap, seeing the company's name first: Indian carriers reissue numbers, so
+// a stranger may hold one an owner still has on file. A partial unique index
+// in the migration allows one open invitation per company and phone; an
+// accepted, revoked or expired row stays as history.
+model CompanyInvitation {
+  id           String      @id @default(cuid())
+  companyId    String
+  phone        String
+  // What the company calls them. OTP sign-up names a user by their phone,
+  // so this becomes their name on joining if they have no other.
+  name         String
+  role         CompanyRole
+  invitedById  String
+  createdAt    DateTime    @default(now())
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  acceptedById String?
+  revokedAt    DateTime?
+  // Null when the system closed it: an expired invitation replaced by a new
+  // one, or the inviter's own removal.
+  revokedById  String?
+
+  company    Company @relation(fields: [companyId], references: [id])
+  invitedBy  User    @relation("InvitedBy", fields: [invitedById], references: [id])
+  acceptedBy User?   @relation("AcceptedBy", fields: [acceptedById], references: [id])
+  revokedBy  User?   @relation("RevokedBy", fields: [revokedById], references: [id])
+
+  @@index([companyId])
+  @@index([phone])
+  @@map("company_invitations")
 }
 
 model AuditLog {
