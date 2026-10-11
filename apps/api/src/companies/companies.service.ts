@@ -11,6 +11,7 @@ import {
   type DriveStatus,
 } from "@walkins/shared";
 import { redis } from "../common/redis";
+import { requireCompanyAccess } from "../common/require-company";
 
 type FunnelRow = {
   driveId: string;
@@ -27,12 +28,14 @@ type FunnelRow = {
 
 @Injectable()
 export class CompaniesService {
-  async settings(companyId: string): Promise<CompanySettings> {
+  async settings(userId: string): Promise<CompanySettings> {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { readsLanguages: true } });
     return companySettingsSchema.parse(company);
   }
 
-  async updateSettings(companyId: string, input: CompanySettings): Promise<CompanySettings> {
+  async updateSettings(userId: string, input: CompanySettings): Promise<CompanySettings> {
+    const { companyId } = await requireCompanyAccess(userId, "manageCompany");
     const company = await prisma.company.update({
       where: { id: companyId },
       data: { readsLanguages: [...new Set(input.readsLanguages)] },
@@ -43,7 +46,8 @@ export class CompaniesService {
 
   // Read from the materialised views the worker refreshes every 15 minutes,
   // never from the live tables, so a busy dashboard can't slow check-in.
-  async analytics(companyId: string): Promise<Analytics> {
+  async analytics(userId: string): Promise<Analytics> {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const since = new Date(Date.now() - (ANALYTICS_DAYS - 1) * 24 * 3600_000);
     const [drives, daily, refreshedAt] = await Promise.all([
       prisma.$queryRaw<FunnelRow[]>`
