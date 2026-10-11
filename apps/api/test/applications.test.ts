@@ -102,6 +102,6 @@ describe("applying for a slot", () => {
 
     await expect(
       applications.updateByEmployer("some-other-company", fixture.employer.id, applied.id, { to: "INTERVIEWED" }),
-    ).rejects.toThrow("Application not found");
+    ).rejects.toThrow("This application no longer exists. Reload the page.");
   });
 });

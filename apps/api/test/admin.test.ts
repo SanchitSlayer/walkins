@@ -103,9 +103,10 @@ describe("approving a drive", () => {
     await prisma.company.update({ where: { id: fixture.company.id }, data: { verificationStatus: "PENDING", gstin: "29ABCDE1234F1Z5" } });
 
     const listed = (await admin.drives()).find((d) => d.id === pendingDriveId)!;
-    expect(listed.blockers).toHaveLength(2);
-    expect(listed.blockers[0]).toMatch(/isn't verified/);
-    expect(listed.blockers[1]).toMatch(/balance is ₹0, below the ₹200 cost of one check-in/);
+    expect(listed.blockers).toEqual([
+      { code: "errors.admin.blockerNotVerified", params: { company: "Admin Test Company", status: "pending" } },
+      { code: "errors.admin.blockerBalance", params: { company: "Admin Test Company", balance: "₹0", price: "₹200" } },
+    ]);
 
     await expect(admin.moderateDrive(adminId, pendingDriveId, { decision: "approve" })).rejects.toBeInstanceOf(BadRequestException);
     expect((await prisma.drive.findUniqueOrThrow({ where: { id: pendingDriveId } })).status).toBe("PENDING");

@@ -139,6 +139,22 @@ describe("webhook", () => {
     expect(stored.every((e) => !e.signatureValid && e.outcome === "refused: signature did not verify")).toBe(true);
   });
 
+  it("keeps only the first 2 KB of an unsigned delivery, with its full size, and every byte of a signed one", async () => {
+    const order = await topUp();
+    const p = payment(order.gatewayOrderId, order.amountPaise);
+    const padded = Buffer.from(JSON.stringify({ event: "payment.captured", order: order.gatewayOrderId, padding: "x".repeat(10_000) }));
+    await expect(billing.handleWebhook("razorpay", padded, "0".repeat(64), `evt_big_${p.paymentId}`)).rejects.toBeInstanceOf(BadRequestException);
+    const unsigned = await prisma.paymentEvent.findFirstOrThrow({ where: { eventId: `evt_big_${p.paymentId}` } });
+    expect(Buffer.byteLength(unsigned.rawBody)).toBe(2048);
+    expect(unsigned.rawBodyBytes).toBe(padded.length);
+
+    const { rawBody, signature } = gateway.webhook("payment.captured", p);
+    await billing.handleWebhook("razorpay", rawBody, signature, `evt_signed_${p.paymentId}`);
+    const signed = await prisma.paymentEvent.findFirstOrThrow({ where: { eventId: `evt_signed_${p.paymentId}` } });
+    expect(signed.rawBody).toBe(rawBody.toString("utf8"));
+    expect(signed.rawBodyBytes).toBe(rawBody.length);
+  });
+
   it("never moves a captured order back to failed when events arrive out of order", async () => {
     const order = await topUp();
     const captured = payment(order.gatewayOrderId, order.amountPaise);

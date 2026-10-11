@@ -288,14 +288,15 @@ describe("the employer's side", () => {
   });
 
   it("only lets an employer watch their own company's drive", async () => {
-    const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService());
+    const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService(), new RateLimiterService());
     const socket = (companyId: string) => ({
       data: { user: { userId: fixture.employer.id, role: "EMPLOYER" as const, companyId } },
+      id: `test-socket-${randomUUID()}`,
       join: vi.fn(async () => {}),
     });
 
     const stranger = socket("some-other-company");
-    await expect(gateway.join(stranger, { driveId: fixture.drive.id, view: "desk" })).resolves.toEqual({ error: "Drive not found" });
+    await expect(gateway.join(stranger, { driveId: fixture.drive.id, view: "desk" })).resolves.toEqual({ error: "This drive doesn't exist or has been removed. Check the link, or find it from the list of drives." });
     expect(stranger.join).not.toHaveBeenCalled();
 
     const owner = socket(fixture.company.id);
@@ -313,9 +314,10 @@ describe("the employer's side", () => {
   });
 
   it("gives the public board short names and nothing the desk alone should see", async () => {
-    const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService());
+    const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService(), new RateLimiterService());
     const owner = {
       data: { user: { userId: fixture.employer.id, role: "EMPLOYER" as const, companyId: fixture.company.id } },
+      id: `test-socket-${randomUUID()}`,
       join: vi.fn(async () => {}),
     };
 

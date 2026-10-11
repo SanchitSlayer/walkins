@@ -93,9 +93,12 @@ describe("evaluating screening questions", () => {
   });
 
   it("calls a malformed answer invalid rather than a failure", () => {
-    expect(evaluateKnockouts(QUESTIONS, { ...PASSING, shift: "Weekends" })).toMatchObject({ passed: false, invalid: expect.any(String) });
-    expect(evaluateKnockouts(QUESTIONS, { licence: true, age: 22 })).toMatchObject({ passed: false, invalid: expect.any(String) });
-    expect(evaluateKnockouts(QUESTIONS, { ...PASSING, age: "22" })).toMatchObject({ passed: false, invalid: expect.any(String) });
+    expect(evaluateKnockouts(QUESTIONS, { ...PASSING, shift: "Weekends" })).toMatchObject({
+      passed: false,
+      invalid: { key: "errors.knockout.needsChoice", prompt: "Which shift can you work?" },
+    });
+    expect(evaluateKnockouts(QUESTIONS, { licence: true, age: 22 })).toMatchObject({ passed: false, invalid: { key: "errors.knockout.missing" } });
+    expect(evaluateKnockouts(QUESTIONS, { ...PASSING, age: "22" })).toMatchObject({ passed: false, invalid: { key: "errors.knockout.needsNumber" } });
   });
 });
 

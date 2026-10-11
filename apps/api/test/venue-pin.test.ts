@@ -40,7 +40,7 @@ describe("pinning the venue", () => {
 
     expect(err).toBeInstanceOf(ConflictException);
     const body = err.getResponse();
-    expect(body).toMatchObject({ code: "PIN_FAR_FROM_CITY", cityName: "Bengaluru" });
+    expect(body).toMatchObject({ code: "errors.drive.pinFar", cityName: "Bengaluru" });
     expect(body.distanceKm).toBeGreaterThan(1400);
     expect(body.message).toMatch(/km from the centre of Bengaluru/);
     const unchanged = await prisma.drive.findUniqueOrThrow({ where: { id: fixture.drive.id } });
