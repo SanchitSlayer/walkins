@@ -13,7 +13,7 @@
     "admin:create": "dotenv -e .env -- pnpm --filter @walkins/db exec tsx scripts/create-admin.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "test": "pnpm --filter @walkins/api --filter @walkins/worker run test",
+    "test": "pnpm --filter @walkins/api --filter @walkins/worker --filter @walkins/web run test",
     "worker:dlq": "pnpm --filter @walkins/worker run dlq",
     "worker:fanout": "pnpm --filter @walkins/worker run fanout"
   },
