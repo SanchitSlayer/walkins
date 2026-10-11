@@ -1,4 +1,4 @@
-import { formatDistance, formatSalary, formatTime, formatWhen, type TemplatedMessage, type TemplateKey } from "@walkins/shared";
+import { DEFAULT_LOCALE, formatFor, type Locale, type TemplatedMessage, type TemplateKey, translate } from "@walkins/shared";
 
 export type AlertContext = {
   roleTitle: string;
@@ -13,41 +13,23 @@ export type AlertContext = {
   driveUrl: string;
 };
 
-// Role titles, company names and venues are content and go in exactly as
-// entered; only the wording around them follows the sentence-case rule.
-export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Date): TemplatedMessage {
-  const when = formatWhen(ctx.startsAt, ctx.endsAt, now);
-  const where = `${ctx.venueAddress} (${formatDistance(ctx.distanceKm)} from your home)`;
-  const lines =
-    templateKey === "application_rejected"
-      ? [
-          `Update on ${ctx.roleTitle} at ${ctx.companyName}`,
-          "",
-          `${ctx.companyName} isn't taking your application forward for this drive, so please don't travel to it.`,
-          "Your slot has been released.",
-          "",
-          "Thank you for your interest. Other walk-ins near you are on the link below.",
-        ]
-      : templateKey === "drive_48h"
-      ? [
-          "New walk-in near you",
-          `${ctx.roleTitle} at ${ctx.companyName}`,
-          "",
-          `When: ${when.day}, ${when.time}`,
-          `Where: ${where}`,
-          `Pay: ${formatSalary(ctx.salaryMin, ctx.salaryMax)}`,
-          "",
-          "Walk in any time in that window. No application needed.",
-        ]
-      : [
-          "Reminder: your walk-in interview is today",
-          `${ctx.roleTitle} at ${ctx.companyName}`,
-          "",
-          ctx.slotStartsAt ? `Your slot: ${formatTime(ctx.slotStartsAt)} (doors ${when.time})` : `Doors: ${when.time}`,
-          `Where: ${where}`,
-          `Pay: ${formatSalary(ctx.salaryMin, ctx.salaryMax)}`,
-          "",
-          "You're getting this because you confirmed you'd attend.",
-        ];
-  return { templateKey, text: lines.join("\n"), url: ctx.driveUrl };
+// The wording lives in the shared catalog (alerts.*) like every other
+// string, so sending Hindi later is choosing the locale from the candidate's
+// preference, not rewriting templates. Until candidates have one, alerts go
+// out in the default locale. Role titles, company names and venues are
+// content and go in exactly as entered.
+export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Date, locale: Locale = DEFAULT_LOCALE): TemplatedMessage {
+  const format = formatFor(locale);
+  const when = format.formatWhen(ctx.startsAt, ctx.endsAt, now);
+  const values = {
+    role: ctx.roleTitle,
+    company: ctx.companyName,
+    day: when.day,
+    time: when.time,
+    doors: when.time,
+    slot: ctx.slotStartsAt ? format.formatTime(ctx.slotStartsAt) : "none",
+    where: translate(locale, "alerts.where", { venue: ctx.venueAddress, distance: format.formatDistance(ctx.distanceKm) }),
+    pay: format.formatSalary(ctx.salaryMin, ctx.salaryMax),
+  };
+  return { templateKey, text: translate(locale, `alerts.${templateKey}`, values), url: ctx.driveUrl };
 }

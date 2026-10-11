@@ -11,6 +11,12 @@ export type VoiceDeps = {
 
 export type VoiceAttempt = { data: VoiceJob; attemptsMade: number; maxAttempts: number };
 
+// error holds a catalog key, not a sentence, so the page shows it in the
+// reader's language. The sidecar's own refusal codes map onto them.
+function refusalKey(code: string): string {
+  return code === "too_long" ? "voice.failure.tooLong" : code === "empty" ? "voice.failure.empty" : "voice.failure.unreadable";
+}
+
 // A failed transcript never hides the candidate: the recording stays, and
 // employers are offered the audio instead of text. FAILED here only ever
 // means "no transcript", never "no intro".
@@ -28,7 +34,7 @@ export async function processVoice({ data, attemptsMade, maxAttempts }: VoiceAtt
         where: { id: intro.id },
         data: {
           status: "FAILED",
-          error: "No speech was found in the recording.",
+          error: "voice.failure.noSpeech",
           durationSeconds: result.durationSeconds,
           processedAt: new Date(),
         },
@@ -53,7 +59,7 @@ export async function processVoice({ data, attemptsMade, maxAttempts }: VoiceAtt
     return `transcribed (${result.language}, ${Math.round(result.languageProbability * 100)}%)`;
   } catch (err) {
     if (err instanceof AudioRefusedError) {
-      await prisma.voiceIntro.update({ where: { id: intro.id }, data: { status: "FAILED", error: err.message, processedAt: new Date() } });
+      await prisma.voiceIntro.update({ where: { id: intro.id }, data: { status: "FAILED", error: refusalKey(err.code), processedAt: new Date() } });
       throw new UnrecoverableError(err.message);
     }
     // The sidecar is down or slow. Until the last attempt the intro stays
@@ -63,7 +69,7 @@ export async function processVoice({ data, attemptsMade, maxAttempts }: VoiceAtt
         where: { id: intro.id },
         data: {
           status: "FAILED",
-          error: "This couldn't be transcribed right now. Employers can still listen to it.",
+          error: "voice.failure.unavailable",
           processedAt: new Date(),
         },
       });

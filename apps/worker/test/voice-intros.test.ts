@@ -95,7 +95,7 @@ describe("transcribing a voice intro", () => {
 
     expect(await prisma.voiceIntro.findUniqueOrThrow({ where: { id } })).toMatchObject({
       status: "FAILED",
-      error: "The recording is longer than 45 seconds.",
+      error: "voice.failure.tooLong",
     });
   });
 
@@ -107,7 +107,7 @@ describe("transcribing a voice intro", () => {
 
     expect(await prisma.voiceIntro.findUniqueOrThrow({ where: { id } })).toMatchObject({
       status: "FAILED",
-      error: "No speech was found in the recording.",
+      error: "voice.failure.noSpeech",
     });
     expect(deps.reembed).not.toHaveBeenCalled();
   });
@@ -124,7 +124,7 @@ describe("transcribing a voice intro", () => {
     await expect(attempt(id, 2)).rejects.toThrow("ECONNREFUSED");
     expect(await prisma.voiceIntro.findUniqueOrThrow({ where: { id } })).toMatchObject({
       status: "FAILED",
-      error: "This couldn't be transcribed right now. Employers can still listen to it.",
+      error: "voice.failure.unavailable",
     });
   });
 
