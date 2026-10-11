@@ -1,5 +1,6 @@
-import { languageName } from "@walkins/shared";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
 
 // Shown with every transcript, wherever it appears: it is a machine's guess
 // at what was said, and it must never read as a quote.
@@ -12,16 +13,15 @@ export function TranscriptLabel({
   languageProbability: number | null;
   className?: string;
 }) {
+  const t = useTranslations("transcript");
+  const { languageName } = useFormat();
   return (
     <p className={cn("type-meta", className)}>
-      Automatic transcript, may contain errors
-      {language && (
-        <>
-          {" "}
-          · {languageName(language)}
-          {languageProbability !== null && ` (${Math.round(languageProbability * 100)}% sure of the language)`}
-        </>
-      )}
+      {t("label")}
+      {language &&
+        (languageProbability !== null
+          ? t("languageSure", { language: languageName(language), percent: Math.round(languageProbability * 100) })
+          : t("language", { language: languageName(language) }))}
     </p>
   );
 }

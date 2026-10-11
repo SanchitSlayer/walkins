@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { dayKey, type DriveStatus } from "@walkins/shared";
 import { cn } from "@/lib/utils";
 
@@ -40,14 +41,14 @@ type Shape = "dot" | "half" | "triangle" | "ring" | "square" | "dash" | "cross";
 // Live and closing inks sit at almost the same luminance, so shape and label
 // are what separate them for red-green colourblind users; colour is the fast
 // glance, never the only carrier.
-const STATES: Record<BoardState, { label: string; shape: Shape; tone: "live" | "filling" | "closing" | "pending" | null }> = {
-  live: { label: "Live", shape: "dot", tone: "live" },
-  filling: { label: "Filling up", shape: "half", tone: "filling" },
-  closing: { label: "Closing today", shape: "triangle", tone: "closing" },
-  pending: { label: "Pending review", shape: "ring", tone: "pending" },
-  draft: { label: "Draft", shape: "square", tone: null },
-  expired: { label: "Expired", shape: "dash", tone: null },
-  cancelled: { label: "Cancelled", shape: "cross", tone: null },
+const STATES: Record<BoardState, { shape: Shape; tone: "live" | "filling" | "closing" | "pending" | null }> = {
+  live: { shape: "dot", tone: "live" },
+  filling: { shape: "half", tone: "filling" },
+  closing: { shape: "triangle", tone: "closing" },
+  pending: { shape: "ring", tone: "pending" },
+  draft: { shape: "square", tone: null },
+  expired: { shape: "dash", tone: null },
+  cancelled: { shape: "cross", tone: null },
 };
 
 // The token name rather than a var() reference, for consumers that need the
@@ -67,10 +68,6 @@ export function stateColor(state: BoardState, surface: Surface): string {
 // The rail is printed onto stock; neutral states get no rail at all.
 export function railColor(state: BoardState): string | undefined {
   return STATES[state].tone ? stateColor(state, "stock") : undefined;
-}
-
-export function stateLabel(state: BoardState): string {
-  return STATES[state].label;
 }
 
 function ShapeGlyph({ shape }: { shape: Shape }) {
@@ -131,14 +128,15 @@ export function StatusMark({
   surface: Surface;
   className?: string;
 }) {
-  const { label, shape } = STATES[state];
+  const t = useTranslations("board.state");
+  const { shape } = STATES[state];
   return (
     <span
       className={cn("type-meta inline-flex items-center gap-1.5", className)}
       style={{ color: stateColor(state, surface) }}
     >
       <ShapeGlyph shape={shape} />
-      {label}
+      {t(state)}
     </span>
   );
 }

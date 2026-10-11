@@ -6,6 +6,7 @@ import { LngLatBounds, Map as MapLibreMap, Marker, NavigationControl } from "map
 import { circleRing } from "@/lib/geo";
 import { cn } from "@/lib/utils";
 import { addRadiusLayers, boardMapStyle, homeDiamondElement, setRadius } from "./map-style";
+import { useTranslations } from "next-intl";
 
 const KEY_STEP_DEG = 0.001;
 
@@ -33,6 +34,7 @@ export default function PinMap({ lat, lng, radiusKm, onChange, className }: Prop
   // The loaded map itself rather than a flag: Fast Refresh re-runs effects with
   // state kept, so a flag would still read true while a freshly recreated map
   // has no sources yet.
+  const t = useTranslations("map.home");
   const [loadedMap, setLoadedMap] = useState<MapLibreMap | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -129,11 +131,11 @@ export default function PinMap({ lat, lng, radiusKm, onChange, className }: Prop
     return (
       <div className={cn("grid place-items-center border border-housing-line p-6 text-center", className)}>
         <p className="type-body max-w-xs text-housing-muted">
-          The map needs WebGL, which this browser doesn&apos;t have, so your home can&apos;t be placed here.
+          {t("noWebgl")}
         </p>
       </div>
     );
   }
 
-  return <div ref={containerRef} className={cn("border border-housing-line", className)} role="region" aria-label="Home location map" />;
+  return <div ref={containerRef} className={cn("border border-housing-line", className)} role="region" aria-label={t("label")} />;
 }

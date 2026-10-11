@@ -8,6 +8,7 @@ import { circleRing, squareRing } from "@/lib/geo";
 import { cn } from "@/lib/utils";
 import { deriveBoardState, stateToken } from "./board-state";
 import { addRadiusLayers, boardMapStyle, collection, homeDiamondElement, setRadius, token } from "./map-style";
+import { useTranslations } from "next-intl";
 
 const PITCH = 50;
 const BEARING = -12;
@@ -80,6 +81,7 @@ export default function CityPlane({ drives, now, origin, radiusKm, selectedId, o
   // The loaded map itself rather than a flag: Fast Refresh re-runs effects with
   // state kept, so a flag would still read true while a freshly recreated map
   // has no sources yet.
+  const t = useTranslations("map.drives");
   const [loadedMap, setLoadedMap] = useState<MapLibreMap | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -217,11 +219,11 @@ export default function CityPlane({ drives, now, origin, radiusKm, selectedId, o
     return (
       <div className={cn("grid place-items-center border border-housing-line p-6 text-center", className)}>
         <p className="type-body max-w-xs text-housing-muted">
-          The map needs WebGL, which this browser doesn&apos;t have. Everything on it is also written out on this page.
+          {t("noWebgl")}
         </p>
       </div>
     );
   }
 
-  return <div ref={containerRef} className={cn("border border-housing-line", className)} role="region" aria-label="Map of drives" />;
+  return <div ref={containerRef} className={cn("border border-housing-line", className)} role="region" aria-label={t("label")} />;
 }

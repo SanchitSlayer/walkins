@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { dayKey, dayLabel, type DriveSlot, formatSeats, formatTime } from "@walkins/shared";
+import { dayKey, type DriveSlot } from "@walkins/shared";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
 
 const MAX_TOKENS = 30;
 const COLLAPSE_OVER = 8;
@@ -47,6 +49,8 @@ export function SlotStack({
   onSelect?: (slotId: string) => void;
   className?: string;
 }) {
+  const t = useTranslations("board.slots");
+  const { dayLabel, formatSeats, formatTime } = useFormat();
   const [expanded, setExpanded] = useState(false);
   const perToken = Math.max(1, Math.ceil(Math.max(0, ...slots.map((s) => s.capacity)) / MAX_TOKENS));
   const collapsible = slots.length > COLLAPSE_OVER;
@@ -71,11 +75,11 @@ export function SlotStack({
       <p className="type-meta flex flex-wrap items-center gap-x-4 gap-y-1 text-housing-muted">
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="h-2.5 w-2.5 bg-stock shadow-[0_2px_0_var(--stock-edge-deep)]" />
-          Open {perToken > 1 ? `(${perToken} seats each)` : "seat"}
+          {t("open", { perToken })}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="h-2.5 w-2.5 border border-housing-rule" />
-          Booked
+          {t("booked")}
         </span>
       </p>
 
@@ -96,8 +100,8 @@ export function SlotStack({
                   <span className="grid gap-1">
                     <Tokens capacity={slot.capacity} booked={slot.bookedCount} perToken={perToken} past={past} />
                     <span className="type-board-sm text-housing-muted">
-                      {past ? "Under way or over" : formatSeats(slot.capacity, slot.bookedCount)}
-                      {selected && " · Selected"}
+                      {past ? t("underWay") : formatSeats(slot.capacity, slot.bookedCount)}
+                      {selected && t("selected")}
                     </span>
                   </span>
                 </>
@@ -141,7 +145,7 @@ export function SlotStack({
           aria-expanded={expanded}
           className="type-meta mt-5 min-h-11 border border-housing-rule px-4 hover:bg-housing-raised"
         >
-          {expanded ? "Show fewer slots" : `Show all ${slots.length} slots`}
+          {expanded ? t("showFewer") : t("showAll", { count: slots.length })}
         </button>
       )}
     </div>

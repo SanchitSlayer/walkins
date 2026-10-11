@@ -29,7 +29,8 @@ export function boardMapStyle(): Exclude<MapOptions["style"], string | undefined
         tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
         tileSize: 256,
         maxzoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        // OpenStreetMap's licence asks for this wording and link as they are.
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', // i18n-ignore: licence text
       },
     },
     layers: [

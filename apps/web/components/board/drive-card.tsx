@@ -1,8 +1,10 @@
-import { type DriveSearchResult, formatDistance, formatSalary, formatSeats, formatWhen } from "@walkins/shared";
+import type { DriveSearchResult } from "@walkins/shared";
+import { useFormat } from "@/lib/format";
 import { deriveBoardState, StatusMark } from "./board-state";
 import { Slab } from "./slab";
 
 export function DriveCard({ drive, now, selected = false }: { drive: DriveSearchResult; now: Date; selected?: boolean }) {
+  const { formatDistance, formatSalary, formatSeats, formatWhen } = useFormat();
   const state = deriveBoardState(drive, now);
   const when = formatWhen(drive.startsAt, drive.endsAt, now);
 

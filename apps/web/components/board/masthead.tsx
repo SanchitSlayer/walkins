@@ -5,17 +5,19 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import { forgetDevice } from "@/lib/offline";
+import { useTranslations } from "next-intl";
 
-const NAV_BY_ROLE: Record<string, { href: string; label: string }[]> = {
+const NAV_BY_ROLE: Record<string, { href: string; label: "yourDrives" | "yourProfile" | "admin" }[]> = {
   CANDIDATE: [
-    { href: "/my-drives", label: "Your drives" },
-    { href: "/profile", label: "Your profile" },
+    { href: "/my-drives", label: "yourDrives" },
+    { href: "/profile", label: "yourProfile" },
   ],
-  EMPLOYER: [{ href: "/employer/drives", label: "Your drives" }],
-  ADMIN: [{ href: "/admin", label: "Admin" }],
+  EMPLOYER: [{ href: "/employer/drives", label: "yourDrives" }],
+  ADMIN: [{ href: "/admin", label: "admin" }],
 };
 
 export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {
+  const t = useTranslations("nav");
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -38,12 +40,13 @@ export function LogoutButton({ onLoggedOut }: { onLoggedOut?: () => void }) {
       disabled={pending}
       className="type-meta min-h-11 whitespace-nowrap text-housing-muted underline-offset-4 hover:text-stock hover:underline disabled:opacity-60"
     >
-      {pending ? "Logging out" : "Log out"}
+      {pending ? t("loggingOut") : t("logOut")}
     </button>
   );
 }
 
 function SessionNav() {
+  const t = useTranslations("nav");
   const [role, setRole] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
@@ -57,15 +60,15 @@ function SessionNav() {
   if (!role) {
     return (
       <Link href="/login" className="type-meta text-stock underline-offset-4 hover:underline">
-        Log in
+        {t("logIn")}
       </Link>
     );
   }
   return (
-    <nav aria-label="Account" className="flex items-center gap-5">
+    <nav aria-label={t("account")} className="flex items-center gap-5">
       {(NAV_BY_ROLE[role] ?? []).map((link) => (
         <Link key={link.href} href={link.href} className="type-meta whitespace-nowrap text-stock underline-offset-4 hover:underline">
-          {link.label}
+          {t(link.label)}
         </Link>
       ))}
       <LogoutButton onLoggedOut={() => setRole(null)} />

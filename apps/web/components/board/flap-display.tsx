@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { type BoardState, stateColor } from "./board-state";
+import { useTranslations } from "next-intl";
 
 const FLAP_MS = 140;
 
@@ -50,6 +51,15 @@ function FlapCell({ char, delayMs }: { char: string; delayMs: number }) {
   );
 }
 
+// One cell per character as a reader sees it. Splitting by code point would
+// give a Devanagari vowel sign or nasal mark (ि, ँ) a flap of its own, where
+// it renders as a dotted circle: हूँ is three code points and one syllable.
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function graphemes(text: string): string[] {
+  return Array.from(segmenter.segment(text), (s) => s.segment);
+}
+
 export function FlapDisplay({
   value,
   length,
@@ -69,7 +79,9 @@ export function FlapDisplay({
   staggerMs?: number;
   className?: string;
 }) {
-  const padded = length ? (align === "right" ? value.padStart(length) : value.padEnd(length)) : value;
+  const glyphs = graphemes(value);
+  const padding = length ? Array<string>(Math.max(0, length - glyphs.length)).fill(" ") : [];
+  const cells = align === "right" ? [...padding, ...glyphs] : [...glyphs, ...padding];
   const style = {
     ...(tone ? { "--flap-color": stateColor(tone, "housing") } : {}),
     ...(cellWidth ? { "--flap-w": `${cellWidth}em` } : {}),
@@ -79,7 +91,7 @@ export function FlapDisplay({
     <span className={cn("inline-block", className)}>
       <span className="sr-only">{srValue ?? value}</span>
       <span className="flap" aria-hidden style={style}>
-        {Array.from(padded).map((char, index) => (
+        {cells.map((char, index) => (
           <FlapCell key={index} char={char === " " ? " " : char} delayMs={index * staggerMs} />
         ))}
       </span>
@@ -91,23 +103,24 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 // Over a day away, seconds are noise and a board ticking every second draws
 // the eye for nothing, so it counts in minutes until the last day.
-function countdownText(seconds: number): { flap: string; spoken: string } {
+function countdownText(seconds: number, t: ReturnType<typeof useTranslations<"board.countdown">>): { flap: string; spoken: string } {
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   if (days > 0) {
     return {
-      flap: `${days}d ${pad(hours)}:${pad(minutes)}`,
-      spoken: `${days} ${days === 1 ? "day" : "days"}, ${hours} hours and ${minutes} minutes`,
+      flap: t("daysFlap", { days, clock: `${pad(hours)}:${pad(minutes)}` }),
+      spoken: t("daysSpoken", { days, hours, minutes }),
     };
   }
   return {
     flap: `${pad(hours)}:${pad(minutes)}:${pad(seconds % 60)}`,
-    spoken: `${hours} hours and ${minutes} minutes`,
+    spoken: t("hoursSpoken", { hours, minutes }),
   };
 }
 
 export function Countdown({ startsAt, endsAt, className }: { startsAt: string; endsAt: string; className?: string }) {
+  const t = useTranslations("board.countdown");
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
@@ -121,10 +134,10 @@ export function Countdown({ startsAt, endsAt, className }: { startsAt: string; e
   if (now !== null && now >= end) return null;
 
   const started = now !== null && now >= start;
-  const label = started ? "Doors close in" : "Starts in";
+  const label = started ? t("closesIn") : t("startsIn");
   // The server has no clock worth trusting for a live count, so the first
   // render is a blank board that the browser fills in.
-  const text = now === null ? { flap: "--:--:--", spoken: "" } : countdownText(Math.floor(((started ? end : start) - now) / 1000));
+  const text = now === null ? { flap: "--:--:--", spoken: "" } : countdownText(Math.floor(((started ? end : start) - now) / 1000), t);
 
   return (
     <div className={cn("grid content-start gap-2", className)}>

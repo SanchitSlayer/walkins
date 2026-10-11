@@ -6,6 +6,10 @@ import type { ReactNode } from "react";
 import { LogoutButton } from "@/components/board/masthead";
 import { useRequireRole } from "@/lib/use-require-role";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
+import type { Messages } from "@walkins/shared";
+
+type DeskKey = keyof Messages["desk"];
 
 // The operations desk: the same housing and type as the public board, but
 // quieter and denser, because people work here rather than browse. Employers
@@ -17,10 +21,11 @@ export function DeskShell({
   children,
 }: {
   role: "EMPLOYER" | "ADMIN";
-  label: string;
-  nav: { href: string; label: string }[];
+  label: DeskKey;
+  nav: readonly { href: string; label: DeskKey }[];
   children: ReactNode;
 }) {
+  const t = useTranslations("desk");
   const ready = useRequireRole(role);
   const pathname = usePathname();
 
@@ -32,9 +37,9 @@ export function DeskShell({
             <Link href="/" className="type-h3">
               Walkins
             </Link>
-            <span className="type-board-md text-housing-muted">{label}</span>
+            <span className="type-board-md text-housing-muted">{t(label)}</span>
           </div>
-          <nav aria-label={label}>
+          <nav aria-label={t(label)}>
             <ul className="flex flex-wrap gap-x-6 gap-y-1">
               {nav.map((item) => {
                 const current = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -48,7 +53,7 @@ export function DeskShell({
                         current ? "border-stock text-stock" : "border-transparent text-housing-muted hover:text-stock",
                       )}
                     >
-                      {item.label}
+                      {t(item.label)}
                     </Link>
                   </li>
                 );
