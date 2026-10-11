@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionSchema } from "../knockout";
+import { personRefSchema } from "../people";
 import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
 
 export const verificationStatusSchema = z.enum(["PENDING", "VERIFIED", "REJECTED"]);
@@ -144,10 +145,12 @@ export const driveDetailSchema = driveSummarySchema.extend({
   venuePinnedAt: z.string().nullable(),
   knockoutQuestions: knockoutQuestionsSchema,
   city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),
+  owner: personRefSchema,
 });
 
 export const employerDriveRowSchema = driveSummarySchema.extend({
   bookedCount: z.number().int(),
+  owner: personRefSchema,
 });
 
 export const driveSearchResultSchema = driveSummarySchema.extend({
@@ -283,6 +286,11 @@ export const liveBoardSchema = z.object({
       distanceMeters: z.number().nullable(),
       isValid: z.boolean(),
       flagReason: z.string().nullable(),
+      // Who at the desk marked them present (a MANUAL check-in) and who
+      // confirmed a flagged one, so people sharing a desk see each other's
+      // work.
+      recordedBy: personRefSchema.nullable(),
+      confirmedBy: personRefSchema.nullable(),
     }),
   ),
   awaiting: z.array(
@@ -310,7 +318,8 @@ export const liveDisplaySchema = z.object({
   arrivals: z.array(
     z.object({
       checkInId: z.string(),
-      displayName: z.string(),
+      // Null for someone with no name on file; the board says so in words.
+      displayName: z.string().nullable(),
       method: checkInMethodSchema,
       scannedAt: z.string(),
       slotStartsAt: z.string().nullable(),
@@ -365,6 +374,7 @@ export const applicantSchema = z.object({
   state: applicationStateSchema,
   slotStartsAt: z.string().nullable(),
   shortlisted: z.boolean(),
+  shortlistedBy: personRefSchema.nullable(),
   distanceKm: z.number(),
   experienceYears: z.number(),
   screenedOutReason: z.string().nullable(),

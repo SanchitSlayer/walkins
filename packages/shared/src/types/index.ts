@@ -5,6 +5,8 @@ export type VerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
 
 export type UserRole = "CANDIDATE" | "EMPLOYER" | "ADMIN";
 
+// CompanyRole, the second axis, is in people.ts with what each role may do.
+
 export type DriveStatus = "DRAFT" | "PENDING" | "LIVE" | "EXPIRED" | "CANCELLED";
 
 export type ApplicationState =
