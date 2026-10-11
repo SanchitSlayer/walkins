@@ -11,6 +11,8 @@ import type {
   CheckInRequest,
   CheckInResult,
   CheckInCode,
+  CompanyInvitation,
+  CompanyRole,
   CompanySettings,
   CreatePricingRule,
   CreateDriveInput,
@@ -20,16 +22,21 @@ import type {
   EmployerApplicationUpdate,
   EmployerDriveRow,
   FailedJob,
+  Handover,
+  Invite,
   KnockoutAnswers,
   LedgerExplorer,
   LiveBoard,
   LiveDisplay,
+  Membership,
   MessageKey,
   MyApplication,
   MyApplications,
   ModerateDrive,
+  MyInvitations,
   OtpRequestInput,
   OtpVerifyInput,
+  People,
   PricingRuleView,
   PublicDriveDetail,
   TelegramLink,
@@ -262,6 +269,42 @@ export const apiClient = {
 
   async updateCompanySettings(input: CompanySettings): Promise<CompanySettings> {
     return parseOrThrow(await request("/companies/me", { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
+  async getMembership(): Promise<Membership> {
+    return parseOrThrow(await request("/companies/me/membership"));
+  },
+
+  async getPeople(): Promise<People> {
+    return parseOrThrow(await request("/companies/me/people"));
+  },
+
+  async invite(input: Invite): Promise<CompanyInvitation> {
+    return parseOrThrow(await request("/companies/me/invitations", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async revokeInvitation(id: string): Promise<void> {
+    return parseOrThrow(await request(`/companies/me/invitations/${id}`, { method: "DELETE" }));
+  },
+
+  async changeRole(userId: string, role: CompanyRole, successorId?: string): Promise<Handover> {
+    return parseOrThrow(await request(`/companies/me/members/${userId}`, { method: "PATCH", body: JSON.stringify({ role, successorId }) }));
+  },
+
+  async removeMember(userId: string, successorId?: string): Promise<Handover> {
+    return parseOrThrow(await request(`/companies/me/members/${userId}/remove`, { method: "POST", body: JSON.stringify({ successorId }) }));
+  },
+
+  async reassignDrive(driveId: string, ownerId: string): Promise<DriveDetail> {
+    return parseOrThrow(await request(`/drives/${driveId}/owner`, { method: "POST", body: JSON.stringify({ ownerId }) }));
+  },
+
+  async myInvitations(): Promise<MyInvitations> {
+    return parseOrThrow(await request("/invitations/mine"));
+  },
+
+  async acceptInvitation(id: string): Promise<Membership> {
+    return parseOrThrow(await request(`/invitations/${id}/accept`, { method: "POST" }));
   },
 
   async getAnalytics(): Promise<Analytics> {
