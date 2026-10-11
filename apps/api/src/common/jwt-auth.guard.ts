@@ -1,6 +1,7 @@
 import { CanActivate, type ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { AccessTokenPayload } from "@walkins/shared";
+import { apiError } from "./api-error";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -12,13 +13,13 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
 
     if (!token) {
-      throw new UnauthorizedException("Missing access token");
+      throw new UnauthorizedException(apiError("errors.auth.signedOut"));
     }
 
     try {
       request.user = this.jwtService.verify<AccessTokenPayload>(token);
     } catch {
-      throw new UnauthorizedException("Invalid or expired access token");
+      throw new UnauthorizedException(apiError("errors.auth.signedOut"));
     }
 
     return true;
