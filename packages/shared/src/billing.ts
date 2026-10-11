@@ -33,8 +33,8 @@ export const walletSchema = z.object({
 
 export const topUpRequestSchema = z.object({
   amountPaise: paise
-    .min(MIN_TOP_UP_PAISE, "The smallest top-up is ₹100")
-    .max(MAX_TOP_UP_PAISE, "The largest top-up is ₹50,000"),
+    .min(MIN_TOP_UP_PAISE, "errors.validation.topUpMin")
+    .max(MAX_TOP_UP_PAISE, "errors.validation.topUpMax"),
 });
 
 // What the checkout needs. keyId is Razorpay's public key; it is null for the

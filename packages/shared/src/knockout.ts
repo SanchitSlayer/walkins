@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MessageKey } from "./i18n";
 
 // Pass/fail questions an employer sets on a drive, answered when applying.
 // `requirement` is written by the employer for the candidate who doesn't meet
@@ -22,8 +23,8 @@ export const knockoutQuestionSchema = z.discriminatedUnion("type", [
     unit: z.string().trim().max(20).optional(),
     pass: z
       .object({ min: z.number().optional(), max: z.number().optional() })
-      .refine((p) => p.min !== undefined || p.max !== undefined, "Set a minimum, a maximum or both")
-      .refine((p) => p.min === undefined || p.max === undefined || p.min <= p.max, "The minimum is above the maximum"),
+      .refine((p) => p.min !== undefined || p.max !== undefined, "errors.validation.knockoutBounds")
+      .refine((p) => p.min === undefined || p.max === undefined || p.min <= p.max, "errors.validation.knockoutOrder"),
   }),
   z.object({
     ...questionBase,
@@ -40,11 +41,11 @@ export const knockoutQuestionsSchema = z
   .max(MAX_KNOCKOUT_QUESTIONS)
   .superRefine((questions, ctx) => {
     if (new Set(questions.map((q) => q.id)).size !== questions.length) {
-      ctx.addIssue({ code: "custom", message: "Each question needs its own id" });
+      ctx.addIssue({ code: "custom", message: "errors.validation.knockoutDuplicate" });
     }
     questions.forEach((q, index) => {
       if (q.type === "SINGLE_CHOICE" && !q.pass.accepted.every((a) => q.options.includes(a))) {
-        ctx.addIssue({ code: "custom", path: [index, "pass"], message: "An accepted answer isn't one of the options" });
+        ctx.addIssue({ code: "custom", path: [index, "pass"], message: "errors.validation.knockoutAccepted" });
       }
     });
   });
@@ -79,7 +80,7 @@ export function publicKnockoutQuestions(questions: KnockoutQuestion[]): PublicKn
 export type KnockoutResult =
   | { passed: true }
   | { passed: false; questionId: string; reason: string }
-  | { passed: false; questionId: string; invalid: string };
+  | { passed: false; questionId: string; invalid: { key: MessageKey; prompt: string } };
 
 // "invalid" is a malformed answer (missing, wrong type, not an option): a 400
 // for the request, not a judgement on the candidate. Otherwise the first unmet
@@ -87,15 +88,16 @@ export type KnockoutResult =
 export function evaluateKnockouts(questions: KnockoutQuestion[], answers: KnockoutAnswers): KnockoutResult {
   for (const q of questions) {
     const answer = answers[q.id];
-    if (answer === undefined) return { passed: false, questionId: q.id, invalid: `Answer "${q.prompt}"` };
+    const invalid = (key: MessageKey) => ({ passed: false as const, questionId: q.id, invalid: { key, prompt: q.prompt } });
+    if (answer === undefined) return invalid("errors.knockout.missing");
     switch (q.type) {
       case "BOOLEAN":
-        if (typeof answer !== "boolean") return { passed: false, questionId: q.id, invalid: `"${q.prompt}" needs a yes or no` };
+        if (typeof answer !== "boolean") return invalid("errors.knockout.needsYesNo");
         if (answer !== q.pass.equals) return { passed: false, questionId: q.id, reason: q.requirement };
         break;
       case "NUMERIC":
         if (typeof answer !== "number" || !Number.isFinite(answer)) {
-          return { passed: false, questionId: q.id, invalid: `"${q.prompt}" needs a number` };
+          return invalid("errors.knockout.needsNumber");
         }
         if ((q.pass.min !== undefined && answer < q.pass.min) || (q.pass.max !== undefined && answer > q.pass.max)) {
           return { passed: false, questionId: q.id, reason: q.requirement };
@@ -103,7 +105,7 @@ export function evaluateKnockouts(questions: KnockoutQuestion[], answers: Knocko
         break;
       case "SINGLE_CHOICE":
         if (typeof answer !== "string" || !q.options.includes(answer)) {
-          return { passed: false, questionId: q.id, invalid: `Choose one of the answers to "${q.prompt}"` };
+          return invalid("errors.knockout.needsChoice");
         }
         if (!q.pass.accepted.includes(answer)) return { passed: false, questionId: q.id, reason: q.requirement };
         break;

@@ -22,7 +22,7 @@ export const applicationStateSchema = z.enum([
 
 export const phoneSchema = z
   .string()
-  .regex(/^\+?[1-9]\d{9,14}$/, "Enter a valid phone number");
+  .regex(/^\+?[1-9]\d{9,14}$/, "errors.validation.phone");
 
 export const otpRequestSchema = z.object({
   phone: phoneSchema,
@@ -30,7 +30,7 @@ export const otpRequestSchema = z.object({
 
 export const otpVerifySchema = z.object({
   phone: phoneSchema,
-  otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits"),
+  otp: z.string().regex(/^\d{6}$/, "errors.validation.otp"),
 });
 
 // Shared by createDriveSchema and updateDriveSchema. Deliberately excludes
@@ -58,15 +58,15 @@ export const createDriveSchema = z
     capacityPerSlot: z.number().int().positive(),
   })
   .refine((d) => d.salaryMax >= d.salaryMin, {
-    message: "salaryMax must be >= salaryMin",
+    message: "errors.validation.payRange",
     path: ["salaryMax"],
   })
   .refine((d) => d.experienceMax >= d.experienceMin, {
-    message: "experienceMax must be >= experienceMin",
+    message: "errors.validation.experienceRange",
     path: ["experienceMax"],
   })
   .refine((d) => d.endsAt > d.startsAt, {
-    message: "endsAt must be after startsAt",
+    message: "errors.validation.timeOrder",
     path: ["endsAt"],
   });
 
@@ -368,7 +368,7 @@ export const applicantSchema = z.object({
   distanceKm: z.number(),
   experienceYears: z.number(),
   screenedOutReason: z.string().nullable(),
-  knockout: z.array(z.object({ prompt: z.string(), answer: z.string(), met: z.boolean() })),
+  knockout: z.array(z.object({ prompt: z.string(), answer: z.union([z.boolean(), z.number(), z.string()]).nullable(), met: z.boolean() })),
   match: z.object({
     score: z.number(),
     distanceScore: z.number(),

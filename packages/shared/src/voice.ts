@@ -50,44 +50,26 @@ export function transcriptConfidence(signals: TranscriptSignals): "high" | "low"
   return "high";
 }
 
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  hi: "Hindi",
-  ur: "Urdu",
-  bn: "Bengali",
-  ta: "Tamil",
-  te: "Telugu",
-  mr: "Marathi",
-  gu: "Gujarati",
-  kn: "Kannada",
-  ml: "Malayalam",
-  pa: "Punjabi",
-  or: "Odia",
-  as: "Assamese",
-  ne: "Nepali",
-};
+// Languages a company can say its team reads. Their names come from
+// Intl.DisplayNames in the reader's locale (Format.languageName).
+export const READABLE_LANGUAGES = ["en", "hi", "ur", "bn", "ta", "te", "mr", "gu", "kn", "ml", "pa", "or", "as", "ne"];
 
-export function languageName(code: string): string {
-  return LANGUAGE_NAMES[code] ?? code.toUpperCase();
-}
-
-export const READABLE_LANGUAGES = Object.keys(LANGUAGE_NAMES);
-
-// The languages each writing system is used for here. A transcript is judged
+// The languages each writing system is used for here, by ISO 15924 code;
+// Format.scriptName gives the name in the reader's locale. A transcript is judged
 // by the script it actually came out in, not the language Whisper detected:
 // the base model detects Hindi correctly and then writes it in Urdu script.
 const SCRIPTS: { name: string; from: number; to: number; languages: string[] }[] = [
-  { name: "Latin", from: 0x0041, to: 0x024f, languages: ["en"] },
-  { name: "Devanagari", from: 0x0900, to: 0x097f, languages: ["hi", "mr", "ne"] },
-  { name: "Bengali", from: 0x0980, to: 0x09ff, languages: ["bn", "as"] },
-  { name: "Gurmukhi", from: 0x0a00, to: 0x0a7f, languages: ["pa"] },
-  { name: "Gujarati", from: 0x0a80, to: 0x0aff, languages: ["gu"] },
-  { name: "Odia", from: 0x0b00, to: 0x0b7f, languages: ["or"] },
-  { name: "Tamil", from: 0x0b80, to: 0x0bff, languages: ["ta"] },
-  { name: "Telugu", from: 0x0c00, to: 0x0c7f, languages: ["te"] },
-  { name: "Kannada", from: 0x0c80, to: 0x0cff, languages: ["kn"] },
-  { name: "Malayalam", from: 0x0d00, to: 0x0d7f, languages: ["ml"] },
-  { name: "Arabic", from: 0x0600, to: 0x06ff, languages: ["ur"] },
+  { name: "Latn", from: 0x0041, to: 0x024f, languages: ["en"] },
+  { name: "Deva", from: 0x0900, to: 0x097f, languages: ["hi", "mr", "ne"] },
+  { name: "Beng", from: 0x0980, to: 0x09ff, languages: ["bn", "as"] },
+  { name: "Guru", from: 0x0a00, to: 0x0a7f, languages: ["pa"] },
+  { name: "Gujr", from: 0x0a80, to: 0x0aff, languages: ["gu"] },
+  { name: "Orya", from: 0x0b00, to: 0x0b7f, languages: ["or"] },
+  { name: "Taml", from: 0x0b80, to: 0x0bff, languages: ["ta"] },
+  { name: "Telu", from: 0x0c00, to: 0x0c7f, languages: ["te"] },
+  { name: "Knda", from: 0x0c80, to: 0x0cff, languages: ["kn"] },
+  { name: "Mlym", from: 0x0d00, to: 0x0d7f, languages: ["ml"] },
+  { name: "Arab", from: 0x0600, to: 0x06ff, languages: ["ur"] },
 ];
 
 // The script most of the letters are in; null for text with no letters.

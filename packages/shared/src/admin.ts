@@ -34,7 +34,7 @@ export const adminDriveSchema = z.object({
   endsAt: z.string(),
   status: driveStatusSchema,
   capacity: z.number().int(),
-  blockers: z.array(z.string()),
+  blockers: z.array(z.object({ code: z.string(), params: z.record(z.union([z.string(), z.number()])) })),
 });
 
 export const moderateDriveSchema = z.object({ decision: z.enum(["approve", "reject"]), reason: z.string().max(300).optional() });
