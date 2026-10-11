@@ -461,7 +461,9 @@ model PaymentOrder {
 
 // Every webhook delivery as received, valid or not. rawBody is text, not
 // JSON: the signature covers the exact bytes, and a JSON column would
-// re-serialise them.
+// re-serialise them. A delivery whose signature fails keeps only its first
+// 2 KB, with rawBodyBytes giving the full size: enough to diagnose, not
+// enough for an unauthenticated sender to fill the disk.
 model PaymentEvent {
   id               String   @id @default(cuid())
   gateway          String
@@ -470,6 +472,7 @@ model PaymentEvent {
   gatewayPaymentId String?
   signatureValid   Boolean
   rawBody          String
+  rawBodyBytes     Int      @default(0)
   outcome          String?
   receivedAt       DateTime @default(now())
 
