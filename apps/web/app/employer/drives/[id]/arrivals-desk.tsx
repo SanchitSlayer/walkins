@@ -2,38 +2,18 @@
 
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
-import { type ApplicationState, formatTime, type LiveBoard } from "@walkins/shared";
+import type { ApplicationState } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useLiveFeed } from "@/lib/use-live-feed";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
-
-type Arrival = LiveBoard["arrivals"][number];
-
-const METHOD: Record<Arrival["method"], string> = {
-  SCAN: "Scanned",
-  WALK_IN: "Walk-in",
-  MANUAL: "Marked present",
-};
-
-const STATE: Partial<Record<ApplicationState, string>> = {
-  CHECKED_IN: "Arrived",
-  INTERVIEWED: "Interviewed",
-  HIRED: "Hired",
-  REJECTED: "Not selected",
-  NO_SHOW: "Marked absent",
-  CONFIRMED: "Booked",
-};
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 // The moves the transition table allows an employer from each state.
-const NEXT: Partial<Record<ApplicationState, { to: "INTERVIEWED" | "HIRED" | "REJECTED"; label: string }[]>> = {
-  CHECKED_IN: [
-    { to: "INTERVIEWED", label: "Interviewed" },
-    { to: "REJECTED", label: "Not selected" },
-  ],
-  INTERVIEWED: [
-    { to: "HIRED", label: "Hire" },
-    { to: "REJECTED", label: "Not selected" },
-  ],
+const NEXT: Partial<Record<ApplicationState, ("INTERVIEWED" | "HIRED" | "REJECTED")[]>> = {
+  CHECKED_IN: ["INTERVIEWED", "REJECTED"],
+  INTERVIEWED: ["HIRED", "REJECTED"],
 };
 
 function Row({ children }: { children: ReactNode }) {
@@ -46,6 +26,10 @@ function Row({ children }: { children: ReactNode }) {
 // leaves out (full names, why a check-in was flagged) and every judgement
 // about a person, made here rather than on a screen the queue can see.
 export function ArrivalsDesk({ driveId }: { driveId: string }) {
+  const t = useTranslations("arrivals");
+  const state = useTranslations("deskState");
+  const errorText = useErrorText();
+  const { formatTime } = useFormat();
   const { data: desk, refresh } = useLiveFeed(driveId, "desk", () => apiClient.getLiveDesk(driveId));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +42,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
       await action();
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't go through");
+      setError(errorText(err, "errors.generic"));
     } finally {
       setBusy(null);
     }
@@ -71,20 +55,19 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
     <section aria-labelledby="desk-heading" className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="desk-heading" className="type-h3">
-          Arrivals desk
+          {t("heading")}
         </h2>
         <div className="flex flex-wrap gap-3">
           <Link href={`/employer/drives/${driveId}/applicants`} className={boardButtonClass("housing", "quiet")}>
-            Applicants
+            {t("applicants")}
           </Link>
           <Link href={`/employer/drives/${driveId}/live`} className={boardButtonClass("housing", "quiet")}>
-            Open arrivals board
+            {t("openBoard")}
           </Link>
         </div>
       </div>
       <p className="type-board-sm text-housing-muted">
-        {desk.counts.checkedIn} booked arrived · {desk.counts.walkIns} walk-ins · {desk.awaiting.length} still expected ·{" "}
-        {desk.counts.hired} hired
+        {t("counts", { arrived: desk.counts.checkedIn, walkIns: desk.counts.walkIns, expected: desk.awaiting.length, hired: desk.counts.hired })}
       </p>
 
       {error && (
@@ -95,18 +78,18 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
 
       {flagged.length > 0 && (
         <div className="grid gap-2">
-          <h3 className="type-meta text-filling-lamp">Needs your confirmation ({flagged.length})</h3>
+          <h3 className="type-meta text-filling-lamp">{t("needsConfirmation", { count: flagged.length })}</h3>
           <ul className="border-t border-housing-line">
             {flagged.map((a) => (
               <Row key={a.checkInId}>
                 <div>
                   <p className="type-body">{a.name}</p>
                   <p className="type-meta text-housing-muted">
-                    {METHOD[a.method]} at {formatTime(a.scannedAt)}. {a.flagReason}
+                    {t("flaggedLine", { method: a.method, time: formatTime(a.scannedAt), reason: a.flagReason ?? "" })}
                   </p>
                 </div>
                 <BoardButton onClick={() => act(a.checkInId, () => apiClient.confirmCheckIn(a.checkInId))} disabled={busy !== null}>
-                  {busy === a.checkInId ? "Confirming" : "Confirm"}
+                  {busy === a.checkInId ? t("confirming") : t("confirm")}
                 </BoardButton>
               </Row>
             ))}
@@ -115,9 +98,9 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
       )}
 
       <div className="grid gap-2">
-        <h3 className="type-meta text-housing-muted">Still expected ({desk.awaiting.length})</h3>
+        <h3 className="type-meta text-housing-muted">{t("expected", { count: desk.awaiting.length })}</h3>
         {desk.awaiting.length === 0 ? (
-          <p className="type-meta text-housing-muted">Everyone booked has arrived.</p>
+          <p className="type-meta text-housing-muted">{t("allArrived")}</p>
         ) : (
           <ul className="border-t border-housing-line">
             {desk.awaiting.map((a) => (
@@ -125,17 +108,17 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                 <div>
                   <p className="type-body">{a.name}</p>
                   <p className="type-meta text-housing-muted">
-                    {a.slotStartsAt ? `Slot ${formatTime(a.slotStartsAt)}` : "No slot"} · {STATE[a.state]}
+                    {a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : t("noSlot")} · {state(a.state)}
                   </p>
                 </div>
                 <BoardButton
                   variant="quiet"
                   disabled={busy !== null}
                   onClick={() =>
-                    act(a.applicationId, () => apiClient.markPresent(a.applicationId), `Mark ${a.name} as present without a scan?`)
+                    act(a.applicationId, () => apiClient.markPresent(a.applicationId), t("markPresentConfirm", { name: a.name }))
                   }
                 >
-                  {busy === a.applicationId ? "Marking" : "Mark present"}
+                  {busy === a.applicationId ? t("marking") : t("markPresent")}
                 </BoardButton>
               </Row>
             ))}
@@ -144,9 +127,9 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
       </div>
 
       <div className="grid gap-2">
-        <h3 className="type-meta text-housing-muted">Arrived ({desk.arrivals.length})</h3>
+        <h3 className="type-meta text-housing-muted">{t("arrived", { count: desk.arrivals.length })}</h3>
         {desk.arrivals.length === 0 ? (
-          <p className="type-meta text-housing-muted">Nobody has checked in yet.</p>
+          <p className="type-meta text-housing-muted">{t("nobodyYet")}</p>
         ) : (
           <ul className="border-t border-housing-line">
             {desk.arrivals.map((a) => (
@@ -154,13 +137,18 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                 <div>
                   <p className="type-body">{a.name}</p>
                   <p className="type-meta text-housing-muted">
-                    {METHOD[a.method]} at {formatTime(a.scannedAt)}
-                    {a.slotStartsAt ? ` · slot ${formatTime(a.slotStartsAt)}` : ""} · {STATE[a.state] ?? a.state}
-                    {a.isValid ? "" : " · awaiting confirmation"}
+                    {[
+                      t("arrivedAt", { method: a.method, time: formatTime(a.scannedAt) }),
+                      a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : null,
+                      state(a.state),
+                      a.isValid ? null : t("awaitingConfirmation"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {(NEXT[a.state] ?? []).map(({ to, label }) => (
+                  {(NEXT[a.state] ?? []).map((to) => (
                     <BoardButton
                       key={to}
                       variant={to === "REJECTED" ? "quiet" : "primary"}
@@ -169,11 +157,11 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                         act(
                           `${a.applicationId}:${to}`,
                           () => apiClient.updateApplicationState(a.applicationId, to),
-                          to === "INTERVIEWED" ? undefined : `${label}: ${a.name}? This can't be undone.`,
+                          to === "INTERVIEWED" ? undefined : t("moveConfirm", { to, name: a.name }),
                         )
                       }
                     >
-                      {busy === `${a.applicationId}:${to}` ? "Saving" : label}
+                      {busy === `${a.applicationId}:${to}` ? t("saving") : t("move", { to })}
                     </BoardButton>
                   ))}
                 </div>

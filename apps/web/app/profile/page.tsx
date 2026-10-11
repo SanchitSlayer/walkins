@@ -12,6 +12,9 @@ import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
 import { TelegramPanel } from "./telegram-panel";
 import { VoicePanel } from "./voice-panel";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 const PinMap = dynamic(() => import("@/components/board/pin-map"), {
   ssr: false,
@@ -22,6 +25,9 @@ const DEFAULT_LAT = 12.9716;
 const DEFAULT_LNG = 77.5946;
 
 export default function ProfilePage() {
+  const t = useTranslations("profile");
+  const errorText = useErrorText();
+  const { formatDistance } = useFormat();
   const ready = useRequireRole("CANDIDATE");
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [cities, setCities] = useState<
@@ -76,7 +82,7 @@ export default function ProfilePage() {
         setLocating(false);
       },
       () => {
-        setError("Your browser didn't share a location. Place the diamond on the map instead.");
+        setError(t("noLocation"));
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10_000 },
@@ -88,7 +94,7 @@ export default function ProfilePage() {
     setSaved(false);
 
     if (selectedRoleIds.length === 0) {
-      setError("Pick at least one role you'd walk in for.");
+      setError(t("pickRole"));
       return;
     }
     if (cities.length === 0) {
@@ -110,7 +116,7 @@ export default function ProfilePage() {
       setTelegramConnected(profile.telegramConnected);
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save your profile");
+      setError(errorText(err, "profile.saveFailed"));
     } finally {
       setLoading(false);
     }
@@ -125,14 +131,12 @@ export default function ProfilePage() {
         <main className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:gap-10">
           <div className="grid content-start gap-6">
             <div>
-              <h1 className="type-h1">Where you&apos;ll travel from</h1>
-              <p className="type-body mt-2 text-housing-muted">
-                Drives within your travel distance of home are the ones we&apos;ll show you first.
-              </p>
+              <h1 className="type-h1">{t("heading")}</h1>
+              <p className="type-body mt-2 text-housing-muted">{t("intro")}</p>
             </div>
 
             <Slab depth="md" className="grid w-full gap-6 p-5">
-              <BoardField label={`Travel distance: ${radiusKm} km`} surface="stock">
+              <BoardField label={t("travel", { distance: formatDistance(radiusKm) })} surface="stock">
                 <input
                   type="range"
                   min={1}
@@ -142,12 +146,12 @@ export default function ProfilePage() {
                     setRadiusKm(Number(e.target.value));
                     setSaved(false);
                   }}
-                  aria-valuetext={`${radiusKm} kilometres`}
+                  aria-valuetext={t("travelSpoken", { km: radiusKm })}
                   className="h-11 w-full accent-ink"
                 />
               </BoardField>
 
-              <BoardField label="Years of experience" surface="stock" className="w-40">
+              <BoardField label={t("experience")} surface="stock" className="w-40">
                 <BoardInput
                   surface="stock"
                   board
@@ -164,7 +168,7 @@ export default function ProfilePage() {
               </BoardField>
 
               <fieldset>
-                <legend className="type-meta text-ink-muted">Roles you&apos;d walk in for</legend>
+                <legend className="type-meta text-ink-muted">{t("roles")}</legend>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {roles.map((role) => {
                     const on = selectedRoleIds.includes(role.id);
@@ -193,11 +197,11 @@ export default function ProfilePage() {
                 </p>
               )}
               <p role="status" className={cn("type-meta text-live-ink", !saved && "sr-only")}>
-                {saved ? "Saved. Search now measures from this home." : ""}
+                {saved ? t("saved") : ""}
               </p>
 
               <BoardButton surface="stock" onClick={handleSave} disabled={loading}>
-                {loading ? "Saving" : "Save profile"}
+                {loading ? t("saving") : t("save")}
               </BoardButton>
             </Slab>
 
@@ -208,20 +212,16 @@ export default function ProfilePage() {
           <section aria-labelledby="home-heading" className="grid content-start gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="home-heading" className="type-h3">
-                Home
+                {t("home")}
               </h2>
               <BoardButton variant="quiet" onClick={locateHome} disabled={locating}>
-                {locating ? "Finding you" : "Use my current location"}
+                {locating ? t("locating") : t("locate")}
               </BoardButton>
             </div>
             <PinMap lat={lat} lng={lng} radiusKm={radiusKm} onChange={moveHome} className="h-[420px] lg:h-[560px]" />
-            <p className="type-meta text-housing-muted">
-              Drag the diamond or click the map to move your home. The pale ring is how far you&apos;ll travel.
-            </p>
+            <p className="type-meta text-housing-muted">{t("mapHelp")}</p>
             {detectedCity && (
-              <p className="type-board-md">
-                Nearest city: {detectedCity.name}, {detectedCity.state}
-              </p>
+              <p className="type-board-md">{t("nearestCity", { city: detectedCity.name, state: detectedCity.state })}</p>
             )}
           </section>
         </main>

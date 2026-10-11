@@ -3,12 +3,14 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
-import { formatDistance, formatExperience, formatSalary, formatSeats, formatWhen, type PublicDriveDetail } from "@walkins/shared";
+import { dayKey, type PublicDriveDetail } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { Countdown } from "@/components/board/flap-display";
 import { Slab } from "@/components/board/slab";
 import { BookingPanel } from "./booking-panel";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
 
 const CityPlane = dynamic(() => import("@/components/board/city-plane"), {
   ssr: false,
@@ -25,6 +27,8 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default function DriveDetailClient({ initial, renderedAt }: { initial: PublicDriveDetail; renderedAt: number }) {
+  const t = useTranslations("drive.detail");
+  const { formatDistance, formatExperience, formatSalary, formatSeats, formatWhen } = useFormat();
   const [drive, setDrive] = useState(initial);
   const [fromHome, setFromHome] = useState(false);
   const [now, setNow] = useState(() => new Date(renderedAt));
@@ -59,14 +63,13 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
           <section className="border border-housing-rule p-5" aria-labelledby="ended-heading">
             <StatusMark state="expired" surface="housing" />
             <h2 id="ended-heading" className="type-h2 mt-2">
-              This drive has ended
+              {t("endedHeading")}
             </h2>
             <p className="type-body mt-2 text-housing-muted">
-              It ran {when.day === "Today" ? "today" : `on ${when.day}`}, {when.time}. The details below are kept so a
-              forwarded link still makes sense, but there is nothing left to attend.
+              {t("endedBody", { today: dayKey(new Date(drive.startsAt)) === dayKey(now) ? "yes" : "no", day: when.day, time: when.time })}
             </p>
             <Link href={cityPath} className="type-meta mt-4 inline-block text-stock underline underline-offset-4">
-              See live drives in {drive.city.name}
+              {t("seeLive", { city: drive.city.name })}
             </Link>
           </section>
         )}
@@ -75,19 +78,19 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
           <h1 className="type-h2">{drive.role.title}</h1>
           <p className="type-meta mt-1 text-ink-muted">{drive.venueAddress}</p>
           <dl className="mt-5">
-            <Row label="When">
+            <Row label={t("when")}>
               <span className="whitespace-nowrap">{when.day}</span>
               {" · "}
               <span className="whitespace-nowrap">{when.time}</span>
             </Row>
-            <Row label="Pay">
+            <Row label={t("pay")}>
               <span className="whitespace-nowrap">{formatSalary(drive.salaryMin, drive.salaryMax)}</span>
             </Row>
-            <Row label="Experience">{formatExperience(drive.experienceMin, drive.experienceMax)}</Row>
-            {!ended && <Row label="Seats">{formatSeats(drive.capacity, drive.bookedCount)}</Row>}
-            <Row label="Distance">
+            <Row label={t("experience")}>{formatExperience(drive.experienceMin, drive.experienceMax)}</Row>
+            {!ended && <Row label={t("seats")}>{formatSeats(drive.capacity, drive.bookedCount)}</Row>}
+            <Row label={t("distance")}>
               <span className="whitespace-nowrap">{formatDistance(drive.distanceKm)}</span>{" "}
-              <span className="type-meta text-ink-muted">from {fromHome ? "your home" : "the city centre"}</span>
+              <span className="type-meta text-ink-muted">{t("from", { origin: fromHome ? "home" : "city" })}</span>
             </Row>
           </dl>
           <div className="mt-4">
@@ -107,14 +110,10 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
 
       <div className="contents lg:grid lg:content-start lg:gap-6">
         {!ended && <Countdown startsAt={drive.startsAt} endsAt={drive.endsAt} className="order-first lg:order-none" />}
-        <section aria-label="Venue map">
+        <section aria-label={t("venueMap")}>
           <CityPlane drives={[drive]} now={now} selectedId={null} className="h-80 lg:h-[28rem]" />
           <p className="type-meta mt-3 text-housing-muted">
-            {drive.needsManualGeocode
-              ? "This venue's address couldn't be placed exactly, so the pillar stands at the city centre. Go by the address."
-              : ended
-                ? "The pillar stands at the venue."
-                : "The pillar stands at the venue. Its lit top is seats still open."}
+            {drive.needsManualGeocode ? t("pillarCentre") : ended ? t("pillarVenue") : t("pillarVenueSeats")}
           </p>
         </section>
       </div>

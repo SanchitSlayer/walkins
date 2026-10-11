@@ -1,36 +1,44 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { Masthead } from "@/components/board/masthead";
-import { getCityCenterByName, searchDrivesOnServer } from "@/lib/server-search";
+import { getCityCenterByName, getRoleBySlugOnServer, searchDrivesOnServer } from "@/lib/server-search";
 import JobsSearchClient from "../../jobs-search-client";
 
 type SearchParams = { radiusKm?: string; fromDate?: string; toDate?: string; cursor?: string };
+type Params = Promise<{ city: string; roleSlug: string }>;
 
-export default async function JobsByCityAndRolePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ city: string; roleSlug: string }>;
-  searchParams: Promise<SearchParams>;
-}) {
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { city, roleSlug } = await params;
+  const [cityRow, role] = await Promise.all([getCityCenterByName(city), getRoleBySlugOnServer(roleSlug)]);
+  if (!cityRow || !role) return {};
+  const t = await getTranslations("jobs.meta");
+  return {
+    title: t("roleTitle", { role: role.title, city: cityRow.name }),
+    description: t("roleDescription", { role: role.title, city: cityRow.name, state: cityRow.state }),
+  };
+}
+
+export default async function JobsByCityAndRolePage({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
   const { city, roleSlug } = await params;
   const query = await searchParams;
 
-  const cityRow = await getCityCenterByName(city);
-  if (!cityRow) {
+  const [cityRow, role] = await Promise.all([getCityCenterByName(city), getRoleBySlugOnServer(roleSlug)]);
+  if (!cityRow || !role) {
     notFound();
   }
 
+  const t = await getTranslations("jobs");
   const initialData = await searchDrivesOnServer({ city, role: roleSlug, ...query });
-  const roleLabel = roleSlug.replace(/-/g, " ");
 
   return (
     <div className="min-h-screen bg-housing text-stock">
-      <Masthead context={`${cityRow.name}, ${cityRow.state}`} />
+      <Masthead context={t("cityContext", { city: cityRow.name, state: cityRow.state })} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <JobsSearchClient
           city={city}
           roleSlug={roleSlug}
-          heading={`${roleLabel.charAt(0).toUpperCase()}${roleLabel.slice(1)} drives in ${cityRow.name}`}
+          heading={t("roleHeading", { role: role.title, city: cityRow.name })}
           initialData={initialData}
           cityCenter={{ lat: cityRow.centerLat, lng: cityRow.centerLng }}
           initialRadiusKm={query.radiusKm}

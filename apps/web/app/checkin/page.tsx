@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Html5Qrcode } from "html5-qrcode";
-import { type CheckIn, formatTime, normalizeCheckInCode } from "@walkins/shared";
+import { type CheckIn, isMessageKey, type MessageKey, normalizeCheckInCode } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { FLUSHED_EVENT, type FlushResult, isNetworkError, loadPass, queueCheckIn, queuedCheckIns } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
 import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 const SCANNER_ID = "checkin-scanner";
 
@@ -22,7 +25,7 @@ type Step =
   | { kind: "walk-in"; roleTitle: string; companyName: string }
   | { kind: "done"; checkIn: CheckIn; again: boolean }
   | { kind: "queued" }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; error: unknown; fallback: MessageKey };
 
 // The QR on the employer's screen is a link to this page with the code after
 // the "#", so a phone's own camera app works too; the scanner here accepts
@@ -35,6 +38,7 @@ function codeFrom(scanned: string): string {
 // Typing the code is a first-class way in, not a fallback behind a link: bad
 // lighting and old phone cameras are the ordinary case at a venue.
 function TypedCode({ onSubmit }: { onSubmit: (code: string) => void }) {
+  const t = useTranslations("checkin");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   return (
@@ -44,13 +48,13 @@ function TypedCode({ onSubmit }: { onSubmit: (code: string) => void }) {
         event.preventDefault();
         const code = normalizeCheckInCode(value);
         if (!code) {
-          setError("A code is 8 letters and numbers, like K7QF 4XM2.");
+          setError(t("codeShape"));
           return;
         }
         onSubmit(code);
       }}
     >
-      <BoardField label="Or type the code from the screen" hint="It's written in large letters under the QR code.">
+      <BoardField label={t("typeCode")} hint={t("typeCodeHint")}>
         <BoardInput
           board
           value={value}
@@ -74,25 +78,19 @@ function TypedCode({ onSubmit }: { onSubmit: (code: string) => void }) {
       )}
       <div>
         <BoardButton type="submit" variant="quiet">
-          Check in with this code
+          {t("withCode")}
         </BoardButton>
       </div>
     </form>
   );
 }
 
+// Rejects with the catalog key for what went wrong, worded by the page.
 function locate(): Promise<Reading> {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy }),
-      (err) =>
-        reject(
-          new Error(
-            err.code === err.PERMISSION_DENIED
-              ? "Location is off for this site. Allow it in your browser settings, or ask the employer at the desk to check you in."
-              : "Couldn't get a location fix. Step nearer a window and scan again, or ask the employer at the desk.",
-          ),
-        ),
+      (err) => reject(err.code === err.PERMISSION_DENIED ? "checkin.locationOff" : "checkin.noFix"),
       // maximumAge 0: a cached reading could be from home, an hour ago.
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
     );
@@ -100,6 +98,9 @@ function locate(): Promise<Reading> {
 }
 
 export default function CheckInPage() {
+  const t = useTranslations("checkin");
+  const errorText = useErrorText();
+  const { formatTime } = useFormat();
   const ready = useRequireRole("CANDIDATE");
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const scanner = useRef<Html5Qrcode | null>(null);
@@ -127,7 +128,7 @@ export default function CheckInPage() {
     } catch (err) {
       // No answer at all: the signal dropped between scanning and sending.
       if (isNetworkError(err)) return queue();
-      setStep({ kind: "failed", message: err instanceof Error ? err.message : "Check-in didn't go through" });
+      setStep({ kind: "failed", error: err, fallback: "checkin.failed" });
     }
   }, []);
 
@@ -137,7 +138,7 @@ export default function CheckInPage() {
       try {
         await send(code, await locate());
       } catch (err) {
-        setStep({ kind: "failed", message: err instanceof Error ? err.message : "Couldn't get your location" });
+        setStep({ kind: "failed", error: null, fallback: typeof err === "string" && isMessageKey(err) ? err : "checkin.noFix" });
       }
     },
     [send],
@@ -178,7 +179,7 @@ export default function CheckInPage() {
           ? current
           : last.status === "sent"
             ? { kind: "done", checkIn: last.checkIn, again: false }
-            : { kind: "failed", message: last.message },
+            : { kind: "failed", error: last.error, fallback: "errors.checkIn.refused" },
       );
     };
     update();
@@ -194,7 +195,7 @@ export default function CheckInPage() {
 
   async function startScanning() {
     if (!window.isSecureContext) {
-      setStep({ kind: "failed", message: "The camera only works when this page is opened over https." });
+      setStep({ kind: "failed", error: null, fallback: "checkin.needsHttps" });
       return;
     }
     setStep({ kind: "scanning" });
@@ -211,10 +212,7 @@ export default function CheckInPage() {
         undefined,
       );
     } catch {
-      setStep({
-        kind: "failed",
-        message: "Couldn't open the camera. Allow camera access for this site, or point your phone's camera app at the code instead.",
-      });
+      setStep({ kind: "failed", error: null, fallback: "checkin.noCamera" });
     }
   }
 
@@ -230,46 +228,38 @@ export default function CheckInPage() {
     <div className="min-h-screen bg-housing text-stock">
       <Masthead />
       <main className="mx-auto grid max-w-md gap-6 px-4 py-8">
-        <h1 className="type-h1">Check in</h1>
+        <h1 className="type-h1">{t("heading")}</h1>
 
         {!online && <OfflinePass />}
         {waiting > 0 && step.kind !== "queued" && (
-          <p className="type-meta text-housing-muted">
-            {waiting === 1 ? "1 check-in is" : `${waiting} check-ins are`} waiting to send.
-          </p>
+          <p className="type-meta text-housing-muted">{t("waiting", { count: waiting })}</p>
         )}
 
         <div role="status" className="grid gap-4">
           {step.kind === "idle" && (
             <>
-              <p className="type-body text-housing-muted">
-                Scan the QR code on the screen at the venue, or type the code written under it. Your location is checked
-                once, to confirm you&apos;re there.
-              </p>
+              <p className="type-body text-housing-muted">{t("intro")}</p>
               <div>
-                <BoardButton onClick={startScanning}>Scan the QR code</BoardButton>
+                <BoardButton onClick={startScanning}>{t("scan")}</BoardButton>
               </div>
               <TypedCode onSubmit={checkInWith} />
             </>
           )}
-          {step.kind === "scanning" && <p className="type-body text-housing-muted">Point your camera at the code.</p>}
-          {step.kind === "locating" && <p className="type-body">Code read. Getting your location…</p>}
-          {step.kind === "sending" && <p className="type-body">Checking you in…</p>}
+          {step.kind === "scanning" && <p className="type-body text-housing-muted">{t("pointCamera")}</p>}
+          {step.kind === "locating" && <p className="type-body">{t("locating")}</p>}
+          {step.kind === "sending" && <p className="type-body">{t("sending")}</p>}
 
           {step.kind === "walk-in" && (
             <div className="grid gap-4 border border-housing-rule p-4">
-              <p className="type-body">
-                You haven&apos;t booked a slot for {step.roleTitle} at {step.companyName}. You can still register as a walk-in and
-                be checked in now.
-              </p>
+              <p className="type-body">{t("walkInOffer", { role: step.roleTitle, company: step.companyName })}</p>
               <div className="flex flex-wrap gap-3">
                 <BoardButton
                   onClick={() => pending.current && send(pending.current.code, pending.current.reading, true)}
                 >
-                  Register as a walk-in
+                  {t("registerWalkIn")}
                 </BoardButton>
                 <BoardButton variant="quiet" onClick={scanAgain}>
-                  Not now
+                  {t("notNow")}
                 </BoardButton>
               </div>
             </div>
@@ -277,25 +267,20 @@ export default function CheckInPage() {
 
           {step.kind === "queued" && (
             <div className="grid gap-2 border border-housing-rule p-4">
-              <p className="type-h3">Saved on this phone</p>
-              <p className="type-body text-housing-muted">
-                There&apos;s no signal, so your check-in will be sent as soon as there is. It needs to go within 30 minutes; keep
-                this page open if you can, or open Walkins again once you have signal.
-              </p>
+              <p className="type-h3">{t("savedHeading")}</p>
+              <p className="type-body text-housing-muted">{t("savedBody")}</p>
             </div>
           )}
 
           {step.kind === "done" && (
             <div className="grid gap-3 border border-housing-rule p-4">
-              <p className="type-h2">{step.again ? "You're already checked in" : "You're checked in"}</p>
-              <p className="type-board-md">At {formatTime(step.checkIn.scannedAt)}</p>
+              <p className="type-h2">{step.again ? t("alreadyIn") : t("in")}</p>
+              <p className="type-board-md">{t("at", { time: formatTime(step.checkIn.scannedAt) })}</p>
               {!step.checkIn.isValid && (
-                <p className="type-meta text-housing-muted">
-                  The employer will confirm this one at the desk: {step.checkIn.flagReason?.toLowerCase()}.
-                </p>
+                <p className="type-meta text-housing-muted">{t("flagged", { reason: step.checkIn.flagReason?.toLowerCase() ?? "" })}</p>
               )}
               <Link href="/my-drives" className={boardButtonClass("housing", "quiet")}>
-                Your drives
+                {t("yourDrives")}
               </Link>
             </div>
           )}
@@ -303,10 +288,10 @@ export default function CheckInPage() {
           {step.kind === "failed" && (
             <div className="grid gap-4">
               <p role="alert" className="type-body text-closing-lamp">
-                {step.message}
+                {errorText(step.error, step.fallback)}
               </p>
               <div>
-                <BoardButton onClick={scanAgain}>Scan again</BoardButton>
+                <BoardButton onClick={scanAgain}>{t("scanAgain")}</BoardButton>
               </div>
             </div>
           )}
@@ -320,7 +305,7 @@ export default function CheckInPage() {
         {step.kind === "scanning" && (
           <div>
             <BoardButton variant="quiet" onClick={scanAgain}>
-              Cancel
+              {t("cancel")}
             </BoardButton>
           </div>
         )}
@@ -332,15 +317,18 @@ export default function CheckInPage() {
 // With no signal, the candidate's next booked drive from the copy saved on
 // this phone, so they can still see where and when.
 function OfflinePass() {
+  const t = useTranslations("checkin");
+  const { formatTime } = useFormat();
   const [pass] = useState(() => loadPass());
   const next = pass?.applications.upcoming.find((a) => a.state === "CONFIRMED");
   return (
     <div className="grid gap-1 border-l-4 border-pending-lamp bg-housing-raised p-4">
-      <p className="type-meta">You&apos;re offline. Scanning still works; your check-in is sent when the signal is back.</p>
+      <p className="type-meta">{t("offline")}</p>
       {next && (
         <p className="type-board-md">
-          {next.drive.roleTitle} at {next.drive.companyName}
-          {next.slotStartsAt ? ` · slot ${formatTime(next.slotStartsAt)}` : ""}
+          {next.slotStartsAt
+            ? t("nextWithSlot", { role: next.drive.roleTitle, company: next.drive.companyName, time: formatTime(next.slotStartsAt) })
+            : t("next", { role: next.drive.roleTitle, company: next.drive.companyName })}
         </p>
       )}
     </div>

@@ -3,8 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { formatPaise, updateDriveSchema } from "@walkins/shared";
-import type { DriveDetail, Wallet } from "@walkins/shared";
+import { type DriveDetail, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { BoardButton, boardButtonClass, BoardField, BoardInput } from "@/components/board/field";
@@ -12,9 +11,16 @@ import { SlotStack } from "@/components/board/slot-stack";
 import { VenueOutsideCityNotice } from "../venue-notice";
 import { ArrivalsDesk } from "./arrivals-desk";
 import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields } from "../drive-fields";
-import { driveIssue, type KnockoutDraft, knockoutDrafts, KnockoutEditor, knockoutQuestions } from "../knockout-editor";
+import { type KnockoutDraft, knockoutDrafts, KnockoutEditor, knockoutQuestions, useDriveIssue } from "../knockout-editor";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 export default function EditDrivePage() {
+  const t = useTranslations("editDrive");
+  const errorText = useErrorText();
+  const driveIssue = useDriveIssue();
+  const { formatPaise } = useFormat();
   const params = useParams<{ id: string }>();
   const [drive, setDrive] = useState<DriveDetail | null>(null);
   const [fields, setFields] = useState<DriveFieldValues | null>(null);
@@ -40,7 +46,7 @@ export default function EditDrivePage() {
 
   const editable = drive?.status === "DRAFT" || drive?.status === "PENDING";
 
-  async function run(action: () => Promise<DriveDetail>, fallback: string) {
+  async function run(action: () => Promise<DriveDetail>, fallback: MessageKey) {
     setLoading(true);
     setError(null);
     setSaved(false);
@@ -48,7 +54,7 @@ export default function EditDrivePage() {
       show(await action());
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : fallback);
+      setError(errorText(err, fallback));
       return false;
     } finally {
       setLoading(false);
@@ -68,18 +74,18 @@ export default function EditDrivePage() {
       setError(driveIssue(parsed.error.errors[0]));
       return;
     }
-    setSaved(await run(() => apiClient.updateDrive(drive.id, parsed.data), "Couldn't save the drive"));
+    setSaved(await run(() => apiClient.updateDrive(drive.id, parsed.data), "editDrive.saveFailed"));
   }
 
   function handleCancel() {
-    if (!drive || !confirm("Cancel this drive? Candidates will no longer see it, and this can't be undone.")) return;
-    run(() => apiClient.deleteDrive(drive.id), "Couldn't cancel the drive");
+    if (!drive || !confirm(t("cancelConfirm"))) return;
+    run(() => apiClient.deleteDrive(drive.id), "editDrive.cancelFailed");
   }
 
   if (!drive || !fields) {
     return (
       <p role="status" className="type-meta text-housing-muted">
-        Loading drive
+        {t("loading")}
       </p>
     );
   }
@@ -92,21 +98,16 @@ export default function EditDrivePage() {
         <div className="grid content-start gap-6">
           <div>
             <Link href="/employer/drives" className="type-meta text-housing-muted underline-offset-4 hover:underline">
-              Drives
+              {t("back")}
             </Link>
             <h1 className="type-h2 mt-1">{drive.role.title}</h1>
-            <p className="type-meta mt-1 text-housing-muted">
-              {editable ? "Editable until it goes live." : "Live, ended and cancelled drives can't be edited."}
-            </p>
+            <p className="type-meta mt-1 text-housing-muted">{editable ? t("editable") : t("notEditable")}</p>
           </div>
 
           <VenueOutsideCityNotice drive={drive} />
 
           {drive.needsManualGeocode && (
-            <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">
-              This address couldn&apos;t be placed on the map, so the venue pin sits at the city centre. Edit the address
-              and save to try again.
-            </p>
+            <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">{t("unplaced")}</p>
           )}
 
           <form className="grid gap-6" onSubmit={handleSave} noValidate>
@@ -119,8 +120,8 @@ export default function EditDrivePage() {
               }}
               disabled={!editable}
             />
-            <FieldGroup legend="Seats">
-              <BoardField label="Total seats" hint="Slots were fixed when the drive was created.">
+            <FieldGroup legend={t("seats")}>
+              <BoardField label={t("totalSeats")} hint={t("totalSeatsHint")}>
                 <BoardInput
                   board
                   type="number"
@@ -151,65 +152,67 @@ export default function EditDrivePage() {
               </p>
             )}
             <p role="status" className={saved ? "type-meta text-live-lamp" : "sr-only"}>
-              {saved ? "Changes saved." : ""}
+              {saved ? t("saved") : ""}
             </p>
 
             {editable && (
               <div>
                 <BoardButton type="submit" disabled={loading}>
-                  {loading ? "Saving" : "Save changes"}
+                  {loading ? t("saving") : t("save")}
                 </BoardButton>
               </div>
             )}
           </form>
         </div>
 
-        <aside className="grid content-start gap-6 lg:border-l lg:border-housing-line lg:pl-8" aria-label="Drive status and slots">
+        <aside className="grid content-start gap-6 lg:border-l lg:border-housing-line lg:pl-8" aria-label={t("statusAndSlots")}>
           <section className="grid gap-3">
-            <h2 className="type-meta text-housing-muted">Status</h2>
+            <h2 className="type-meta text-housing-muted">{t("status")}</h2>
             <StatusMark state={state} surface="housing" className="type-body" />
             {drive.reviewNote && (
-              <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">
-                Sent back by review: {drive.reviewNote}. Fix it and send it for review again.
-              </p>
+              <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">{t("sentBack", { note: drive.reviewNote })}</p>
             )}
             {(drive.status === "DRAFT" || drive.status === "PENDING") && wallet && !wallet.canGoLive && (
               <p className="type-meta border-l-2 border-filling-lamp pl-3 text-stock">
-                Your balance is {formatPaise(wallet.balancePaise)}, below the {formatPaise(wallet.pricePerCheckInPaise ?? 0)} cost
-                of one check-in, so review can&apos;t put this drive live yet.{" "}
-                <Link href="/employer/billing" className="underline underline-offset-4">
-                  Top up
-                </Link>
+                {t.rich("lowBalance", {
+                  balance: formatPaise(wallet.balancePaise),
+                  price: formatPaise(wallet.pricePerCheckInPaise ?? 0),
+                  link: (chunks) => (
+                    <Link href="/employer/billing" className="underline underline-offset-4">
+                      {chunks}
+                    </Link>
+                  ),
+                })}
               </p>
             )}
             {drive.status === "DRAFT" && (
-              <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "Couldn't send for review")}>
-                Send for review
+              <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "editDrive.submitFailed")}>
+                {t("submit")}
               </BoardButton>
             )}
             {drive.status === "LIVE" && (
               <>
                 <Link href={`/employer/drives/${drive.id}/checkin`} className={boardButtonClass()}>
-                  Open check-in screen
+                  {t("checkInScreen")}
                 </Link>
                 <Link href={`/employer/drives/${drive.id}/applicants`} className={boardButtonClass("housing", "quiet")}>
-                  Applicants
+                  {t("applicants")}
                 </Link>
                 <Link href={`/drives/${drive.id}`} className="type-meta text-stock underline underline-offset-4">
-                  See the public page
+                  {t("publicPage")}
                 </Link>
               </>
             )}
             {editable && (
               <BoardButton variant="quiet" disabled={loading} onClick={handleCancel}>
-                Cancel drive
+                {t("cancel")}
               </BoardButton>
             )}
           </section>
 
           <section aria-labelledby="slots-heading">
             <h2 id="slots-heading" className="type-meta text-housing-muted">
-              Slots
+              {t("slots")}
             </h2>
             <SlotStack slots={drive.slots} now={now} dense className="mt-1" />
           </section>

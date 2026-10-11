@@ -7,7 +7,9 @@ import { createDriveSchema } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput, boardButtonClass } from "@/components/board/field";
 import { DriveFields, type DriveFieldValues, EMPTY_DRIVE_FIELDS, FieldGroup, parseDriveFields } from "../drive-fields";
-import { driveIssue, type KnockoutDraft, KnockoutEditor, knockoutQuestions } from "../knockout-editor";
+import { type KnockoutDraft, KnockoutEditor, knockoutQuestions, useDriveIssue } from "../knockout-editor";
+import { useTranslations } from "next-intl";
+import { useErrorText } from "@/lib/use-error-text";
 
 // Mirrors the API's rule: the window must divide evenly into slots.
 function slotCount(startsAt: string, endsAt: string, slotMinutes: number): number | null {
@@ -17,6 +19,9 @@ function slotCount(startsAt: string, endsAt: string, slotMinutes: number): numbe
 }
 
 export default function NewDrivePage() {
+  const t = useTranslations("newDrive");
+  const errorText = useErrorText();
+  const driveIssue = useDriveIssue();
   const router = useRouter();
   const [fields, setFields] = useState<DriveFieldValues>(EMPTY_DRIVE_FIELDS);
   const [slotDurationMinutes, setSlotDurationMinutes] = useState("60");
@@ -34,7 +39,7 @@ export default function NewDrivePage() {
     setError(null);
 
     if (fields.startsAt && fields.endsAt && slots === null) {
-      setError(`The time between doors open and close must divide evenly into ${slotDurationMinutes}-minute slots.`);
+      setError(t("uneven", { minutes: slotDurationMinutes }));
       return;
     }
 
@@ -55,7 +60,7 @@ export default function NewDrivePage() {
       const drive = await apiClient.createDrive(parsed.data);
       router.push(`/employer/drives/${drive.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't create the drive");
+      setError(errorText(err, "newDrive.createFailed"));
     } finally {
       setLoading(false);
     }
@@ -65,17 +70,17 @@ export default function NewDrivePage() {
     <div className="grid max-w-3xl gap-6">
       <div>
         <Link href="/employer/drives" className="type-meta text-housing-muted underline-offset-4 hover:underline">
-          Drives
+          {t("back")}
         </Link>
-        <h1 className="type-h2 mt-1">New drive</h1>
-        <p className="type-meta mt-1 text-housing-muted">Saved as a draft. You can check it over before sending it for review.</p>
+        <h1 className="type-h2 mt-1">{t("heading")}</h1>
+        <p className="type-meta mt-1 text-housing-muted">{t("intro")}</p>
       </div>
 
       <form className="grid gap-6" onSubmit={handleSubmit} noValidate>
         <DriveFields values={fields} onChange={(key, value) => setFields((f) => ({ ...f, [key]: value }))} />
 
-        <FieldGroup legend="Slots">
-          <BoardField label="Slot length (minutes)">
+        <FieldGroup legend={t("slots")}>
+          <BoardField label={t("slotLength")}>
             <BoardInput
               board
               type="number"
@@ -85,7 +90,7 @@ export default function NewDrivePage() {
               onChange={(e) => setSlotDurationMinutes(e.target.value)}
             />
           </BoardField>
-          <BoardField label="Seats per slot">
+          <BoardField label={t("seatsPerSlot")}>
             <BoardInput
               board
               type="number"
@@ -97,10 +102,10 @@ export default function NewDrivePage() {
           </BoardField>
           <p className="type-board-md sm:col-span-2" aria-live="polite">
             {capacity !== null
-              ? `${slots} ${slots === 1 ? "slot" : "slots"} × ${perSlot} seats = ${capacity} seats in total`
+              ? t("total", { slots: slots ?? 0, perSlot, capacity })
               : fields.startsAt && fields.endsAt && slots === null
-                ? `The window doesn't divide into ${slotDurationMinutes}-minute slots`
-                : "Total seats are worked out from the window and slot length"}
+                ? t("windowUneven", { minutes: slotDurationMinutes })
+                : t("totalHint")}
           </p>
         </FieldGroup>
 
@@ -114,10 +119,10 @@ export default function NewDrivePage() {
 
         <div className="flex flex-wrap gap-3">
           <BoardButton type="submit" disabled={loading}>
-            {loading ? "Creating drive" : "Create draft"}
+            {loading ? t("creating") : t("create")}
           </BoardButton>
           <Link href="/employer/drives" className={boardButtonClass("housing", "quiet")}>
-            Discard
+            {t("discard")}
           </Link>
         </div>
       </form>

@@ -7,6 +7,8 @@ import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
+import { useTranslations } from "next-intl";
+import { useErrorText, useIssueText } from "@/lib/use-error-text";
 
 // Where to go after logging in, when a page sent us here. Only a path on this
 // site: "//host" or a full URL would turn login into an open redirect.
@@ -16,6 +18,9 @@ function returnPath(): string | null {
 }
 
 export default function LoginPage() {
+  const t = useTranslations("login");
+  const errorText = useErrorText();
+  const issueText = useIssueText();
   const router = useRouter();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
@@ -30,7 +35,7 @@ export default function LoginPage() {
 
     const parsed = otpRequestSchema.safeParse({ phone });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "Enter a valid phone number");
+      setError(issueText(parsed.error.issues[0]));
       return;
     }
 
@@ -40,7 +45,7 @@ export default function LoginPage() {
       setDevOtp(result.devOtp ?? null);
       setStep("otp");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't send the code");
+      setError(errorText(err, "login.sendFailed"));
     } finally {
       setLoading(false);
     }
@@ -52,7 +57,7 @@ export default function LoginPage() {
 
     const parsed = otpVerifySchema.safeParse({ phone, otp });
     if (!parsed.success) {
-      setError(parsed.error.errors[0]?.message ?? "Enter the 6-digit code");
+      setError(issueText(parsed.error.issues[0]));
       return;
     }
 
@@ -61,7 +66,7 @@ export default function LoginPage() {
       const { role } = await apiClient.verifyOtp(parsed.data);
       router.push(returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't check the code");
+      setError(errorText(err, "login.checkFailed"));
     } finally {
       setLoading(false);
     }
@@ -72,16 +77,14 @@ export default function LoginPage() {
       <Masthead />
       <main className="mx-auto grid max-w-md gap-6 px-4 py-12 sm:py-20">
         <div>
-          <h1 className="type-h1">Log in</h1>
-          <p className="type-body mt-2 text-housing-muted">
-            {step === "phone" ? "We'll text a one-time code to your phone." : `Enter the code sent to ${phone}.`}
-          </p>
+          <h1 className="type-h1">{t("heading")}</h1>
+          <p className="type-body mt-2 text-housing-muted">{step === "phone" ? t("phoneIntro") : t("codeIntro", { phone })}</p>
         </div>
 
         <Slab depth="md" className="w-full p-5">
           {step === "phone" ? (
             <form className="grid gap-5" onSubmit={handleRequestOtp} noValidate>
-              <BoardField label="Phone number" hint="Your 10-digit mobile number" surface="stock">
+              <BoardField label={t("phone")} hint={t("phoneHint")} surface="stock">
                 <BoardInput
                   surface="stock"
                   board
@@ -100,15 +103,15 @@ export default function LoginPage() {
                 </p>
               )}
               <BoardButton type="submit" surface="stock" disabled={loading}>
-                {loading ? "Sending code" : "Send code"}
+                {loading ? t("sending") : t("send")}
               </BoardButton>
             </form>
           ) : (
             <form className="grid gap-5" onSubmit={handleVerifyOtp} noValidate>
               <BoardField
-                label="6-digit code"
+                label={t("code")}
                 surface="stock"
-                hint={devOtp ? `Development build: the code is ${devOtp}` : undefined}
+                hint={devOtp ? t("devCode", { code: devOtp }) : undefined}
               >
                 <BoardInput
                   surface="stock"
@@ -130,7 +133,7 @@ export default function LoginPage() {
                 </p>
               )}
               <BoardButton type="submit" surface="stock" disabled={loading}>
-                {loading ? "Checking code" : "Log in"}
+                {loading ? t("checking") : t("logIn")}
               </BoardButton>
               <BoardButton
                 surface="stock"
@@ -141,7 +144,7 @@ export default function LoginPage() {
                   setError(null);
                 }}
               >
-                Use a different number
+                {t("differentNumber")}
               </BoardButton>
             </form>
           )}

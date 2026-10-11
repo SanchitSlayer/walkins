@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { dayLabel, type FailedJob, formatTime } from "@walkins/shared";
+import type { FailedJob } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 export default function FailedJobsPage() {
+  const t = useTranslations("admin.jobs");
+  const errorText = useErrorText();
+  const { dayLabel, formatTime } = useFormat();
   const [jobs, setJobs] = useState<FailedJob[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -13,19 +19,19 @@ export default function FailedJobsPage() {
 
   const load = useCallback(async () => setJobs(await apiClient.adminFailedJobs()), []);
   useEffect(() => {
-    load().catch((err) => setError(err instanceof Error ? err.message : "Couldn't load failed jobs"));
+    load().catch((err) => setError(errorText(err, "admin.jobs.loadFailed")));
   }, [load]);
 
   async function retry(job: FailedJob) {
-    if (!confirm(`Retry ${job.queue} job ${job.id}? It runs again from the start.`)) return;
+    if (!confirm(t("retryConfirm", { queue: job.queue, id: job.id }))) return;
     setBusy(`${job.queue}:${job.id}`);
     setError(null);
     try {
       await apiClient.adminRetryJob(job.queue, job.id);
-      setNotice(`${job.queue} job ${job.id} queued again.`);
+      setNotice(t("retried", { queue: job.queue, id: job.id }));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't retry it");
+      setError(errorText(err, "admin.jobs.retryFailed"));
     } finally {
       setBusy(null);
     }
@@ -35,11 +41,8 @@ export default function FailedJobsPage() {
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="type-h2">Failed jobs</h1>
-        <p className="type-meta mt-1 text-housing-muted">
-          Jobs that used up their retries, from every queue. Retrying is safe: alerts claim before sending, and charges
-          and top-ups are keyed so a second run changes nothing.
-        </p>
+        <h1 className="type-h2">{t("heading")}</h1>
+        <p className="type-meta mt-1 text-housing-muted">{t("intro")}</p>
       </div>
       {notice && (
         <p role="status" className="type-meta text-live-lamp">
@@ -53,10 +56,10 @@ export default function FailedJobsPage() {
       )}
       {!jobs ? (
         <p role="status" className="type-meta text-housing-muted">
-          Loading failed jobs
+          {t("loading")}
         </p>
       ) : jobs.length === 0 ? (
-        <p className="type-body text-housing-muted">No failed jobs in any queue.</p>
+        <p className="type-body text-housing-muted">{t("none")}</p>
       ) : (
         <ul className="grid gap-3">
           {jobs.map((job) => (
@@ -66,15 +69,17 @@ export default function FailedJobsPage() {
                   <span className="type-board-md">{job.queue}</span> · {job.name} · <span className="font-mono">{job.id}</span>
                 </p>
                 <p className="type-meta text-housing-muted">
-                  {job.failedAt ? `${dayLabel(new Date(job.failedAt), now)}, ${formatTime(job.failedAt)}` : "time unknown"} · {job.attemptsMade}{" "}
-                  {job.attemptsMade === 1 ? "attempt" : "attempts"}
+                  {t("failedAt", {
+                    when: job.failedAt ? t("at", { day: dayLabel(new Date(job.failedAt), now), time: formatTime(job.failedAt) }) : t("unknownTime"),
+                    attempts: job.attemptsMade,
+                  })}
                 </p>
               </div>
               <p className="type-meta text-closing-lamp">{job.failedReason}</p>
               <pre className="type-meta overflow-x-auto bg-housing-raised p-2 text-housing-muted">{JSON.stringify(job.data)}</pre>
               <div>
                 <BoardButton variant="quiet" className="min-h-9 px-3" disabled={busy === `${job.queue}:${job.id}`} onClick={() => retry(job)}>
-                  Retry
+                  {t("retry")}
                 </BoardButton>
               </div>
             </li>

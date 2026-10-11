@@ -3,6 +3,8 @@
 import { type KnockoutQuestion, MAX_KNOCKOUT_QUESTIONS } from "@walkins/shared";
 import { BoardButton, BoardField, BoardInput, BoardSelect } from "@/components/board/field";
 import { FieldGroup } from "./drive-fields";
+import { useTranslations } from "next-intl";
+import { useIssueText } from "@/lib/use-error-text";
 
 // Numbers and options are held as typed text until the form is submitted, so
 // a half-typed "1." or an empty line doesn't fight the person typing it.
@@ -80,16 +82,16 @@ export function knockoutQuestions(drafts: KnockoutDraft[]): KnockoutQuestion[] {
   });
 }
 
-// Zod's own wording ("String must contain at least 3 character(s)") doesn't
-// say which question it means.
-export function driveIssue(issue: { path: (string | number)[]; message: string } | undefined): string {
-  if (!issue) return "A field is missing or invalid";
-  const [field, index, key] = issue.path;
-  if (field !== "knockoutQuestions" || typeof index !== "number") return issue.message;
-  const question = `Screening question ${index + 1}`;
-  if (key === "prompt") return `${question} needs a question`;
-  if (key === "requirement") return `${question} needs a requirement`;
-  return `${question}: ${issue.message}`;
+// The drive form's validation wording: the shared catalog's, plus which
+// screening question it means when the problem is inside one.
+export function useDriveIssue() {
+  const t = useTranslations("knockouts");
+  const issueText = useIssueText();
+  return (issue: Parameters<typeof issueText>[0]) => {
+    const [field, index] = issue.path;
+    const problem = issueText(issue);
+    return field === "knockoutQuestions" && typeof index === "number" ? t("issue", { n: index + 1, problem }) : problem;
+  };
 }
 
 function QuestionFields({
@@ -101,6 +103,7 @@ function QuestionFields({
   onChange: (patch: Partial<KnockoutDraft>) => void;
   disabled: boolean;
 }) {
+  const t = useTranslations("knockouts");
   const text = (key: "prompt" | "requirement" | "unit" | "min" | "max") => ({
     value: draft[key],
     onChange: (e: { target: { value: string } }) => onChange({ [key]: e.target.value }),
@@ -109,43 +112,43 @@ function QuestionFields({
 
   return (
     <>
-      <BoardField label="Question" className="sm:col-span-2">
-        <BoardInput placeholder="Do you have a two-wheeler licence?" {...text("prompt")} />
+      <BoardField label={t("question")} className="sm:col-span-2">
+        <BoardInput placeholder={t("questionExample")} {...text("prompt")} />
       </BoardField>
-      <BoardField label="Answer type">
+      <BoardField label={t("answerType")}>
         <BoardSelect
           value={draft.type}
           onChange={(e) => onChange({ type: e.target.value as KnockoutDraft["type"] })}
           disabled={disabled}
         >
-          <option value="BOOLEAN">Yes or no</option>
-          <option value="NUMERIC">A number</option>
-          <option value="SINGLE_CHOICE">One of a list</option>
+          <option value="BOOLEAN">{t("typeBoolean")}</option>
+          <option value="NUMERIC">{t("typeNumber")}</option>
+          <option value="SINGLE_CHOICE">{t("typeChoice")}</option>
         </BoardSelect>
       </BoardField>
 
       {draft.type === "BOOLEAN" && (
-        <BoardField label="Who can book">
+        <BoardField label={t("whoCanBook")}>
           <BoardSelect
             value={draft.equals ? "yes" : "no"}
             onChange={(e) => onChange({ equals: e.target.value === "yes" })}
             disabled={disabled}
           >
-            <option value="yes">Those who answer yes</option>
-            <option value="no">Those who answer no</option>
+            <option value="yes">{t("answerYes")}</option>
+            <option value="no">{t("answerNo")}</option>
           </BoardSelect>
         </BoardField>
       )}
 
       {draft.type === "NUMERIC" && (
         <>
-          <BoardField label="Unit (optional)">
-            <BoardInput placeholder="years" {...text("unit")} />
+          <BoardField label={t("unit")}>
+            <BoardInput placeholder={t("unitExample")} {...text("unit")} />
           </BoardField>
-          <BoardField label="At least">
+          <BoardField label={t("atLeast")}>
             <BoardInput board type="number" inputMode="decimal" {...text("min")} />
           </BoardField>
-          <BoardField label="At most">
+          <BoardField label={t("atMost")}>
             <BoardInput board type="number" inputMode="decimal" {...text("max")} />
           </BoardField>
         </>
@@ -153,7 +156,7 @@ function QuestionFields({
 
       {draft.type === "SINGLE_CHOICE" && (
         <>
-          <BoardField label="Answers, one per line" className="sm:col-span-2">
+          <BoardField label={t("answers")} className="sm:col-span-2">
             <textarea
               rows={3}
               className="type-body w-full border border-housing-rule bg-housing-raised px-3 py-2 text-stock [color-scheme:dark] disabled:opacity-60"
@@ -164,7 +167,7 @@ function QuestionFields({
           </BoardField>
           {optionList(draft).length > 0 && (
             <fieldset className="grid gap-1.5 sm:col-span-2">
-              <legend className="type-meta mb-1.5 text-housing-muted">Answers that can book</legend>
+              <legend className="type-meta mb-1.5 text-housing-muted">{t("acceptedAnswers")}</legend>
               <div className="flex flex-wrap gap-2">
                 {optionList(draft).map((option) => (
                   <label key={option} className="type-meta flex min-h-11 items-center gap-2 border border-housing-rule px-3">
@@ -190,11 +193,11 @@ function QuestionFields({
       )}
 
       <BoardField
-        label="Requirement, shown to anyone who doesn't meet it"
-        hint="Candidates see this instead of a booking, so they know why and don't travel for nothing."
+        label={t("requirement")}
+        hint={t("requirementHint")}
         className="sm:col-span-2"
       >
-        <BoardInput placeholder="A valid two-wheeler licence" {...text("requirement")} />
+        <BoardInput placeholder={t("requirementExample")} {...text("requirement")} />
       </BoardField>
     </>
   );
@@ -209,19 +212,17 @@ export function KnockoutEditor({
   onChange: (drafts: KnockoutDraft[]) => void;
   disabled?: boolean;
 }) {
+  const t = useTranslations("knockouts");
   return (
-    <FieldGroup legend="Screening questions">
-      <p className="type-meta text-housing-muted sm:col-span-2">
-        Up to {MAX_KNOCKOUT_QUESTIONS}, asked before a candidate books. Someone who doesn&apos;t meet one is told the
-        requirement and gets no seat. Walk-ins without a booking skip these; screen them at the desk.
-      </p>
+    <FieldGroup legend={t("heading")}>
+      <p className="type-meta text-housing-muted sm:col-span-2">{t("intro", { max: MAX_KNOCKOUT_QUESTIONS })}</p>
       {drafts.map((draft, index) => (
         <div key={draft.id} className="grid gap-4 border border-housing-rule p-4 sm:col-span-2 sm:grid-cols-2">
           <div className="flex items-center justify-between sm:col-span-2">
-            <span className="type-meta text-housing-muted">Question {index + 1}</span>
+            <span className="type-meta text-housing-muted">{t("numbered", { n: index + 1 })}</span>
             {!disabled && (
               <BoardButton variant="quiet" onClick={() => onChange(drafts.filter((d) => d.id !== draft.id))}>
-                Remove
+                {t("remove")}
               </BoardButton>
             )}
           </div>
@@ -235,7 +236,7 @@ export function KnockoutEditor({
       {!disabled && drafts.length < MAX_KNOCKOUT_QUESTIONS && (
         <div className="sm:col-span-2">
           <BoardButton variant="quiet" onClick={() => onChange([...drafts, newDraft()])}>
-            Add a question
+            {t("add")}
           </BoardButton>
         </div>
       )}

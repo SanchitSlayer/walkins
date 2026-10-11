@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
-  formatTime,
-  formatWhen,
   type KnockoutAnswers,
   type MyApplication,
   type PublicDriveDetail,
@@ -13,6 +11,9 @@ import {
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, boardButtonClass, BoardInput } from "@/components/board/field";
 import { SlotStack } from "@/components/board/slot-stack";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
+import { useErrorText } from "@/lib/use-error-text";
 
 const CHECK_IN_OPENS_MS = 60 * 60_000;
 
@@ -27,6 +28,7 @@ function KnockoutField({
   value: KnockoutAnswers[string] | undefined;
   onChange: (value: KnockoutAnswers[string] | undefined) => void;
 }) {
+  const t = useTranslations("booking");
   if (question.type === "NUMERIC") {
     return (
       <label className="grid gap-1.5">
@@ -48,8 +50,8 @@ function KnockoutField({
   const choices: { label: string; value: boolean | string }[] =
     question.type === "BOOLEAN"
       ? [
-          { label: "Yes", value: true },
-          { label: "No", value: false },
+          { label: t("yes"), value: true },
+          { label: t("no"), value: false },
         ]
       : (question.options ?? []).map((o) => ({ label: o, value: o }));
   return (
@@ -90,6 +92,9 @@ export function BookingPanel({
   bookable: boolean;
   onSeatsChanged: () => Promise<void>;
 }) {
+  const t = useTranslations("booking");
+  const errorText = useErrorText();
+  const { formatTime, formatWhen } = useFormat();
   const [viewer, setViewer] = useState<Viewer>("loading");
   const [application, setApplication] = useState<MyApplication | null>(null);
   const [slotId, setSlotId] = useState<string | null>(null);
@@ -116,13 +121,18 @@ export function BookingPanel({
       setSlotId(null);
       await onSeatsChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't go through");
+      setError(errorText(err, "errors.generic"));
       await onSeatsChanged();
     } finally {
       setBusy(false);
     }
   }
 
+  const findOthers = (chunks: ReactNode) => (
+    <Link href="/" className="text-stock underline underline-offset-4">
+      {chunks}
+    </Link>
+  );
   const state = application?.state;
   const canPick = bookable && viewer === "candidate" && (!state || state === "WITHDRAWN" || state === "INTERESTED");
   const checkInOpen = now.getTime() >= new Date(drive.startsAt).getTime() - CHECK_IN_OPENS_MS;
@@ -132,37 +142,36 @@ export function BookingPanel({
   return (
     <section aria-labelledby="slots-heading" className="grid gap-4">
       <h2 id="slots-heading" className="type-h3">
-        Interview slots
+        {t("heading")}
       </h2>
 
       {state === "CONFIRMED" && application && (
         <div className="grid gap-3 border border-housing-rule p-4">
           <p className="type-body">
-            You&apos;re booked for{" "}
-            <span className="type-board-md whitespace-nowrap">
-              {bookedAt ? `${bookedAt.day}, ${formatTime(application.slotStartsAt!)}` : "this drive"}
-            </span>
-            .
+            {t.rich("booked", {
+              when: bookedAt ? t("bookedWhen", { day: bookedAt.day, time: formatTime(application.slotStartsAt!) }) : t("thisDrive"),
+              strong: (chunks) => <span className="type-board-md whitespace-nowrap">{chunks}</span>,
+            })}
           </p>
           <div className="flex flex-wrap gap-3">
             {checkInOpen && (
               <Link href="/checkin" className={boardButtonClass()}>
-                Check in
+                {t("checkIn")}
               </Link>
             )}
             <Link href="/my-drives" className={boardButtonClass("housing", "quiet")}>
-              Your drives
+              {t("yourDrives")}
             </Link>
             <BoardButton
               variant="quiet"
               disabled={busy}
               onClick={() => {
-                if (confirm("Release your seat? Someone else can then book it.")) {
+                if (confirm(t("releaseConfirm"))) {
                   act(() => apiClient.releaseApplication(application.id));
                 }
               }}
             >
-              {busy ? "Releasing" : "Release my seat"}
+              {busy ? t("releasing") : t("release")}
             </BoardButton>
           </div>
         </div>
@@ -170,53 +179,48 @@ export function BookingPanel({
 
       {application?.checkIn && (
         <p className="type-body border border-housing-rule p-4">
-          You checked in at{" "}
-          <span className="type-board-md">{formatTime(application.checkIn.scannedAt)}</span>.
+          {t.rich("checkedIn", {
+            time: formatTime(application.checkIn.scannedAt),
+            strong: (chunks) => <span className="type-board-md">{chunks}</span>,
+          })}
         </p>
       )}
 
       {state === "SCREENED_OUT" && (
         <div className="grid gap-2 border border-housing-rule p-4">
-          <p className="type-body">This drive isn&apos;t a match for you this time, so no seat was booked.</p>
+          <p className="type-body">{t("screenedOut")}</p>
           {application?.screenedOutReason && (
             <p className="type-body">
-              It asks for: <span className="text-stock">{application.screenedOutReason}</span>
+              {t.rich("asksFor", {
+                requirement: application.screenedOutReason,
+                strong: (chunks) => <span className="text-stock">{chunks}</span>,
+              })}
             </p>
           )}
-          <p className="type-meta text-housing-muted">
-            There&apos;s no need to travel to it.{" "}
-            <Link href="/" className="text-stock underline underline-offset-4">
-              Find other drives near you
-            </Link>
-          </p>
+          <p className="type-meta text-housing-muted">{t.rich("noNeedToTravel", { link: findOthers })}</p>
         </div>
       )}
 
       {state === "REJECTED" && !application?.checkIn && (
         <div className="grid gap-2 border border-housing-rule p-4">
-          <p className="type-body">The employer isn&apos;t taking your application forward for this drive.</p>
-          <p className="type-meta text-housing-muted">
-            There&apos;s no need to travel to it.{" "}
-            <Link href="/" className="text-stock underline underline-offset-4">
-              Find other drives near you
-            </Link>
-          </p>
+          <p className="type-body">{t("rejected")}</p>
+          <p className="type-meta text-housing-muted">{t.rich("noNeedToTravel", { link: findOthers })}</p>
         </div>
       )}
 
       {state === "NO_SHOW" && (
-        <p className="type-body border border-housing-rule p-4">You were marked as not attending this drive.</p>
+        <p className="type-body border border-housing-rule p-4">{t("noShow")}</p>
       )}
 
       {canPick ? (
         <fieldset className="grid gap-4">
           <legend className="type-meta mb-3 text-housing-muted">
-            {state === "WITHDRAWN" ? "You released your seat earlier. Pick a slot to book again." : "Pick a slot to book a seat."}
+            {state === "WITHDRAWN" ? t("pickAgain") : t("pick")}
           </legend>
           <SlotStack slots={drive.slots} now={now} selectedId={slotId} onSelect={setSlotId} />
           {drive.knockoutQuestions.length > 0 && (
             <div className="grid gap-4 border border-housing-rule p-4">
-              <p className="type-meta text-housing-muted">The employer asks everyone these before booking.</p>
+              <p className="type-meta text-housing-muted">{t("questionsIntro")}</p>
               {drive.knockoutQuestions.map((question) => (
                 <KnockoutField
                   key={question.id}
@@ -239,7 +243,7 @@ export function BookingPanel({
               disabled={!slotId || !answeredAll || busy}
               onClick={() => slotId && act(() => apiClient.apply(drive.id, slotId, answers))}
             >
-              {busy ? "Booking" : "Book this slot"}
+              {busy ? t("booking") : t("book")}
             </BoardButton>
           </div>
         </fieldset>
@@ -249,18 +253,24 @@ export function BookingPanel({
 
       {bookable && viewer === "anonymous" && (
         <p className="type-meta text-housing-muted">
-          <Link href={`/login?next=${encodeURIComponent(`/drives/${drive.id}`)}`} className="text-stock underline underline-offset-4">
-            Log in to book a slot
-          </Link>
-          . You can also walk in during the drive without booking.
+          {t.rich("logInToBook", {
+            link: (chunks) => (
+              <Link href={`/login?next=${encodeURIComponent(`/drives/${drive.id}`)}`} className="text-stock underline underline-offset-4">
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       )}
       {bookable && viewer === "no-profile" && (
         <p className="type-meta text-housing-muted">
-          <Link href="/profile" className="text-stock underline underline-offset-4">
-            Save your profile
-          </Link>{" "}
-          to book a slot.
+          {t.rich("profileToBook", {
+            link: (chunks) => (
+              <Link href="/profile" className="text-stock underline underline-offset-4">
+                {chunks}
+              </Link>
+            ),
+          })}
         </p>
       )}
 

@@ -10,6 +10,8 @@ import { DriveCard } from "@/components/board/drive-card";
 import { BoardField, BoardInput } from "@/components/board/field";
 import { FlapDisplay } from "@/components/board/flap-display";
 import { Slab } from "@/components/board/slab";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
 
 const CityPlane = dynamic(() => import("@/components/board/city-plane"), {
   ssr: false,
@@ -39,12 +41,13 @@ export default function JobsSearchClient({
   initialToDate,
   renderedAt,
 }: Props) {
+  const t = useTranslations("jobs.search");
   const router = useRouter();
   const pathname = usePathname();
 
   const [data, setData] = useState(initialData);
   const [origin, setOrigin] = useState(cityCenter);
-  const [originLabel, setOriginLabel] = useState("City centre");
+  const [originKind, setOriginKind] = useState<"city" | "home">("city");
   const [homeRadiusKm, setHomeRadiusKm] = useState<number | undefined>(undefined);
   const [radiusKm, setRadiusKm] = useState(initialRadiusKm ?? "");
   const [fromDate, setFromDate] = useState(initialFromDate ?? "");
@@ -91,7 +94,7 @@ export default function JobsSearchClient({
       const profile = await apiClient.getMyProfile();
       if (!profile) return;
       setOrigin({ lat: profile.homeLat, lng: profile.homeLng });
-      setOriginLabel("Your home");
+      setOriginKind("home");
       setHomeRadiusKm(profile.maxTravelKm);
       await runSearch();
     });
@@ -115,6 +118,7 @@ export default function JobsSearchClient({
     document.getElementById(`drive-${id}`)?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }
 
+  const { formatDistance } = useFormat();
   const count = data.items.length;
   const selected = data.items.find((d) => d.id === selectedId);
   const volumeKm = radiusKm ? Number(radiusKm) : homeRadiusKm;
@@ -125,28 +129,25 @@ export default function JobsSearchClient({
         <h1 className="type-h1">{heading}</h1>
         <p className="type-body flex flex-wrap items-center gap-x-3 gap-y-1 text-housing-muted">
           <FlapDisplay value={String(count)} length={2} align="right" className="text-[1.75rem] text-stock" cellWidth={0.62} />
-          <span>
-            {count === 1 ? "drive" : "drives"} {data.nextCursor ? "shown so far" : "listed"}, distances from{" "}
-            {originLabel === "Your home" ? "your home" : "the city centre"}
-          </span>
+          <span>{t("count", { count, more: data.nextCursor ? "yes" : "no", origin: originKind })}</span>
         </p>
 
         <form onSubmit={applyFilters} className="flex flex-wrap items-end gap-3">
-          <BoardField label="Within (km)" className="w-28">
+          <BoardField label={t("within")} className="w-28">
             <BoardInput type="number" inputMode="decimal" min={1} board value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} />
           </BoardField>
-          <BoardField label="From" className="w-40">
+          <BoardField label={t("from")} className="w-40">
             <BoardInput type="date" board value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </BoardField>
-          <BoardField label="To" className="w-40">
+          <BoardField label={t("to")} className="w-40">
             <BoardInput type="date" board value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </BoardField>
           <Slab type="submit" depth="sm" disabled={loading} className="px-5 py-2.5">
-            <span className="type-meta">{loading ? "Searching" : "Apply"}</span>
+            <span className="type-meta">{loading ? t("searching") : t("apply")}</span>
           </Slab>
         </form>
 
-        <div className="flex gap-6 lg:hidden" role="group" aria-label="Show drives as">
+        <div className="flex gap-6 lg:hidden" role="group" aria-label={t("viewAs")}>
           {(["list", "map"] as const).map((option) => (
             <button
               key={option}
@@ -158,18 +159,16 @@ export default function JobsSearchClient({
                 view === option ? "border-stock text-stock" : "border-transparent text-housing-muted",
               )}
             >
-              {option === "list" ? "List" : "Map"}
+              {t(option)}
             </button>
           ))}
         </div>
       </div>
 
       <div className="grid gap-8 pt-6 lg:grid-cols-[minmax(0,27rem)_1fr]">
-        <section aria-label="Drives" className={cn(view === "map" && "hidden lg:block")}>
+        <section aria-label={t("drives")} className={cn(view === "map" && "hidden lg:block")}>
           {count === 0 ? (
-            <p className="type-body text-housing-muted">
-              No live drives match these filters. Widen the distance or clear the dates.
-            </p>
+            <p className="type-body text-housing-muted">{t("none")}</p>
           ) : (
             <ul className="grid gap-6 pb-3 pr-3">
               {data.items.map((drive) => (
@@ -191,12 +190,12 @@ export default function JobsSearchClient({
               depth="sm"
               className="mt-4 px-5 py-2.5"
             >
-              <span className="type-meta">{loading ? "Loading" : "Show more drives"}</span>
+              <span className="type-meta">{loading ? t("loading") : t("more")}</span>
             </Slab>
           )}
         </section>
 
-        <section aria-label="City map" className={cn("lg:sticky lg:top-6 lg:self-start", view === "list" && "hidden lg:block")}>
+        <section aria-label={t("cityMap")} className={cn("lg:sticky lg:top-6 lg:self-start", view === "list" && "hidden lg:block")}>
           <CityPlane
             drives={data.items}
             now={now}
@@ -207,11 +206,11 @@ export default function JobsSearchClient({
             className="h-[60vh] min-h-[420px] lg:h-[calc(100vh-3rem)]"
           />
           <p className="type-meta mt-3 text-housing-muted">
-            Pillar height is the drive&apos;s headcount; the lit top is seats still open. The white diamond is{" "}
-            {originLabel === "Your home" ? "your home" : "the city centre"}
-            {volumeKm
-              ? `, and the ring is ${radiusKm ? "the distance you filtered by" : "how far you said you'll travel"} (${volumeKm} km).`
-              : "."}
+            {t("mapKey", {
+              origin: originKind,
+              ring: volumeKm ? (radiusKm ? "filter" : "travel") : "none",
+              distance: volumeKm ? formatDistance(volumeKm) : "",
+            })}
           </p>
           {view === "map" && selected && (
             <div className="mt-4 lg:hidden">

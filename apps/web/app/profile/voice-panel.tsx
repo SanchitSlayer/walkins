@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { VOICE_CONTENT_TYPES, VOICE_MAX_BYTES, VOICE_MAX_SECONDS, type VoiceContentType, type VoiceIntro } from "@walkins/shared";
+import {
+  isMessageKey,
+  type MessageKey,
+  VOICE_CONTENT_TYPES,
+  VOICE_MAX_BYTES,
+  VOICE_MAX_SECONDS,
+  type VoiceContentType,
+  type VoiceIntro,
+} from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
 import { Slab } from "@/components/board/slab";
 import { TranscriptLabel } from "@/components/transcript";
+import { useTranslations } from "next-intl";
+import { useErrorText } from "@/lib/use-error-text";
 
 const POLL_MS = 2000;
 
@@ -24,22 +34,22 @@ function baseType(mime: string): VoiceContentType | null {
   return VOICE_CONTENT_TYPES.find((t) => t === base) ?? null;
 }
 
-function statusLine(intro: VoiceIntro): string {
-  switch (intro.status) {
-    case "UPLOADED":
-      return "Received. Waiting to be transcribed.";
-    case "PROCESSING":
-      return "Transcribing. This usually takes under a minute.";
-    case "DONE":
-      return "Ready. Employers can listen to it.";
-    case "FAILED":
-      return intro.error ?? "This couldn't be transcribed. Employers can still listen to it.";
-  }
+// A failed intro's error is a catalog key the worker stored (voice.failure.*).
+function useStatusLine() {
+  const t = useTranslations("voice");
+  const all = useTranslations();
+  return (intro: VoiceIntro) => {
+    if (intro.status !== "FAILED") return t(`status.${intro.status}`);
+    return intro.error && isMessageKey(intro.error) ? all(intro.error as MessageKey) : t("failure.unreadable");
+  };
 }
 
 // hasProfile is false until the profile is saved: the recording belongs to
 // the candidate row, which doesn't exist before the first save.
 export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
+  const t = useTranslations("voice");
+  const errorText = useErrorText();
+  const statusLine = useStatusLine();
   const [intro, setIntro] = useState<VoiceIntro | null>(null);
   const [recording, setRecording] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(VOICE_MAX_SECONDS);
@@ -80,21 +90,21 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
     const mime = recorderType();
     const contentType = mime && baseType(mime);
     if (!mime || !contentType) {
-      setError("This browser can't record audio. Try Chrome, or Safari on an iPhone.");
+      setError(t("noRecorder"));
       return;
     }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setError("The microphone is blocked. Allow it for this site in your browser's settings, then try again.");
+      setError(t("micBlocked"));
       return;
     }
     const chunks: Blob[] = [];
     const next = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32_000 });
     next.ondataavailable = (e) => chunks.push(e.data);
     next.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
+      stream.getTracks().forEach((track) => track.stop());
       setRecording(false);
       const blob = new Blob(chunks, { type: contentType });
       setTake({ blob, url: URL.createObjectURL(blob), contentType });
@@ -109,7 +119,7 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
   async function upload() {
     if (!take) return;
     if (take.blob.size > VOICE_MAX_BYTES) {
-      setError("That recording is too large. Record a shorter one.");
+      setError(t("tooLarge"));
       return;
     }
     setUploading(true);
@@ -118,7 +128,7 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
       setIntro(await apiClient.uploadVoiceIntro(take.blob, take.contentType));
       setTake(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The recording didn't upload. Try again.");
+      setError(errorText(err, "errors.voice.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -127,22 +137,19 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
   return (
     <Slab depth="md" className="grid w-full gap-4 p-5">
       <div>
-        <h2 className="type-h3">Voice intro</h2>
-        <p className="type-meta mt-1 text-ink-muted">
-          Up to {VOICE_MAX_SECONDS} seconds, in any language you like: who you are, the work you&apos;ve done, and when
-          you can start. Employers listen to it instead of reading a CV.
-        </p>
+        <h2 className="type-h3">{t("heading")}</h2>
+        <p className="type-meta mt-1 text-ink-muted">{t("pitch", { seconds: VOICE_MAX_SECONDS })}</p>
       </div>
 
       {!hasProfile ? (
-        <p className="type-meta text-ink-muted">Save your profile first, then record your intro.</p>
+        <p className="type-meta text-ink-muted">{t("saveFirst")}</p>
       ) : recording ? (
         <div className="grid gap-3">
           <p role="timer" aria-live="off" className="type-board-md">
-            Recording · {secondsLeft}s left
+            {t("recording", { seconds: secondsLeft })}
           </p>
           <BoardButton surface="stock" onClick={() => recorder.current?.stop()}>
-            Stop
+            {t("stop")}
           </BoardButton>
         </div>
       ) : take ? (
@@ -150,10 +157,10 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
           <audio controls src={take.url} className="w-full" />
           <div className="flex flex-wrap gap-3">
             <BoardButton surface="stock" onClick={upload} disabled={uploading}>
-              {uploading ? "Sending" : intro ? "Replace my intro with this" : "Use this recording"}
+              {uploading ? t("sending") : intro ? t("replace") : t("use")}
             </BoardButton>
             <BoardButton surface="stock" variant="quiet" onClick={start} disabled={uploading}>
-              Record again
+              {t("again")}
             </BoardButton>
           </div>
         </div>
@@ -173,20 +180,17 @@ export function VoicePanel({ hasProfile }: { hasProfile: boolean }) {
                   />
                   <p className="type-body">{intro.transcript}</p>
                   {intro.confidence === "low" && (
-                    <p className="type-meta text-ink-muted">
-                      This transcript may be poor, so employers are shown your recording first. Recording somewhere
-                      quieter can help.
-                    </p>
+                    <p className="type-meta text-ink-muted">{t("lowConfidence")}</p>
                   )}
                 </div>
               )}
             </div>
           )}
           <BoardButton surface="stock" variant={intro ? "quiet" : "primary"} onClick={start}>
-            {intro ? "Record a new intro" : "Record my intro"}
+            {intro ? t("recordNew") : t("record")}
           </BoardButton>
           {intro && (
-            <p className="type-meta text-ink-muted">A new recording replaces this one, and the old one is deleted overnight.</p>
+            <p className="type-meta text-ink-muted">{t("replaces")}</p>
           )}
         </div>
       )}

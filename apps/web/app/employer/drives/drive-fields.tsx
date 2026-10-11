@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { dayLabel, type DriveSummary, formatTime } from "@walkins/shared";
+import type { DriveSummary } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardField, BoardInput, BoardSelect } from "@/components/board/field";
+import { useTranslations } from "next-intl";
+import { useFormat } from "@/lib/format";
 
 export type DriveFieldValues = {
   roleId: string;
@@ -86,6 +88,8 @@ export function DriveFields({
   disabled?: boolean;
   venuePinnedAt?: string | null;
 }) {
+  const t = useTranslations("driveForm");
+  const { dayLabel, formatTime } = useFormat();
   const [roles, setRoles] = useState<{ id: string; title: string }[]>([]);
   const [cities, setCities] = useState<{ id: string; name: string; state: string }[]>([]);
 
@@ -102,10 +106,10 @@ export function DriveFields({
 
   return (
     <>
-      <FieldGroup legend="Role and venue">
-        <BoardField label="Role">
+      <FieldGroup legend={t("roleVenue")}>
+        <BoardField label={t("role")}>
           <BoardSelect {...input("roleId")}>
-            <option value="">Choose a role</option>
+            <option value="">{t("chooseRole")}</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.title}
@@ -113,22 +117,22 @@ export function DriveFields({
             ))}
           </BoardSelect>
         </BoardField>
-        <BoardField label="City">
+        <BoardField label={t("city")}>
           <BoardSelect {...input("cityId")}>
-            <option value="">Choose a city</option>
+            <option value="">{t("chooseCity")}</option>
             {cities.map((city) => (
               <option key={city.id} value={city.id}>
-                {city.name}, {city.state}
+                {t("cityState", { city: city.name, state: city.state })}
               </option>
             ))}
           </BoardSelect>
         </BoardField>
         <BoardField
-          label="Venue address"
+          label={t("venueAddress")}
           hint={
             venuePinnedAt
-              ? `Venue location set from a device (${dayLabel(new Date(venuePinnedAt), new Date())}, ${formatTime(venuePinnedAt)}). Editing the address will reset it.`
-              : "The street address candidates will walk to."
+              ? t("pinnedHint", { day: dayLabel(new Date(venuePinnedAt), new Date()), time: formatTime(venuePinnedAt) })
+              : t("addressHint")
           }
           className="sm:col-span-2"
         >
@@ -136,26 +140,26 @@ export function DriveFields({
         </BoardField>
       </FieldGroup>
 
-      <FieldGroup legend="Pay and experience">
-        <BoardField label="Pay from (₹)">
+      <FieldGroup legend={t("payExperience")}>
+        <BoardField label={t("payFrom")}>
           <BoardInput board type="number" inputMode="numeric" min={0} {...input("salaryMin")} />
         </BoardField>
-        <BoardField label="Pay up to (₹)">
+        <BoardField label={t("payTo")}>
           <BoardInput board type="number" inputMode="numeric" min={0} {...input("salaryMax")} />
         </BoardField>
-        <BoardField label="Experience from (years)">
+        <BoardField label={t("experienceFrom")}>
           <BoardInput board type="number" inputMode="decimal" min={0} step={0.5} {...input("experienceMin")} />
         </BoardField>
-        <BoardField label="Experience up to (years)">
+        <BoardField label={t("experienceTo")}>
           <BoardInput board type="number" inputMode="decimal" min={0} step={0.5} {...input("experienceMax")} />
         </BoardField>
       </FieldGroup>
 
-      <FieldGroup legend="When">
-        <BoardField label="Doors open">
+      <FieldGroup legend={t("when")}>
+        <BoardField label={t("doorsOpen")}>
           <BoardInput board type="datetime-local" {...input("startsAt")} />
         </BoardField>
-        <BoardField label="Doors close">
+        <BoardField label={t("doorsClose")}>
           <BoardInput board type="datetime-local" {...input("endsAt")} />
         </BoardField>
       </FieldGroup>
