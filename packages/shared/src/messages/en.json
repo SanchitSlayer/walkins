@@ -34,7 +34,8 @@
       "checkin-code": "The check-in screen is asking for codes too often. Try again in {minutes, plural, one {a minute} other {# minutes}}.",
       "intro-audio": "That's a lot of recordings opened in an hour. Try again in {minutes, plural, one {a minute} other {# minutes}}.",
       "telegram-link": "That's a lot of Telegram links in an hour. Use the last one, or try again in {minutes, plural, one {a minute} other {# minutes}}.",
-      "socket-join": "Too many attempts to open this board. Wait a minute, then reload the page."
+      "socket-join": "Too many attempts to open this board. Wait a minute, then reload the page.",
+      "invitations": "That's a lot of invitations in a day. Try again in {minutes, plural, one {a minute} other {# minutes}}."
     },
     "auth": {
       "otpPhoneLimit": "That's three codes for this number in 15 minutes. Wait a few minutes before asking for another.",
@@ -46,7 +47,7 @@
       "signedOut": "Your session has ended. Sign in again.",
       "sessionRevoked": "You've been signed out everywhere, because an old sign-in was used again. Sign in again.",
       "wrongRole": "This is for a different kind of account. Sign in with the account that has access.",
-      "noCompany": "This account isn't linked to a company. Ask whoever set up your company to add you."
+      "noCompany": "This account isn't part of a company. If a colleague invited you, sign in with the number they invited; otherwise ask your company's owner to invite you."
     },
     "profile": {
       "saveFirst": "Save your profile first, then try again.",
@@ -152,7 +153,33 @@
       "knockoutDuplicate": "Two screening questions are the same. Remove one.",
       "knockoutAccepted": "An answer marked as able to book isn't in the list of answers. Tick it again after editing the list.",
       "tooLowExclusive": "{field} needs to be more than {minimum}.",
-      "tooHighExclusive": "{field} needs to be less than {maximum}."
+      "tooHighExclusive": "{field} needs to be less than {maximum}.",
+      "invitePhone": "Enter the 10-digit mobile number they sign in with, without +91 or spaces."
+    },
+    "people": {
+      "cannot": {
+        "read": "You can't see {company}'s desk with this account. Ask an owner to check your role.",
+        "runDrives": "Your role at {company} is view only, so you can't change drives, applicants or check-ins. Ask an owner to make you a recruiter.",
+        "manageBilling": "Only an owner at {company} can add money to the wallet. Ask an owner to top it up.",
+        "manageCompany": "Only an owner at {company} can change the company's settings. Ask an owner to make the change.",
+        "managePeople": "Only an owner at {company} can invite, change or remove people. Ask an owner to do it."
+      },
+      "lastOwner": "This is the company's only owner. Make someone else an owner first, so the company isn't left without one.",
+      "alreadyMember": "{name} is already in your company with that number.",
+      "alreadyInvited": "{phone} already has an invitation waiting. Revoke it first if you want to send a new one.",
+      "invitationGone": "That invitation has already been accepted, revoked or replaced. Reload the page to see where it stands.",
+      "notMember": "That person isn't in your company any more. Reload the page to see who is.",
+      "notARecruiter": "Drives can only be handed to an owner or a recruiter in your company. Choose someone who runs drives."
+    },
+    "invitation": {
+      "adminAccount": "This is a platform admin account, which can't join a company. Ask the company to invite a different number.",
+      "alreadyInCompany": "This account is already part of {company}. Leave {company} from its People page first, then accept.",
+      "booking": "{role} at {company} ({day})",
+      "upcomingBookings": "You have {count, plural, one {a booked interview} other {# booked interviews}} still ahead: {bookings}. Joining a company makes this an employer account, and you would lose {count, plural, one {that seat} other {those seats}}. Go to the {count, plural, one {interview} other {interviews}} or release {count, plural, one {it} other {them}} from My drives, then join.",
+      "gone": "This invitation has expired, been revoked or already been used. Ask whoever invited you to send a new one."
+    },
+    "live": {
+      "unknownView": "This board link isn't complete. Open the board again from the drive's page."
     }
   },
   "fields": {
@@ -190,7 +217,10 @@
     "code": "Check-in code",
     "slotId": "Slot",
     "answers": "Answers",
-    "applicationIds": "Applicants"
+    "applicationIds": "Applicants",
+    "role": "Their role",
+    "successorId": "Who takes over",
+    "ownerId": "Owner"
   },
   "board": {
     "state": {
@@ -482,7 +512,8 @@
     "billing": "Billing",
     "verification": "Verification",
     "failedJobs": "Failed jobs",
-    "ledger": "Ledger"
+    "ledger": "Ledger",
+    "people": "People"
   },
   "employerDrives": {
     "booked": "{booked} of {capacity} booked",
@@ -497,7 +528,9 @@
     "status": "Status",
     "approximatePin": "Venue pin is approximate",
     "previous": "Previous page",
-    "next": "Next page"
+    "next": "Next page",
+    "viewOnly": "Your role at {company} is view only: you can see every drive and its applicants, and an owner or recruiter makes the changes.",
+    "owner": "Owner: <name></name>"
   },
   "driveForm": {
     "roleVenue": "Role and venue",
@@ -589,7 +622,15 @@
     "applicants": "Applicants",
     "publicPage": "See the public page",
     "cancel": "Cancel drive",
-    "slots": "Slots"
+    "slots": "Slots",
+    "viewOnly": "View only: your role can see this drive but not change it.",
+    "sentBackNoReason": "Sent back by review without a reason. Check the details, then send it for review again.",
+    "owner": {
+      "heading": "Owner",
+      "handTo": "Hand to",
+      "handOver": "Hand over",
+      "failed": "The drive couldn't be handed over. Reload the page and try again."
+    }
   },
   "deskState": {
     "INTERESTED": "Saved",
@@ -624,7 +665,9 @@
     "awaitingConfirmation": "awaiting confirmation",
     "moveConfirm": "{to, select, HIRED {Hire} other {Not selected}}: {name}? This can't be undone.",
     "saving": "Saving",
-    "move": "{to, select, INTERVIEWED {Interviewed} HIRED {Hire} other {Not selected}}"
+    "move": "{to, select, INTERVIEWED {Interviewed} HIRED {Hire} other {Not selected}}",
+    "markedBy": "marked present by {name}",
+    "confirmedBy": "confirmed by {name}"
   },
   "checkInScreen": {
     "venue": {
@@ -679,7 +722,8 @@
     "walkIn": "Walk-in",
     "none": "No arrivals yet.",
     "fullScreen": "Show full screen",
-    "back": "Back to the drive"
+    "back": "Back to the drive",
+    "unnamed": "Arrived"
   },
   "applicants": {
     "percent": "{n}%",
@@ -697,7 +741,8 @@
       "explain": "A transcript written in a script nobody here reads is not shown; you're offered the recording instead.",
       "saveFailed": "The languages couldn't be saved. Try again.",
       "saving": "Saving",
-      "save": "Save languages"
+      "save": "Save languages",
+      "ownerOnly": "Only an owner can change which languages your team reads."
     },
     "loadFailed": "Applicants couldn't be loaded. Reload the page to try again.",
     "rejectConfirm": "Mark {count, plural, one {# applicant} other {# applicants}} as not selected?{booked, plural, =0 {} one { # booked candidate is told not to travel, and their seat is freed.} other { # booked candidates are told not to travel, and their seats are freed.}}",
@@ -723,7 +768,8 @@
     "select": "Select {name}",
     "years": "{years} yrs",
     "shortlisted": "Shortlisted",
-    "admit": "Mark present anyway"
+    "admit": "Mark present anyway",
+    "shortlistedBy": "Shortlisted by {name}"
   },
   "intro": {
     "loadFailed": "The recording couldn't be loaded. Try again.",
@@ -775,7 +821,8 @@
       "TOP_UP": "Top-up",
       "CHECK_IN_CHARGE": "Verified check-in",
       "PROMO_GRANT": "Launch credit"
-    }
+    },
+    "ownerOnly": "Only an owner can add money to the wallet. Ask an owner to top it up."
   },
   "analytics": {
     "noRate": "—",
@@ -902,5 +949,99 @@
       },
       "platformAccount": "Platform: {name}"
     }
+  },
+  "people": {
+    "left": "{name} (left)",
+    "heading": "People",
+    "loading": "Loading your team",
+    "loadFailed": "Your team couldn't be loaded. Reload the page to try again.",
+    "youAre": "Your role at {company}: {role}.",
+    "members": "{count, plural, one {# person} other {# people}}",
+    "you": "{name} (you)",
+    "openDrives": "{count, plural, one {# drive to run} other {# drives to run}}",
+    "roleOf": "Role for {name}",
+    "leave": "Leave",
+    "remove": {
+      "question": "Remove {name} from the company?",
+      "leaveQuestion": "Leave the company?",
+      "keeps": "Their name stays on everything they did here: the audit trail, shortlists and the drives they ran. Their account becomes a candidate account.",
+      "leaveKeeps": "Your name stays on everything you did here, and this account becomes a candidate account again.",
+      "successor": "{count, plural, one {Who takes over the # drive still to run} other {Who takes over the # drives still to run}}",
+      "removing": "Removing",
+      "leave": "Leave",
+      "confirm": "Remove",
+      "keep": "Keep",
+      "failed": "That didn't go through. Reload the page to see who is in the company."
+    },
+    "invitations": "Invitations ({count})",
+    "noInvitations": "No invitations waiting.",
+    "invitedBy": "invited by {name}",
+    "expired": "expired",
+    "expires": "expires {day}",
+    "revoke": "Revoke",
+    "clear": "Clear",
+    "revoked": "{name}'s invitation is revoked.",
+    "handedOver": "{count, plural, one {The # drive {name} owned is} other {The # drives {name} owned are}} now {to}'s.",
+    "roleChanged": "{name}'s role is now {role}.",
+    "removed": "{name} is no longer in the company.",
+    "viewerConfirm": "{name} owns {count, plural, one {# drive} other {# drives}} still to run. Viewers can't run drives, so {count, plural, one {it goes} other {they go}} to you. Make {name} a viewer?",
+    "role": {
+      "OWNER": "Owner",
+      "RECRUITER": "Recruiter",
+      "VIEWER": "Viewer"
+    },
+    "gate": {
+      "noCompanyHeading": "Not part of a company",
+      "failedHeading": "The desk couldn't load",
+      "failed": "Your company's details couldn't be loaded. Reload the page to try again.",
+      "checkInvitations": "See invitations for your number",
+      "loading": "Loading your company"
+    },
+    "invite": {
+      "heading": "Invite someone",
+      "explain": "They sign in with their own mobile number, the same way candidates do, and join with one tap. An invitation lasts 7 days.",
+      "name": "Their name",
+      "phone": "Their mobile number",
+      "role": "Role",
+      "roleHint": "{role}: {what}",
+      "can": {
+        "OWNER": "Runs drives, and manages people, billing and the company's settings.",
+        "RECRUITER": "Creates and runs drives, reviews applicants and works the check-in desk.",
+        "VIEWER": "Sees drives, applicants and the desk, and changes nothing."
+      },
+      "send": "Create invitation",
+      "sending": "Creating",
+      "sent": "Invitation ready. Nothing is sent to {name}'s phone: ask them to sign in at {address} with {phone} in the next 7 days.",
+      "failed": "The invitation couldn't be created. Try again."
+    },
+    "removePerson": "Remove"
+  },
+  "join": {
+    "heading": "Join your team",
+    "loading": "Loading your invitations",
+    "loadFailed": "Your invitations couldn't be loaded. Reload the page to try again.",
+    "none": "There are no invitations for this number. If someone invited you, check they used the number you signed in with.",
+    "toProfile": "Go to your profile",
+    "bookedFirst": "{count, plural, one {You have a booked interview} other {You have # booked interviews}} still ahead. Joining a company makes this an employer account, and you would lose {count, plural, one {that seat} other {those seats}}. Go to {count, plural, one {it} other {them}} or release {count, plural, one {it} other {them}} from My drives, then come back to join.",
+    "booking": "{role} at {company}, {day} {time}",
+    "toMyDrives": "Go to My drives",
+    "invitedAs": "{name} invited you to join as {role}.",
+    "expires": "This invitation expires on {day}.",
+    "join": "Join {company}",
+    "joining": "Joining",
+    "notYou": "Don't recognise this company? Phone numbers get reissued, so this may be meant for whoever had your number before. Don't join; it expires by itself.",
+    "notNow": "Not now",
+    "failed": "That didn't go through. Reload the page and try again."
+  },
+  "bot": {
+    "connectFirst": "To get walk-in alerts here, open your profile on Walkins and choose Connect Telegram:\n{profile}",
+    "linkUsed": "That link has expired or was already used. Open your profile to get a new one:\n{profile}",
+    "connected": "Connected. You'll get alerts here for walk-in drives within your travel distance.\n\nSend /jobs to see what's on now, or /stop to turn alerts off.",
+    "notConnected": "This chat isn't connected to a Walkins profile yet. Connect it from your profile:\n{profile}",
+    "noJobs": "No live drives within your {km} km travel distance right now. You can widen your travel distance on your profile:\n{profile}",
+    "jobsHeading": "Nearest live drives within {km} km:",
+    "jobLine": "{n}. {role} at {company}",
+    "jobWhen": "{day}, {time} · {distance}",
+    "stopped": "Alerts are off and this chat is disconnected. You can connect again any time from your profile:\n{profile}"
   }
 }

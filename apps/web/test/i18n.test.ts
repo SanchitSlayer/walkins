@@ -4,11 +4,16 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { MESSAGES } from "@walkins/shared";
 
-// Every user-facing string in the web app goes through the message catalog
+// Every user-facing string goes through the message catalog
 // (packages/shared/src/messages/en.json), so that Hindi later is translation
 // rather than archaeology. This test is what keeps it that way: it fails on
 // a hardcoded string, on a key the catalog doesn't have, and on a catalog
 // key nothing uses.
+//
+// The web app is checked thoroughly: any text a page renders. The API and
+// worker are checked at the places they speak to a person directly (see
+// serverPhrases); words they store to show later are not something syntax
+// can tell from internal text, and the README lists those.
 //
 // Escape hatches, both deliberate and visible in review:
 // - data-i18n-ignore on a JSX element exempts its subtree (content that is
@@ -28,7 +33,8 @@ const USER_CALLS = new Set(["setError", "setNotice", "confirm", "alert", "prompt
 // Formatting must follow the page's locale; these bypass it.
 const BARE_FORMATTERS = new Set(["formatTime", "dayLabel", "formatWhen", "formatSalary", "formatPaise", "formatExperience", "formatDistance", "formatSeats"]);
 // Namespaces the API and worker use; the web app need not reference them.
-const SERVER_NAMESPACES = new Set(["alerts", "errors", "fields", "format"]);
+const SERVER_NAMESPACES = new Set(["alerts", "bot", "errors", "fields", "format"]);
+const SERVER_SOURCES = ["../api/src", "../worker/src"];
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -221,7 +227,47 @@ function alertTemplatePhrases(): string[] {
   return found;
 }
 
+// Where the API and worker put words in front of a person: an HTTP refusal
+// (new SomethingException(...), whose body must come from apiError), a
+// socket's { error } reply, and a Telegram message (ctx.reply or
+// sendMessage). A phrase anywhere inside one of those, however it is
+// built, fails. Log lines, job outcomes and embedding text are for
+// operators and the model, and pass.
+function serverPhrases(): string[] {
+  const found: string[] = [];
+  const speaks = (node: ts.Node): boolean => {
+    for (let n: ts.Node | undefined = node.parent; n && !ts.isBlock(n) && !ts.isSourceFile(n); n = n.parent) {
+      if (ts.isNewExpression(n) && /Exception$/.test(n.expression.getText())) return true;
+      if (ts.isCallExpression(n) && /(\.reply|sendMessage)$/.test(n.expression.getText())) return true;
+      if (ts.isPropertyAssignment(n) && n.name.getText() === "error" && ts.isObjectLiteralExpression(n.parent) && ts.isReturnStatement(n.parent.parent)) return true;
+    }
+    return false;
+  };
+  for (const root of SERVER_SOURCES) {
+    for (const path of files(join(WEB, root))) {
+      const file = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+      (function visit(node: ts.Node) {
+        const text = ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+          ? node.text
+          : ts.isTemplateExpression(node)
+            ? node.head.text + node.templateSpans.map((span) => span.literal.text).join(" ")
+            : null;
+        if (text !== null && readsAsText(text) && speaks(node) && !ignoredLine(file, node)) {
+          const { line } = file.getLineAndCharacterOfPosition(node.getStart());
+          found.push(`${relative(join(WEB, ".."), path)}:${line + 1}  ${JSON.stringify(text.slice(0, 70))}`);
+        }
+        ts.forEachChild(node, visit);
+      })(file);
+    }
+  }
+  return found;
+}
+
 describe("internationalisation", () => {
+  it("has no hardcoded words where the API and worker speak to a person", () => {
+    expect(serverPhrases()).toEqual([]);
+  });
+
   it("keeps the worker's alert wording in the catalog too", () => {
     expect(alertTemplatePhrases()).toEqual([]);
   });
