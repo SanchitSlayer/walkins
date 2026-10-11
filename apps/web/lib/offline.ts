@@ -27,7 +27,8 @@ export type QueuedCheckIn = {
 
 export type FlushResult =
   | { item: QueuedCheckIn; status: "sent"; checkIn: CheckIn }
-  | { item: QueuedCheckIn; status: "refused"; message: string };
+  // error is what the page words with useErrorText(), in its own language.
+  | { item: QueuedCheckIn; status: "refused"; error: unknown };
 
 // Storage can be unavailable (private browsing, storage blocked or full);
 // offline support then simply isn't there, and the online path still works.
@@ -137,12 +138,12 @@ export function flushCheckIns(): Promise<FlushResult[]> {
           });
           results.push(
             result.outcome === "needs_registration"
-              ? { item, status: "refused", message: "This check-in needs registering at the desk" }
+              ? { item, status: "refused", error: new ApiError("needs registration", 409, null, "errors.checkIn.needsRegistering") } // i18n-ignore: log text
               : { item, status: "sent", checkIn: result.checkIn },
           );
         } catch (err) {
           if (isNetworkError(err) || (err instanceof ApiError && err.status === 401)) break;
-          results.push({ item, status: "refused", message: err instanceof Error ? err.message : "Check-in was refused" });
+          results.push({ item, status: "refused", error: err });
         }
         write(
           QUEUE_KEY,

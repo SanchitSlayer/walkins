@@ -24,6 +24,7 @@ import type {
   LedgerExplorer,
   LiveBoard,
   LiveDisplay,
+  MessageKey,
   MyApplication,
   MyApplications,
   ModerateDrive,
@@ -106,16 +107,23 @@ async function request(path: string, options: RequestInit = {}, retry = true): P
   return response;
 }
 
-// Keeps the status and body alongside the message, for the few callers that
-// act on a specific refusal (a pin far from the city asks to confirm).
+// A refusal from the API: its catalog code and values, which pages turn
+// into words with useErrorText(), plus the status and body for the few
+// callers that act on a specific refusal (a pin far from the city asks to
+// confirm). message is the API's default-locale wording, for logs.
 export class ApiError extends Error {
   name = "ApiError";
   constructor(
     message: string,
     readonly status: number,
     readonly body: Record<string, unknown> | null,
+    readonly code: string = typeof body?.code === "string" ? body.code : "errors.generic",
   ) {
     super(message);
+  }
+
+  get params(): Record<string, string | number> {
+    return (this.body?.params as Record<string, string | number> | undefined) ?? {};
   }
 }
 
@@ -126,7 +134,7 @@ async function parseOrThrow<T>(response: Response): Promise<T> {
   // "no data" as "some data with no fields" for every caller downstream.
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new ApiError(typeof data?.message === "string" ? data.message : `Request failed with status ${response.status}`, response.status, data);
+    throw new ApiError(typeof data?.message === "string" ? data.message : `HTTP ${response.status}`, response.status, data); // i18n-ignore: log text; pages show the code's wording
   }
   return data as T;
 }
@@ -240,7 +248,7 @@ export const apiClient = {
   async actOnApplicants(
     driveId: string,
     input: ApplicantsAction,
-  ): Promise<{ updated: number; skipped: { applicationId: string; reason: string }[] }> {
+  ): Promise<{ updated: number; skipped: { applicationId: string; code: MessageKey }[] }> {
     return parseOrThrow(await request(`/drives/${driveId}/applicants/actions`, { method: "POST", body: JSON.stringify(input) }));
   },
 
@@ -357,11 +365,8 @@ export const apiClient = {
     form.append("file", recording);
     const stored = await fetch(upload.url, { method: "POST", body: form });
     if (!stored.ok) {
-      throw new ApiError(
-        recording.size > upload.maxBytes ? "That recording is too large. Record a shorter one." : "The recording didn't upload. Try again.",
-        stored.status,
-        null,
-      );
+      const code = recording.size > upload.maxBytes ? "errors.voice.tooLarge" : "errors.voice.uploadFailed";
+      throw new ApiError(code, stored.status, null, code);
     }
     return parseOrThrow(await request(`/candidates/me/voice-intro/uploads/${upload.introId}/complete`, { method: "POST" }));
   },
