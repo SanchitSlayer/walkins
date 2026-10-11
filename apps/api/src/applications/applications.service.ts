@@ -13,6 +13,7 @@ import { isUniqueViolation } from "../common/prisma-errors";
 import { LiveGateway } from "../live/live.gateway";
 import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
 import { apiError } from "../common/api-error";
+import { requireCompanyAccess } from "../common/require-company";
 
 @Injectable()
 export class ApplicationsService {
@@ -98,7 +99,8 @@ export class ApplicationsService {
 
   // Filtering by company in the WHERE clause makes another company's
   // application indistinguishable from a missing one.
-  async updateByEmployer(companyId: string, userId: string, applicationId: string, { to }: EmployerApplicationUpdate) {
+  async updateByEmployer(userId: string, applicationId: string, { to }: EmployerApplicationUpdate) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const application = await prisma.application.findFirst({ where: { id: applicationId, drive: { companyId } } });
     if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
     const updated = await prisma.$transaction((tx) =>

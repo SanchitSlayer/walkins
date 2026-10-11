@@ -12,7 +12,6 @@ import {
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { LIMITS, RateLimit } from "../common/rate-limit";
-import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -34,25 +33,25 @@ export class ApplicationsController {
     @Param("id") driveId: string,
     @Query(new ZodValidationPipe(applicantsQuerySchema)) query: { weight: number },
   ) {
-    return this.applicants.list(requireCompanyId(user), driveId, query.weight);
+    return this.applicants.list(user.userId, driveId, query.weight);
   }
 
   @Post("drives/:id/applicants/actions")
-  @RateLimit(LIMITS.applicantActions)
+  @RateLimit(LIMITS.applicantActions, LIMITS.applicantActionsCompany)
   @Roles("EMPLOYER")
   actOnApplicants(
     @CurrentUser() user: AccessTokenPayload,
     @Param("id") driveId: string,
     @Body(new ZodValidationPipe(applicantsActionSchema)) body: ApplicantsAction,
   ) {
-    return this.applicants.act(requireCompanyId(user), user.userId, driveId, body);
+    return this.applicants.act(user.userId, driveId, body);
   }
 
   @Get("applications/:id/intro-audio")
   @RateLimit(LIMITS.introAudio)
   @Roles("EMPLOYER")
   introAudio(@CurrentUser() user: AccessTokenPayload, @Param("id") applicationId: string) {
-    return this.applicants.introAudio(requireCompanyId(user), applicationId);
+    return this.applicants.introAudio(user.userId, applicationId);
   }
 
   @Post("drives/:id/apply")
@@ -86,6 +85,6 @@ export class ApplicationsController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(employerApplicationUpdateSchema)) body: EmployerApplicationUpdate,
   ) {
-    return this.applications.updateByEmployer(requireCompanyId(user), user.userId, id, body);
+    return this.applications.updateByEmployer(user.userId, id, body);
   }
 }

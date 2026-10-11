@@ -19,6 +19,7 @@ import {
 import { JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
 import { apiError } from "../common/api-error";
+import { PERSON_SELECT, personRef, requireCompanyAccess } from "../common/require-company";
 
 type RawSearchRow = {
   id: string;
@@ -105,7 +106,22 @@ const DRIVE_DETAIL_INCLUDE = {
   slots: true,
   role: { select: { title: true, slug: true } },
   city: { select: { name: true, centerLat: true, centerLng: true } },
+  owner: { select: PERSON_SELECT },
 } as const;
+
+type DriveWithDetail = Prisma.DriveGetPayload<{ include: typeof DRIVE_DETAIL_INCLUDE }>;
+
+function withOwner<T extends Pick<DriveWithDetail, "companyId" | "owner">>(drive: T) {
+  return { ...drive, owner: personRef(drive.owner, drive.companyId) };
+}
+
+// Every change to a drive names the person who made it: with several people
+// at a company, "the company changed it" no longer says who.
+function auditDrive(tx: Prisma.TransactionClient, userId: string, driveId: string, action: string, before: object | null, after: object) {
+  return tx.auditLog.create({
+    data: { actorUserId: userId, entityType: "drive", entityId: driveId, action, before: before ?? Prisma.DbNull, after },
+  });
+}
 
 @Injectable()
 export class DrivesService {
@@ -114,7 +130,8 @@ export class DrivesService {
     private readonly jobs: JobsService,
   ) {}
 
-  async create(companyId: string, input: CreateDriveInput) {
+  async create(userId: string, input: CreateDriveInput) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const numberOfSlots = this.computeSlotCount(input.startsAt, input.endsAt, input.slotDurationMinutes);
 
     if (input.capacityPerSlot * numberOfSlots !== input.capacity) {
@@ -132,9 +149,11 @@ export class DrivesService {
       input.venueAddress,
     );
 
-    const drive = await prisma.drive.create({
+    const drive = await prisma.$transaction(async (tx) => {
+      const created = await tx.drive.create({
       data: {
         companyId,
+        ownerId: userId,
         roleId: input.roleId,
         cityId: input.cityId,
         salaryMin: input.salaryMin,
@@ -155,12 +174,16 @@ export class DrivesService {
         },
       },
       include: DRIVE_DETAIL_INCLUDE,
+      });
+      await auditDrive(tx, userId, created.id, "created", null, { status: "DRAFT" });
+      return created;
     });
     await this.jobs.reembed({ kind: "drive", id: drive.id });
-    return drive;
+    return withOwner(drive);
   }
 
-  async update(companyId: string, driveId: string, input: UpdateDriveInput) {
+  async update(userId: string, driveId: string, input: UpdateDriveInput) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const existing = await this.findOwned(companyId, driveId);
 
     if (existing.status !== "DRAFT" && existing.status !== "PENDING") {
@@ -182,18 +205,23 @@ export class DrivesService {
       geocodePatch = { ...(await this.resolveCoordinates(cityId, venueAddress)), venuePinnedAt: null };
     }
 
-    const drive = await prisma.drive.update({
-      where: { id: driveId },
-      data: { ...input, ...geocodePatch },
-      include: DRIVE_DETAIL_INCLUDE,
+    const drive = await prisma.$transaction(async (tx) => {
+      const updated = await tx.drive.update({
+        where: { id: driveId },
+        data: { ...input, ...geocodePatch },
+        include: DRIVE_DETAIL_INCLUDE,
+      });
+      await auditDrive(tx, userId, driveId, "edited", null, { fields: Object.keys(input) });
+      return updated;
     });
     await this.jobs.reembed({ kind: "drive", id: drive.id });
-    return drive;
+    return withOwner(drive);
   }
 
   // Set from a device at the venue, usually on the day, so unlike other edits
   // this is allowed while the drive is LIVE.
-  async pinVenue(companyId: string, userId: string, driveId: string, input: VenuePinInput) {
+  async pinVenue(userId: string, driveId: string, input: VenuePinInput) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const existing = await this.findOwned(companyId, driveId);
     if (!["DRAFT", "PENDING", "LIVE"].includes(existing.status)) {
       throw new BadRequestException(apiError("errors.drive.venueLocked"));
@@ -222,54 +250,72 @@ export class DrivesService {
         data: { venueLat: input.lat, venueLng: input.lng, needsManualGeocode: false, venuePinnedAt: new Date() },
         include: DRIVE_DETAIL_INCLUDE,
       });
-      await tx.auditLog.create({
-        data: {
-          actorUserId: userId,
-          entityType: "drive",
-          entityId: driveId,
-          action: "venue_pinned",
-          before: { venueLat: existing.venueLat, venueLng: existing.venueLng },
-          after: {
-            venueLat: input.lat,
-            venueLng: input.lng,
-            accuracyMeters: input.accuracy,
-            ...(farFromCity ? { confirmedKmFromCity: Math.round(km) } : {}),
-          },
+      await auditDrive(
+        tx,
+        userId,
+        driveId,
+        "venue_pinned",
+        { venueLat: existing.venueLat, venueLng: existing.venueLng },
+        {
+          venueLat: input.lat,
+          venueLng: input.lng,
+          accuracyMeters: input.accuracy,
+          ...(farFromCity ? { confirmedKmFromCity: Math.round(km) } : {}),
         },
-      });
+      );
       return drive;
     });
     await this.jobs.reembed({ kind: "drive", id: driveId });
-    return pinned;
+    return withOwner(pinned);
   }
 
-  async submit(companyId: string, driveId: string) {
+  async submit(userId: string, driveId: string) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const existing = await this.findOwned(companyId, driveId);
 
     if (existing.status !== "DRAFT") {
       throw new BadRequestException(apiError("errors.drive.submitOnlyDraft"));
     }
 
-    return prisma.drive.update({
-      where: { id: driveId },
-      data: { status: "PENDING" },
-      include: DRIVE_DETAIL_INCLUDE,
+    return withOwner(await this.moveTo(userId, driveId, existing.status, "PENDING"));
+  }
+
+  async remove(userId: string, driveId: string) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
+    const existing = await this.findOwned(companyId, driveId);
+    return withOwner(await this.moveTo(userId, driveId, existing.status, "CANCELLED"));
+  }
+
+  // Owners answer for who answers for a drive. The new owner must be able to
+  // run it.
+  async reassign(userId: string, driveId: string, ownerId: string) {
+    const { companyId } = await requireCompanyAccess(userId, "managePeople");
+    const existing = await this.findOwned(companyId, driveId);
+    const next = await prisma.user.findFirst({
+      where: { id: ownerId, companyId, companyRole: { in: ["OWNER", "RECRUITER"] } },
+    });
+    if (!next) throw new BadRequestException(apiError("errors.people.notARecruiter"));
+    const drive = await prisma.$transaction(async (tx) => {
+      const updated = await tx.drive.update({ where: { id: driveId }, data: { ownerId }, include: DRIVE_DETAIL_INCLUDE });
+      await auditDrive(tx, userId, driveId, "owner_changed", { ownerId: existing.ownerId }, { ownerId });
+      return updated;
+    });
+    return withOwner(drive);
+  }
+
+  private moveTo(userId: string, driveId: string, from: string, to: "PENDING" | "CANCELLED") {
+    return prisma.$transaction(async (tx) => {
+      const drive = await tx.drive.update({ where: { id: driveId }, data: { status: to }, include: DRIVE_DETAIL_INCLUDE });
+      await auditDrive(tx, userId, driveId, `${from}->${to}`, { status: from }, { status: to });
+      return drive;
     });
   }
 
-  async remove(companyId: string, driveId: string) {
-    await this.findOwned(companyId, driveId);
-    return prisma.drive.update({
-      where: { id: driveId },
-      data: { status: "CANCELLED" },
-      include: DRIVE_DETAIL_INCLUDE,
-    });
-  }
-
-  async listMine(companyId: string, cursor: string | undefined, limit: number) {
+  async listMine(userId: string, cursor: string | undefined, limit: number) {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const drives = await prisma.drive.findMany({
       where: { companyId },
-      include: { role: { select: { title: true, slug: true } } },
+      include: { role: { select: { title: true, slug: true } }, owner: { select: PERSON_SELECT } },
       orderBy: [{ startsAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -288,7 +334,7 @@ export class DrivesService {
     const booked = new Map(sums.map((s) => [s.driveId, s._sum.bookedCount ?? 0]));
 
     return {
-      items: items.map((d) => ({ ...d, bookedCount: booked.get(d.id) ?? 0 })),
+      items: items.map((d) => ({ ...withOwner(d), bookedCount: booked.get(d.id) ?? 0 })),
       nextCursor: hasMore ? items[items.length - 1].id : null,
     };
   }
@@ -419,7 +465,8 @@ export class DrivesService {
     return null;
   }
 
-  async findOne(companyId: string, driveId: string) {
+  async findOne(userId: string, driveId: string) {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const drive = await prisma.drive.findFirst({
       where: { id: driveId, companyId },
       include: DRIVE_DETAIL_INCLUDE,
@@ -433,8 +480,10 @@ export class DrivesService {
       where: { entityType: "drive", entityId: driveId, action: "PENDING->DRAFT" },
       orderBy: { createdAt: "desc" },
     });
+    // An empty note means review sent it back without saying why; the page
+    // words that itself.
     const reason = (review?.after as { reason?: string } | null)?.reason;
-    return { ...drive, reviewNote: drive.status === "DRAFT" && review ? (reason ?? "Sent back by review without a reason") : null };
+    return { ...withOwner(drive), reviewNote: drive.status === "DRAFT" && review ? (reason ?? "") : null };
   }
 
   // Company-scoping enforcement point: every by-id operation (update, submit,

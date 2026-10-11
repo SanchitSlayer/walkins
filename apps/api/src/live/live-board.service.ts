@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "@walkins/db";
-import { type LiveBoard, liveBoardSchema, type LiveDisplay, liveDisplaySchema } from "@walkins/shared";
+import { type LiveBoard, liveBoardSchema, type LiveDisplay, liveDisplaySchema, type PersonRef } from "@walkins/shared";
+import { PERSON_SELECT, personRef, requireCompanyAccess } from "../common/require-company";
 
 const BOARD_ARRIVALS = 12;
 
@@ -8,17 +9,24 @@ type Counts = LiveBoard["counts"];
 
 // "Asha Kumari Rao" becomes "Asha R.": enough for someone in the queue to
 // spot their own name, not enough to identify a stranger from a TV screen.
-export function displayName(fullName: string): string {
+// Null when there is no name to shorten: OTP sign-up names an account by its
+// phone number until the person gives a name, and a phone number on a
+// screen facing the queue is exactly what this board must never show.
+export function displayName(fullName: string, phone: string): string | null {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "Candidate";
+  if (parts.length === 0 || fullName.trim() === phone) return null;
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
 }
 
 @Injectable()
 export class LiveBoardService {
-  async ownsDrive(companyId: string, driveId: string): Promise<boolean> {
-    return (await prisma.drive.count({ where: { id: driveId, companyId } })) > 0;
+  // Anyone at the drive's company may watch it. Anyone else, including
+  // someone who has left the company, gets the same answer as for a drive
+  // that doesn't exist.
+  async canWatch(userId: string, driveId: string): Promise<boolean> {
+    const access = await requireCompanyAccess(userId, "read").catch(() => null);
+    return access !== null && (await prisma.drive.count({ where: { id: driveId, companyId: access.companyId } })) > 0;
   }
 
   // Confirmed counts everyone who took a booked seat, including those who
@@ -63,6 +71,7 @@ export class LiveBoardService {
       }),
     ]);
 
+    const actedBy = await this.deskActions(driveId, arrivals);
     return liveBoardSchema.parse({
       driveId,
       counts,
@@ -77,6 +86,8 @@ export class LiveBoardService {
         distanceMeters: checkIn.distanceMeters,
         isValid: checkIn.isValid,
         flagReason: checkIn.flagReason,
+        recordedBy: checkIn.method === "MANUAL" ? (actedBy.recorded.get(checkIn.applicationId) ?? null) : null,
+        confirmedBy: actedBy.confirmed.get(checkIn.id) ?? null,
       })),
       awaiting: awaiting.map((application) => ({
         applicationId: application.id,
@@ -85,6 +96,32 @@ export class LiveBoardService {
         slotStartsAt: application.slot?.startsAt.toISOString() ?? null,
       })),
     });
+  }
+
+  // Who at the desk did what, read from the audit log, which is the record
+  // of it: marking someone present moves their application to CHECKED_IN
+  // with the employer as actor, and confirming a flag is its own entry.
+  private async deskActions(driveId: string, arrivals: { id: string; applicationId: string; method: string }[]) {
+    const { companyId } = await prisma.drive.findUniqueOrThrow({ where: { id: driveId }, select: { companyId: true } });
+    const manual = arrivals.filter((a) => a.method === "MANUAL").map((a) => a.applicationId);
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        actorUserId: { not: null },
+        OR: [
+          { entityType: "application", entityId: { in: manual }, action: { endsWith: "->CHECKED_IN" } },
+          { entityType: "check_in", entityId: { in: arrivals.map((a) => a.id) }, action: "confirmed" },
+        ],
+      },
+      include: { actor: { select: PERSON_SELECT } },
+      orderBy: { createdAt: "asc" },
+    });
+    const recorded = new Map<string, PersonRef>();
+    const confirmed = new Map<string, PersonRef>();
+    for (const row of rows) {
+      if (!row.actor) continue;
+      (row.entityType === "check_in" ? confirmed : recorded).set(row.entityId, personRef(row.actor, companyId));
+    }
+    return { recorded, confirmed };
   }
 
   // The public board. Built from its own narrow query, never by trimming the
@@ -99,7 +136,7 @@ export class LiveBoardService {
           id: true,
           method: true,
           scannedAt: true,
-          application: { select: { slot: { select: { startsAt: true } }, candidate: { select: { user: { select: { name: true } } } } } },
+          application: { select: { slot: { select: { startsAt: true } }, candidate: { select: { user: { select: { name: true, phone: true } } } } } },
         },
         orderBy: { scannedAt: "desc" },
         take: BOARD_ARRIVALS,
@@ -116,7 +153,7 @@ export class LiveBoardService {
       counts,
       arrivals: arrivals.map((checkIn) => ({
         checkInId: checkIn.id,
-        displayName: displayName(checkIn.application.candidate.user.name),
+        displayName: displayName(checkIn.application.candidate.user.name, checkIn.application.candidate.user.phone),
         method: checkIn.method,
         scannedAt: checkIn.scannedAt.toISOString(),
         slotStartsAt: checkIn.application.slot?.startsAt.toISOString() ?? null,

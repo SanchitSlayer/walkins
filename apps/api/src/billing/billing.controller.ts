@@ -12,7 +12,6 @@ import type { Request } from "express";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { LIMITS, RateLimit } from "../common/rate-limit";
-import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -26,18 +25,18 @@ export class BillingController {
 
   @Get("wallet")
   wallet(@CurrentUser() user: AccessTokenPayload) {
-    return this.billing.wallet(requireCompanyId(user));
+    return this.billing.wallet(user.userId);
   }
 
   @Post("top-ups")
   @RateLimit(LIMITS.topUpOrder)
   createTopUp(@CurrentUser() user: AccessTokenPayload, @Body(new ZodValidationPipe(topUpRequestSchema)) body: TopUpRequest) {
-    return this.billing.createTopUp(requireCompanyId(user), user.userId, body.amountPaise);
+    return this.billing.createTopUp(user.userId, body.amountPaise);
   }
 
   @Get("top-ups/:id")
   topUpStatus(@CurrentUser() user: AccessTokenPayload, @Param("id") orderId: string) {
-    return this.billing.topUpStatus(requireCompanyId(user), orderId);
+    return this.billing.topUpStatus(user.userId, orderId);
   }
 
   @Post("top-ups/:id/confirm")
@@ -48,7 +47,7 @@ export class BillingController {
     @Param("id") orderId: string,
     @Body(new ZodValidationPipe(topUpConfirmSchema)) body: TopUpConfirm,
   ) {
-    return this.billing.confirmTopUp(requireCompanyId(user), orderId, body);
+    return this.billing.confirmTopUp(user.userId, orderId, body);
   }
 
   @Post("top-ups/:id/mock-checkout")
@@ -59,7 +58,7 @@ export class BillingController {
     @Param("id") orderId: string,
     @Body(new ZodValidationPipe(mockCheckoutSchema)) body: MockCheckout,
   ) {
-    return this.billing.mockCheckout(requireCompanyId(user), orderId, body.outcome);
+    return this.billing.mockCheckout(user.userId, orderId, body.outcome);
   }
 }
 

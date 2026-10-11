@@ -16,6 +16,7 @@ import { JobsService } from "../common/jobs.service";
 import { StorageService } from "../common/storage.service";
 import { LiveGateway } from "../live/live.gateway";
 import { apiError } from "../common/api-error";
+import { personRef, requireCompanyAccess } from "../common/require-company";
 
 type Row = {
   applicationId: string;
@@ -24,6 +25,9 @@ type Row = {
   state: ApplicationState;
   slotStartsAt: Date | null;
   shortlisted: boolean;
+  shortlistedById: string | null;
+  shortlistedByName: string | null;
+  shortlistedByCompanyId: string | null;
   distanceKm: number;
   experienceYears: number;
   screenedOutReason: string | null;
@@ -52,7 +56,8 @@ export class ApplicantsService {
   // vectors. Someone with no embedding yet takes the drive's median
   // similarity, so a missing intro neither lifts nor sinks them, and the row
   // says it was ranked by distance only.
-  async list(companyId: string, driveId: string, weight: number): Promise<Applicants> {
+  async list(userId: string, driveId: string, weight: number): Promise<Applicants> {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const drive = await prisma.drive.findFirst({
       where: { id: driveId, companyId },
       select: { knockoutQuestions: true, company: { select: { readsLanguages: true } } },
@@ -67,6 +72,9 @@ export class ApplicantsService {
         a.state,
         s."startsAt" AS "slotStartsAt",
         a."shortlistedAt" IS NOT NULL AS shortlisted,
+        sb.id AS "shortlistedById",
+        sb.name AS "shortlistedByName",
+        sb."companyId" AS "shortlistedByCompanyId",
         ST_Distance(c.geom, d.geom) / 1000 AS "distanceKm",
         c."experienceYears",
         a."screenedOutReason",
@@ -78,6 +86,7 @@ export class ApplicantsService {
       JOIN users u ON u.id = c."userId"
       JOIN drives d ON d.id = a."driveId"
       LEFT JOIN drive_slots s ON s.id = a."slotId"
+      LEFT JOIN users sb ON sb.id = a."shortlistedById"
       WHERE a."driveId" = ${driveId} AND a.state <> 'WITHDRAWN'
     `;
 
@@ -103,6 +112,10 @@ export class ApplicantsService {
         state: row.state,
         slotStartsAt: row.slotStartsAt?.toISOString() ?? null,
         shortlisted: row.shortlisted,
+        shortlistedBy:
+          row.shortlisted && row.shortlistedById && row.shortlistedByName
+            ? personRef({ id: row.shortlistedById, name: row.shortlistedByName, companyId: row.shortlistedByCompanyId }, companyId)
+            : null,
         distanceKm: row.distanceKm,
         experienceYears: row.experienceYears,
         screenedOutReason: row.screenedOutReason,
@@ -147,7 +160,8 @@ export class ApplicantsService {
     });
   }
 
-  async act(companyId: string, userId: string, driveId: string, { applicationIds, action }: ApplicantsAction) {
+  async act(userId: string, driveId: string, { applicationIds, action }: ApplicantsAction) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const owned = await prisma.application.findMany({
       where: { id: { in: applicationIds }, driveId, drive: { companyId } },
       select: { id: true, candidateId: true, state: true },
@@ -159,11 +173,22 @@ export class ApplicantsService {
 
     if (action !== "reject") {
       // A private note for the employer, so it sits beside the state rather
-      // than being one: it doesn't change what the candidate sees.
-      await prisma.application.updateMany({
-        where: { id: { in: owned.map((a) => a.id) } },
-        data: action === "shortlist" ? { shortlistedAt: new Date(), shortlistedBy: userId } : { shortlistedAt: null, shortlistedBy: null },
-      });
+      // than being one: it doesn't change what the candidate sees. Audited,
+      // so a shared shortlist still says who put each person on it.
+      await prisma.$transaction([
+        prisma.application.updateMany({
+          where: { id: { in: owned.map((a) => a.id) } },
+          data: action === "shortlist" ? { shortlistedAt: new Date(), shortlistedById: userId } : { shortlistedAt: null, shortlistedById: null },
+        }),
+        prisma.auditLog.createMany({
+          data: owned.map((a) => ({
+            actorUserId: userId,
+            entityType: "application",
+            entityId: a.id,
+            action: action === "shortlist" ? "shortlisted" : "unshortlisted",
+          })),
+        }),
+      ]);
       return { updated: owned.length, skipped };
     }
 
@@ -191,7 +216,8 @@ export class ApplicantsService {
     return { updated, skipped };
   }
 
-  async introAudio(companyId: string, applicationId: string): Promise<{ url: string }> {
+  async introAudio(userId: string, applicationId: string): Promise<{ url: string }> {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const application = await prisma.application.findFirst({
       where: { id: applicationId, drive: { companyId } },
       select: { candidateId: true },

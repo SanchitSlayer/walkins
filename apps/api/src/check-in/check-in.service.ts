@@ -17,6 +17,7 @@ import { redis } from "../common/redis";
 import { LiveGateway } from "../live/live.gateway";
 import { CHECKIN_TOKEN_ROTATE_SECONDS, CheckInTokenService, OFFLINE_GRACE_MS } from "./check-in-token.service";
 import { apiError } from "../common/api-error";
+import { requireCompanyAccess } from "../common/require-company";
 
 const GEOFENCE_METERS = 200;
 const MAX_ACCURACY_METERS = 100;
@@ -68,7 +69,9 @@ export class CheckInService {
       .catch((err) => this.logger.error(`Couldn't queue the charge for check-in ${checkIn.id}; the sweep will pick it up`, err));
   }
 
-  async issueCode(companyId: string, driveId: string): Promise<CheckInCode> {
+  // Showing the code is what lets people in, so it is running the drive.
+  async issueCode(userId: string, driveId: string): Promise<CheckInCode> {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId } });
     if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
     if (drive.status !== "LIVE" || drive.endsAt <= new Date()) {
@@ -213,7 +216,8 @@ export class CheckInService {
     }
   }
 
-  async markPresent(companyId: string, userId: string, applicationId: string, reason?: string): Promise<CheckInResult> {
+  async markPresent(userId: string, applicationId: string, reason?: string): Promise<CheckInResult> {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const application = await prisma.application.findFirst({
       where: { id: applicationId, drive: { companyId } },
       include: { checkIn: true },
@@ -243,7 +247,8 @@ export class CheckInService {
     }
   }
 
-  async confirmFlagged(companyId: string, userId: string, checkInId: string) {
+  async confirmFlagged(userId: string, checkInId: string) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const checkIn = await prisma.checkIn.findFirst({
       where: { id: checkInId, application: { drive: { companyId } } },
       include: { application: { select: { driveId: true } } },

@@ -1,11 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { createDriveSchema, driveSearchQuerySchema, updateDriveSchema, type VenuePinInput, venuePinSchema } from "@walkins/shared";
+import { createDriveSchema, driveSearchQuerySchema, reassignDriveSchema, updateDriveSchema, type VenuePinInput, venuePinSchema } from "@walkins/shared";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { OptionalJwtAuthGuard } from "../common/optional-jwt-auth.guard";
 import { LIMITS, RateLimit } from "../common/rate-limit";
-import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -26,7 +25,7 @@ export class DrivesController {
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(createDriveSchema)) body: ReturnType<typeof createDriveSchema.parse>,
   ) {
-    return this.drivesService.create(requireCompanyId(user), body);
+    return this.drivesService.create(user.userId, body);
   }
 
   @Patch(":id")
@@ -38,7 +37,7 @@ export class DrivesController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateDriveSchema)) body: ReturnType<typeof updateDriveSchema.parse>,
   ) {
-    return this.drivesService.update(requireCompanyId(user), id, body);
+    return this.drivesService.update(user.userId, id, body);
   }
 
   @Post(":id/venue-pin")
@@ -50,7 +49,7 @@ export class DrivesController {
     @Param("id") id: string,
     @Body(new ZodValidationPipe(venuePinSchema)) body: VenuePinInput,
   ) {
-    return this.drivesService.pinVenue(requireCompanyId(user), user.userId, id, body);
+    return this.drivesService.pinVenue(user.userId, id, body);
   }
 
   @Post(":id/submit")
@@ -58,7 +57,19 @@ export class DrivesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   submit(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.submit(requireCompanyId(user), id);
+    return this.drivesService.submit(user.userId, id);
+  }
+
+  @Post(":id/owner")
+  @RateLimit(LIMITS.driveEdit)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("EMPLOYER")
+  reassign(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(reassignDriveSchema)) body: { ownerId: string },
+  ) {
+    return this.drivesService.reassign(user.userId, id, body.ownerId);
   }
 
   @Get("mine")
@@ -70,7 +81,7 @@ export class DrivesController {
     @Query("limit") limit?: string,
   ) {
     const parsedLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
-    return this.drivesService.listMine(requireCompanyId(user), cursor, parsedLimit);
+    return this.drivesService.listMine(user.userId, cursor, parsedLimit);
   }
 
   @Get("search")
@@ -94,7 +105,7 @@ export class DrivesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   findOne(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.findOne(requireCompanyId(user), id);
+    return this.drivesService.findOne(user.userId, id);
   }
 
   @Delete(":id")
@@ -102,6 +113,6 @@ export class DrivesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   remove(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
-    return this.drivesService.remove(requireCompanyId(user), id);
+    return this.drivesService.remove(user.userId, id);
   }
 }

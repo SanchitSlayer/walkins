@@ -22,6 +22,7 @@ import {
 import { MockGateway } from "./mock-gateway";
 import { type GatewayPayment, type IPaymentGateway, parseRazorpayWebhook, PAYMENT_GATEWAY } from "./payment-gateway";
 import { apiError } from "../common/api-error";
+import { requireCompanyAccess } from "../common/require-company";
 
 const STATEMENT_LENGTH = 100;
 // What is kept of a delivery whose signature fails; see PaymentEvent.
@@ -38,7 +39,10 @@ export class BillingService {
 
   constructor(@Inject(PAYMENT_GATEWAY) private readonly gateway: IPaymentGateway) {}
 
-  async wallet(companyId: string): Promise<Wallet> {
+  // Every role sees the balance: recruiters need it to know whether a drive
+  // can go live. Only owners spend.
+  async wallet(userId: string): Promise<Wallet> {
+    const { companyId } = await requireCompanyAccess(userId, "read");
     const [balancePaise, pricePerCheckInPaise, entries] = await Promise.all([
       companyBalance(prisma, companyId),
       priceAt(prisma, CHECK_IN_PRICE_EVENT, new Date()),
@@ -57,7 +61,8 @@ export class BillingService {
     });
   }
 
-  async createTopUp(companyId: string, userId: string, amountPaise: number): Promise<TopUpOrder> {
+  async createTopUp(userId: string, amountPaise: number): Promise<TopUpOrder> {
+    const { companyId } = await requireCompanyAccess(userId, "manageBilling");
     const id = randomUUID();
     const { gatewayOrderId } = await this.gateway.createOrder({ amountPaise, currency: "INR", receipt: id });
     await prisma.paymentOrder.create({
@@ -78,7 +83,8 @@ export class BillingService {
   // asked directly whether the money was captured. It exists because a
   // webhook can't reach a laptop without a tunnel; both paths credit through
   // applyPayment, keyed on the payment id, so using both credits once.
-  async confirmTopUp(companyId: string, orderId: string, input: TopUpConfirm): Promise<TopUpStatus> {
+  async confirmTopUp(userId: string, orderId: string, input: TopUpConfirm): Promise<TopUpStatus> {
+    const { companyId } = await requireCompanyAccess(userId, "manageBilling");
     const order = await this.ownedOrder(companyId, orderId);
     const verified = this.gateway.verifyCheckout({
       gatewayOrderId: order.gatewayOrderId,
@@ -91,10 +97,11 @@ export class BillingService {
       throw new BadRequestException(apiError("errors.billing.wrongOrder"));
     }
     await this.applyPayment(payment);
-    return this.topUpStatus(companyId, orderId);
+    return this.statusOf(companyId, orderId);
   }
 
-  async mockCheckout(companyId: string, orderId: string, outcome: "success" | "failure") {
+  async mockCheckout(userId: string, orderId: string, outcome: "success" | "failure") {
+    const { companyId } = await requireCompanyAccess(userId, "manageBilling");
     if (!(this.gateway instanceof MockGateway)) throw new NotFoundException(apiError("errors.billing.mockOnly"));
     const order = await this.ownedOrder(companyId, orderId);
     const paid = await this.gateway.pay(order.gatewayOrderId, outcome);
@@ -104,7 +111,12 @@ export class BillingService {
     return { gatewayPaymentId: paid.paymentId, signature: paid.signature };
   }
 
-  async topUpStatus(companyId: string, orderId: string): Promise<TopUpStatus> {
+  async topUpStatus(userId: string, orderId: string): Promise<TopUpStatus> {
+    const { companyId } = await requireCompanyAccess(userId, "manageBilling");
+    return this.statusOf(companyId, orderId);
+  }
+
+  private async statusOf(companyId: string, orderId: string): Promise<TopUpStatus> {
     const order = await this.ownedOrder(companyId, orderId);
     return topUpStatusSchema.parse({
       orderId: order.id,

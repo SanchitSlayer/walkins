@@ -23,14 +23,20 @@ function room(driveId: string, view: View) {
   return `drive:${driveId}:${view}`;
 }
 
+function userRoom(userId: string) {
+  return `user:${userId}`;
+}
+
 // Two rooms per drive, one per view. Joining either is checked against the
-// company every time, so an employer can only ever watch their own drives.
+// person's company as it stands in the database, every time, so an employer
+// can only ever watch their own company's drives.
 //
-// The access token, though, is checked once, on connect, and never again. A
-// board left open keeps receiving updates after that token's 15-minute
-// expiry, and a user whose sessions were revoked keeps watching until the
-// socket drops. That is accepted for a screen on the employer's own laptop
-// at their own drive; don't read this as a continuous check.
+// The access token, though, is checked once, on connect. A board left open
+// keeps receiving updates after that token's 15-minute expiry. That is
+// accepted for a screen at the company's own drive. Leaving the company is
+// not: every socket also sits in a room for its user, and removing someone
+// from a company disconnects them there (evict), because the desk view
+// carries candidates' names.
 @WebSocketGateway({ namespace: "/live", cors: { origin: WEB_ORIGINS, credentials: true } })
 export class LiveGateway implements OnGatewayConnection {
   @WebSocketServer() private server!: Namespace;
@@ -44,8 +50,9 @@ export class LiveGateway implements OnGatewayConnection {
   handleConnection(client: Socket) {
     try {
       const user = this.jwt.verify<AccessTokenPayload>(client.handshake.auth?.token ?? "");
-      if (user.role !== "EMPLOYER" || !user.companyId) throw new Error("not an employer");
+      if (user.role !== "EMPLOYER") throw new Error("not an employer");
       client.data.user = user;
+      void client.join(userRoom(user.userId));
     } catch {
       client.disconnect(true);
     }
@@ -62,14 +69,18 @@ export class LiveGateway implements OnGatewayConnection {
     if (!(await this.limiter.consume(`socket-join:${client.id}`, 30, 60)).allowed) {
       return { error: translate(DEFAULT_LOCALE, "errors.rateLimited.socket-join") };
     }
-    const companyId = client.data.user?.companyId;
     const { driveId, view } = body ?? {};
-    if (view !== "board" && view !== "desk") return { error: "Unknown view" };
-    if (!companyId || typeof driveId !== "string" || !(await this.board.ownsDrive(companyId, driveId))) {
+    if (view !== "board" && view !== "desk") return { error: translate(DEFAULT_LOCALE, "errors.live.unknownView") };
+    const userId = client.data.user?.userId;
+    if (!userId || typeof driveId !== "string" || !(await this.board.canWatch(userId, driveId))) {
       return { error: translate(DEFAULT_LOCALE, "errors.drive.notFound") };
     }
     await client.join(room(driveId, view));
     return view === "board" ? this.board.display(driveId) : this.board.snapshot(driveId);
+  }
+
+  evict(userId: string) {
+    this.server.in(userRoom(userId)).disconnectSockets(true);
   }
 
   // Called after anything that changes a drive's arrivals. Whole snapshots

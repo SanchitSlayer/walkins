@@ -2,7 +2,6 @@ import { Controller, Get, NotFoundException, Param, UseGuards } from "@nestjs/co
 import type { AccessTokenPayload } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
-import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { LiveBoardService } from "./live-board.service";
@@ -29,7 +28,7 @@ export class LiveController {
   }
 
   private async requireOwned(user: AccessTokenPayload, driveId: string) {
-    if (!(await this.board.ownsDrive(requireCompanyId(user), driveId))) {
+    if (!(await this.board.canWatch(user.userId, driveId))) {
       throw new NotFoundException(apiError("errors.drive.notFound"));
     }
   }
