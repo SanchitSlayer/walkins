@@ -3,6 +3,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { CHECKIN_CODE_ALPHABET, CHECKIN_CODE_LENGTH, normalizeCheckInCode } from "@walkins/shared";
 import { redis } from "../common/redis";
+import { apiError } from "../common/api-error";
 
 const AUDIENCE = "checkin";
 export const CHECKIN_TOKEN_TTL_SECONDS = 90;
@@ -80,7 +81,7 @@ export class CheckInTokenService {
       });
       return { driveId: payload.driveId, jti: payload.jti, expiresAt: new Date(payload.exp * 1000) };
     } catch {
-      throw new BadRequestException("That isn't a Walkins check-in code");
+      throw new BadRequestException(apiError("errors.checkIn.notACode"));
     }
   }
 }

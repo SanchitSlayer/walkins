@@ -13,6 +13,7 @@ import {
 import { JobsService } from "../common/jobs.service";
 import { redis } from "../common/redis";
 import { StorageService } from "../common/storage.service";
+import { apiError } from "../common/api-error";
 
 const EXTENSION: Record<VoiceContentType, string> = { "audio/webm": "webm", "audio/mp4": "m4a", "audio/ogg": "ogg" };
 // An upload that isn't confirmed within this long never becomes an intro;
@@ -67,10 +68,10 @@ export class VoiceIntroService {
     const raw = await redis.get(pendingKey(introId));
     const pending: Pending | null = raw ? JSON.parse(raw) : null;
     if (!pending || pending.candidateId !== candidate.id) {
-      throw new NotFoundException("That recording has expired. Record it again.");
+      throw new NotFoundException(apiError("errors.voice.uploadExpired"));
     }
     if ((await this.storage.size(pending.objectKey)) === null) {
-      throw new BadRequestException("The recording didn't finish uploading. Try again.");
+      throw new BadRequestException(apiError("errors.voice.uploadIncomplete"));
     }
 
     // The previous intro is replaced, not deleted here: the nightly
@@ -97,7 +98,7 @@ export class VoiceIntroService {
 
   private async requireCandidate(userId: string) {
     const candidate = await prisma.candidate.findUnique({ where: { userId }, select: { id: true } });
-    if (!candidate) throw new BadRequestException("Save your profile before recording an intro");
+    if (!candidate) throw new BadRequestException(apiError("errors.profile.saveFirst"));
     return candidate;
   }
 }

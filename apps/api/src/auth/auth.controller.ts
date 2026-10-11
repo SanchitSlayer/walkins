@@ -3,6 +3,7 @@ import { otpRequestSchema, otpVerifySchema } from "@walkins/shared";
 import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
+import { apiError } from "../common/api-error";
 
 const REFRESH_COOKIE = "refresh_token";
 const REFRESH_TOKEN_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 90) * 24 * 60 * 60 * 1000;
@@ -44,7 +45,7 @@ export class AuthController {
     const token = request.cookies?.[REFRESH_COOKIE];
     if (!token) {
       response.clearCookie(REFRESH_COOKIE, { path: "/" });
-      throw new UnauthorizedException("Missing refresh token");
+      throw new UnauthorizedException(apiError("errors.auth.signedOut"));
     }
     const { accessToken, refreshToken } = await this.authService.refresh(token);
     setRefreshCookie(response, refreshToken);

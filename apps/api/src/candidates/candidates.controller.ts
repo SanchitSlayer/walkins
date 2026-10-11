@@ -3,6 +3,7 @@ import type { AccessTokenPayload, VoiceUploadRequest } from "@walkins/shared";
 import { updateCandidateProfileSchema, voiceUploadRequestSchema } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -24,6 +25,7 @@ export class CandidatesController {
   }
 
   @Post("me/voice-intro/uploads")
+  @RateLimit(LIMITS.voiceUpload)
   startVoiceUpload(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(voiceUploadRequestSchema)) body: VoiceUploadRequest,
@@ -32,6 +34,7 @@ export class CandidatesController {
   }
 
   @Post("me/voice-intro/uploads/:id/complete")
+  @RateLimit(LIMITS.voiceUpload)
   completeVoiceUpload(@CurrentUser() user: AccessTokenPayload, @Param("id") introId: string) {
     return this.voiceIntros.completeUpload(user.userId, introId);
   }
@@ -42,6 +45,7 @@ export class CandidatesController {
   }
 
   @Patch("me")
+  @RateLimit(LIMITS.profileEdit)
   updateMe(
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(updateCandidateProfileSchema))
@@ -51,6 +55,7 @@ export class CandidatesController {
   }
 
   @Post("me/telegram-link")
+  @RateLimit(LIMITS.telegramLink)
   createTelegramLink(@CurrentUser() user: AccessTokenPayload) {
     return this.candidatesService.createTelegramLink(user.userId);
   }

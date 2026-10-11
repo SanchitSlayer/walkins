@@ -6,6 +6,7 @@ import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { LiveBoardService } from "./live-board.service";
+import { apiError } from "../common/api-error";
 
 // The same payloads the socket pushes, for the first paint and for the alert
 // count, which changes in the worker and so is never pushed from here.
@@ -29,7 +30,7 @@ export class LiveController {
 
   private async requireOwned(user: AccessTokenPayload, driveId: string) {
     if (!(await this.board.ownsDrive(requireCompanyId(user), driveId))) {
-      throw new NotFoundException("Drive not found");
+      throw new NotFoundException(apiError("errors.drive.notFound"));
     }
   }
 }

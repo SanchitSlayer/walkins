@@ -8,17 +8,21 @@ import {
   type CreatePricingRule,
   type FailedJob,
   failedJobSchema,
+  DEFAULT_LOCALE,
   formatPaise,
   type LedgerExplorer,
+  type MessageKey,
   ledgerExplorerSchema,
   type ModerateDrive,
   type PricingRuleView,
   pricingRuleSchema,
+  translate,
   type VerificationOutcome,
   verificationOutcomeSchema,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { type IVerificationProvider, VERIFICATION_PROVIDER } from "./verification-provider";
+import { apiError } from "../common/api-error";
 
 const FAILED_JOBS_PER_QUEUE = 100;
 const LEDGER_PAGE = 200;
@@ -44,7 +48,7 @@ export class AdminService {
   // made it go in the audit log.
   async verifyCompany(adminId: string, companyId: string, decision: "check" | "reject", reason?: string): Promise<VerificationOutcome> {
     const company = await prisma.company.findUnique({ where: { id: companyId } });
-    if (!company) throw new NotFoundException("Company not found");
+    if (!company) throw new NotFoundException(apiError("errors.admin.companyNotFound"));
 
     const result =
       decision === "check"
@@ -89,17 +93,19 @@ export class AdminService {
   // at least one check-in. Everything that blocks it is reported at once.
   async moderateDrive(adminId: string, driveId: string, { decision, reason }: ModerateDrive): Promise<AdminDrive> {
     const drive = await prisma.drive.findUnique({ where: { id: driveId }, include: { company: true, role: true, city: true } });
-    if (!drive) throw new NotFoundException("Drive not found");
-    if (drive.status !== "PENDING") throw new BadRequestException(`Only a drive waiting for review can be moderated; this one is ${drive.status.toLowerCase()}`);
+    if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
+    if (drive.status !== "PENDING") throw new BadRequestException(apiError("errors.admin.moderateOnlyPending", { status: drive.status.toLowerCase() }));
 
     const to = decision === "approve" ? "LIVE" : "DRAFT";
     if (decision === "approve") {
       const { blockers } = await this.toAdminDrive(drive);
-      if (blockers.length > 0) throw new BadRequestException(`This drive can't go live yet: ${blockers.join(" ")}`);
+      if (blockers.length > 0) throw new BadRequestException(
+          apiError("errors.admin.cantGoLive", { blockers: blockers.map((b) => translate(DEFAULT_LOCALE, b.code as MessageKey, b.params)).join(" ") }),
+        );
     }
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.drive.updateMany({ where: { id: driveId, status: "PENDING" }, data: { status: to } });
-      if (count === 0) throw new BadRequestException("The drive changed while you were reviewing it; reload and try again");
+      if (count === 0) throw new BadRequestException(apiError("errors.admin.changedWhileReviewing"));
       await tx.auditLog.create({
         data: {
           actorUserId: adminId,
@@ -139,8 +145,8 @@ export class AdminService {
   async retryJob(queueName: string, jobId: string) {
     const queue = this.jobs.queues().find((q) => q.name === queueName);
     const job = queue && (await queue.getJob(jobId));
-    if (!job) throw new NotFoundException("Job not found");
-    if (!(await job.isFailed())) throw new BadRequestException("Only a failed job can be retried");
+    if (!job) throw new NotFoundException(apiError("errors.admin.jobNotFound"));
+    if (!(await job.isFailed())) throw new BadRequestException(apiError("errors.admin.jobNotFailed"));
     await job.retry("failed");
     return { retried: true };
   }
@@ -166,7 +172,7 @@ export class AdminService {
       `,
     ]);
     const names = new Map(companies.map((c) => [c.id, c.name]));
-    const name = (ownerType: string, ownerId: string) => (ownerType === "COMPANY" ? (names.get(ownerId) ?? ownerId) : `Platform: ${ownerId}`);
+    const name = (ownerType: string, ownerId: string) => (ownerType === "COMPANY" ? (names.get(ownerId) ?? ownerId) : ownerId);
     return ledgerExplorerSchema.parse({
       accounts: balances.map((b) => ({ ...b, ownerName: name(b.ownerType, b.ownerId), balancePaise: toPaise(b.balancePaise) })),
       entries: entries.map((e) => ({
@@ -188,7 +194,7 @@ export class AdminService {
   async createPricingRule(adminId: string, input: CreatePricingRule): Promise<PricingRuleView> {
     const now = new Date();
     const effectiveFrom = input.effectiveFrom ? new Date(input.effectiveFrom) : now;
-    if (effectiveFrom.getTime() < now.getTime() - 60_000) throw new BadRequestException("A price can't take effect in the past");
+    if (effectiveFrom.getTime() < now.getTime() - 60_000) throw new BadRequestException(apiError("errors.admin.priceInPast"));
     const rule = await prisma.pricingRule.create({
       data: { event: CHECK_IN_PRICE_EVENT, unit: "PER_CHECK_IN", pricePaise: input.pricePaise, effectiveFrom, createdById: adminId },
     });
@@ -222,15 +228,18 @@ export class AdminService {
   }): Promise<AdminDrive> {
     const now = new Date();
     const [balance, price] = await Promise.all([companyBalance(prisma, d.companyId), priceAt(prisma, CHECK_IN_PRICE_EVENT, now)]);
-    const blockers: string[] = [];
+    const blockers: AdminDrive["blockers"] = [];
     if (d.status === "PENDING") {
       if (d.company.verificationStatus !== "VERIFIED") {
-        blockers.push(`${d.company.name} isn't verified (${d.company.verificationStatus.toLowerCase()}).`);
+        blockers.push({ code: "errors.admin.blockerNotVerified", params: { company: d.company.name, status: d.company.verificationStatus.toLowerCase() } });
       }
       if (price !== null && balance < price) {
-        blockers.push(`${d.company.name}'s balance is ${formatPaise(balance)}, below the ${formatPaise(price)} cost of one check-in.`);
+        blockers.push({
+          code: "errors.admin.blockerBalance",
+          params: { company: d.company.name, balance: formatPaise(balance), price: formatPaise(price) },
+        });
       }
-      if (d.endsAt <= now) blockers.push("The drive has already ended.");
+      if (d.endsAt <= now) blockers.push({ code: "errors.admin.blockerEnded", params: {} });
     }
     return {
       id: d.id,

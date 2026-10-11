@@ -6,6 +6,7 @@ import {
   checkInResultSchema,
   type CheckInCode,
   checkInCodeSchema,
+  formatDistance,
   formatTime,
 } from "@walkins/shared";
 import { toCheckIn } from "../applications/application.mapper";
@@ -15,6 +16,7 @@ import { RateLimiterService } from "../common/rate-limiter.service";
 import { redis } from "../common/redis";
 import { LiveGateway } from "../live/live.gateway";
 import { CHECKIN_TOKEN_ROTATE_SECONDS, CheckInTokenService, OFFLINE_GRACE_MS } from "./check-in-token.service";
+import { apiError } from "../common/api-error";
 
 const GEOFENCE_METERS = 200;
 const MAX_ACCURACY_METERS = 100;
@@ -22,11 +24,13 @@ const OPENS_BEFORE_START_MS = 60 * 60_000;
 
 // Wrong codes allowed per 10 minutes before lookups are refused. The code is a
 // 40-bit secret rather than a signed token, so guessing is what this limits.
-// The per-address limit is higher because a venue's candidates may all share
-// one Wi-Fi address and the occasional typo from each of them adds up.
+// The per-account limit is the real one. An address is not a person: a
+// venue's candidates share its Wi-Fi, and carrier NAT puts thousands of
+// phones behind one IPv4 address, so the per-address limit is only a ceiling
+// on a single script, and a 40-bit code stays unguessable under it.
 const FAILED_CODE_WINDOW_SECONDS = 10 * 60;
 const FAILED_CODES_PER_ACCOUNT = 10;
-const FAILED_CODES_PER_ADDRESS = 60;
+const FAILED_CODES_PER_ADDRESS = 300;
 
 // Stops the same candidate replaying the same code after a successful
 // check-in, and nothing more. It does not stop a photographed QR shared on
@@ -66,9 +70,9 @@ export class CheckInService {
 
   async issueCode(companyId: string, driveId: string): Promise<CheckInCode> {
     const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId } });
-    if (!drive) throw new NotFoundException("Drive not found");
+    if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
     if (drive.status !== "LIVE" || drive.endsAt <= new Date()) {
-      throw new BadRequestException("Check-in codes are only shown for a live drive that hasn't ended");
+      throw new BadRequestException(apiError("errors.checkIn.codeOnlyLive"));
     }
     const { code, expiresAt } = await this.tokens.issueCode(driveId);
     return checkInCodeSchema.parse({
@@ -85,22 +89,22 @@ export class CheckInService {
     ];
     for (const { key, limit } of limits) {
       if (await this.limiter.isExhausted(key, limit, FAILED_CODE_WINDOW_SECONDS)) {
-        throw new HttpException("Too many wrong codes. Wait a few minutes, then try the code on the screen.", HttpStatus.TOO_MANY_REQUESTS);
+        throw new HttpException(apiError("errors.checkIn.tooManyWrong"), HttpStatus.TOO_MANY_REQUESTS);
       }
     }
     const token = await this.tokens.resolve(input.code);
     if (!token) {
       await Promise.all(limits.map(({ key, limit }) => this.limiter.consume(key, limit, FAILED_CODE_WINDOW_SECONDS)));
-      throw new BadRequestException("That code isn't right, or it has expired. Check the code on the screen and try again.");
+      throw new BadRequestException(apiError("errors.checkIn.wrongCode"));
     }
     const now = new Date();
     const lateByMs = now.getTime() - token.expiresAt.getTime();
     if (lateByMs > OFFLINE_GRACE_MS) {
-      throw new BadRequestException("This code has expired. Scan the code on the screen again.");
+      throw new BadRequestException(apiError("errors.checkIn.codeExpired"));
     }
 
     const candidate = await prisma.candidate.findUnique({ where: { userId }, select: { id: true } });
-    if (!candidate) throw new BadRequestException("Save your profile before checking in");
+    if (!candidate) throw new BadRequestException(apiError("errors.profile.saveFirst"));
     const key = nonceKey(token.jti, candidate.id);
 
     // A duplicate scan returns the existing check-in rather than an error.
@@ -110,37 +114,35 @@ export class CheckInService {
     const usedBefore = (await redis.exists(key)) === 1;
     const existing = await this.findCheckIn(token.driveId, candidate.id);
     if (existing) return checkInResultSchema.parse({ outcome: "already_checked_in", checkIn: toCheckIn(existing) });
-    if (usedBefore) throw new ConflictException("This code has already been used. Scan the code on the screen again.");
+    if (usedBefore) throw new ConflictException(apiError("errors.checkIn.codeUsed"));
 
     const drive = await prisma.drive.findUnique({ where: { id: token.driveId }, include: { role: true, company: true } });
-    if (!drive || drive.status !== "LIVE") throw new BadRequestException("This drive isn't open for check-in");
+    if (!drive || drive.status !== "LIVE") throw new BadRequestException(apiError("errors.checkIn.notOpen"));
 
     // For a late offline sync the scan happened before the code expired; the
     // expiry is server-signed, so it stands in for the untrusted phone clock.
     const scannedAt = lateByMs > 0 ? token.expiresAt : now;
     const opensAt = new Date(drive.startsAt.getTime() - OPENS_BEFORE_START_MS);
     if (scannedAt < opensAt) {
-      throw new BadRequestException(`Check-in opens at ${formatTime(opensAt.toISOString())}, an hour before the drive starts`);
+      throw new BadRequestException(apiError("errors.checkIn.opensAt", { time: formatTime(opensAt.toISOString()) }));
     }
-    if (scannedAt > drive.endsAt) throw new BadRequestException("This drive has ended");
+    if (scannedAt > drive.endsAt) throw new BadRequestException(apiError("errors.checkIn.ended"));
 
     const application = await prisma.application.findUnique({
       where: { driveId_candidateId: { driveId: drive.id, candidateId: candidate.id } },
     });
     const booked = application?.state === "CONFIRMED";
     if (application?.state === "NO_SHOW") {
-      throw new ConflictException("You were marked as not attending. Ask the employer at the desk to check you in.");
+      throw new ConflictException(apiError("errors.checkIn.noShow"));
     }
     // Without these, both would fall through to the walk-in offer, which skips
     // the questions they failed or reverses the employer's decision. The desk
     // can still make an exception in person.
     if (application?.state === "SCREENED_OUT") {
-      throw new ConflictException(
-        `You applied earlier, and this drive asks for: ${application.screenedOutReason}. If you think that's wrong, speak to the employer at the desk.`,
-      );
+      throw new ConflictException(apiError("errors.checkIn.screenedOut", { requirement: application.screenedOutReason ?? "" }));
     }
     if (application?.state === "REJECTED") {
-      throw new ConflictException("The employer isn't taking your application forward for this drive.");
+      throw new ConflictException(apiError("errors.checkIn.rejected"));
     }
     if (!booked && !input.walkIn) {
       return checkInResultSchema.parse({
@@ -160,8 +162,7 @@ export class CheckInService {
       flags.push(`Location only accurate to ±${describeMeters(input.accuracy)}, ${describeMeters(distanceMeters)} from the venue`);
     } else if (distanceMeters > GEOFENCE_METERS) {
       throw new BadRequestException(
-        `You're ${describeMeters(distanceMeters)} from the venue. Check-in works within ${GEOFENCE_METERS} m; ` +
-          "if you're here, ask the employer at the desk to check you in.",
+        apiError("errors.checkIn.tooFar", { distance: formatDistance(distanceMeters / 1000), limit: formatDistance(GEOFENCE_METERS / 1000) }),
       );
     }
     if (lateByMs > 0) {
@@ -217,7 +218,7 @@ export class CheckInService {
       where: { id: applicationId, drive: { companyId } },
       include: { checkIn: true },
     });
-    if (!application) throw new NotFoundException("Application not found");
+    if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
     if (application.checkIn) {
       return checkInResultSchema.parse({ outcome: "already_checked_in", checkIn: toCheckIn(application.checkIn) });
     }
@@ -247,7 +248,7 @@ export class CheckInService {
       where: { id: checkInId, application: { drive: { companyId } } },
       include: { application: { select: { driveId: true } } },
     });
-    if (!checkIn) throw new NotFoundException("Check-in not found");
+    if (!checkIn) throw new NotFoundException(apiError("errors.application.notFound"));
     if (checkIn.isValid) return toCheckIn(checkIn);
 
     const confirmed = await prisma.$transaction(async (tx) => {

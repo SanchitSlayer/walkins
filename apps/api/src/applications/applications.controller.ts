@@ -11,6 +11,7 @@ import {
 } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
@@ -37,6 +38,7 @@ export class ApplicationsController {
   }
 
   @Post("drives/:id/applicants/actions")
+  @RateLimit(LIMITS.applicantActions)
   @Roles("EMPLOYER")
   actOnApplicants(
     @CurrentUser() user: AccessTokenPayload,
@@ -47,12 +49,14 @@ export class ApplicationsController {
   }
 
   @Get("applications/:id/intro-audio")
+  @RateLimit(LIMITS.introAudio)
   @Roles("EMPLOYER")
   introAudio(@CurrentUser() user: AccessTokenPayload, @Param("id") applicationId: string) {
     return this.applicants.introAudio(requireCompanyId(user), applicationId);
   }
 
   @Post("drives/:id/apply")
+  @RateLimit(LIMITS.application)
   @Roles("CANDIDATE")
   apply(
     @CurrentUser() user: AccessTokenPayload,
@@ -69,6 +73,7 @@ export class ApplicationsController {
   }
 
   @Delete("applications/:id")
+  @RateLimit(LIMITS.application)
   @Roles("CANDIDATE")
   release(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
     return this.applications.release(user.userId, id);

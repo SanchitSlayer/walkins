@@ -21,8 +21,11 @@ import {
 } from "@walkins/shared";
 import { MockGateway } from "./mock-gateway";
 import { type GatewayPayment, type IPaymentGateway, parseRazorpayWebhook, PAYMENT_GATEWAY } from "./payment-gateway";
+import { apiError } from "../common/api-error";
 
 const STATEMENT_LENGTH = 100;
+// What is kept of a delivery whose signature fails; see PaymentEvent.
+const UNVERIFIED_BODY_BYTES = 2048;
 
 // Events that say money moved or definitely didn't. order.paid repeats what
 // payment.captured said; both are safe because crediting is keyed on the
@@ -82,17 +85,17 @@ export class BillingService {
       paymentId: input.gatewayPaymentId,
       signature: input.signature,
     });
-    if (!verified) throw new BadRequestException("That payment couldn't be verified with the payment gateway");
+    if (!verified) throw new BadRequestException(apiError("errors.billing.unverified"));
     const payment = await this.gateway.fetchPayment(input.gatewayPaymentId);
     if (payment.gatewayOrderId !== order.gatewayOrderId) {
-      throw new BadRequestException("That payment belongs to a different order");
+      throw new BadRequestException(apiError("errors.billing.wrongOrder"));
     }
     await this.applyPayment(payment);
     return this.topUpStatus(companyId, orderId);
   }
 
   async mockCheckout(companyId: string, orderId: string, outcome: "success" | "failure") {
-    if (!(this.gateway instanceof MockGateway)) throw new NotFoundException("Mock checkout is only available with the mock gateway");
+    if (!(this.gateway instanceof MockGateway)) throw new NotFoundException(apiError("errors.billing.mockOnly"));
     const order = await this.ownedOrder(companyId, orderId);
     const paid = await this.gateway.pay(order.gatewayOrderId, outcome);
     // Delivered the way the gateway would, through the public handler's own
@@ -116,7 +119,7 @@ export class BillingService {
   // it is harmless. Replays and duplicates of a valid delivery reach
   // applyPayment again and change nothing there.
   async handleWebhook(gatewayName: string, rawBody: Buffer | undefined, signature: string | undefined, eventId: string | undefined) {
-    if (gatewayName !== this.gateway.name) throw new NotFoundException(`No ${gatewayName} gateway is configured`);
+    if (gatewayName !== this.gateway.name) throw new NotFoundException(apiError("errors.billing.noGateway", { gateway: gatewayName }));
     const body = rawBody ?? Buffer.alloc(0);
     const signatureValid = !!signature && body.length > 0 && this.gateway.verifyWebhook(body, signature);
 
@@ -133,7 +136,8 @@ export class BillingService {
         eventType: event?.type ?? null,
         gatewayPaymentId: event?.payment?.paymentId ?? null,
         signatureValid,
-        rawBody: body.toString("utf8"),
+        rawBody: (signatureValid ? body : body.subarray(0, UNVERIFIED_BODY_BYTES)).toString("utf8"),
+        rawBodyBytes: body.length,
       },
     });
 
@@ -144,7 +148,7 @@ export class BillingService {
     else outcome = await this.applyPayment(event.payment);
 
     await prisma.paymentEvent.update({ where: { id: stored.id }, data: { outcome } });
-    if (!signatureValid) throw new BadRequestException("Webhook signature did not verify");
+    if (!signatureValid) throw new BadRequestException(apiError("errors.billing.badSignature"));
     return { received: true };
   }
 
@@ -205,7 +209,7 @@ export class BillingService {
 
   private async ownedOrder(companyId: string, orderId: string) {
     const order = await prisma.paymentOrder.findFirst({ where: { id: orderId, companyId } });
-    if (!order) throw new NotFoundException("Top-up not found");
+    if (!order) throw new NotFoundException(apiError("errors.billing.topUpNotFound"));
     return order;
   }
 }

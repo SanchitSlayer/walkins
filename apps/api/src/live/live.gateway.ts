@@ -7,12 +7,13 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from "@nestjs/websockets";
-import type { AccessTokenPayload, LiveBoard, LiveDisplay } from "@walkins/shared";
+import { type AccessTokenPayload, DEFAULT_LOCALE, type LiveBoard, type LiveDisplay, translate } from "@walkins/shared";
 import type { Namespace, Socket } from "socket.io";
+import { RateLimiterService } from "../common/rate-limiter.service";
 import { WEB_ORIGINS } from "../common/web-origins";
 import { LiveBoardService } from "./live-board.service";
 
-type LiveSocket = Pick<Socket, "join"> & { data: { user?: AccessTokenPayload } };
+type LiveSocket = Pick<Socket, "join" | "id"> & { data: { user?: AccessTokenPayload } };
 
 // "board" is the public arrivals screen and only ever receives the display
 // projection; "desk" is the employer's own view with names and flags.
@@ -37,6 +38,7 @@ export class LiveGateway implements OnGatewayConnection {
   constructor(
     private readonly jwt: JwtService,
     private readonly board: LiveBoardService,
+    private readonly limiter: RateLimiterService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -54,11 +56,17 @@ export class LiveGateway implements OnGatewayConnection {
     @ConnectedSocket() client: LiveSocket,
     @MessageBody() body: { driveId?: unknown; view?: unknown },
   ): Promise<LiveBoard | LiveDisplay | { error: string }> {
+    // HTTP limits don't reach socket messages. A screen joins once per
+    // connection, and again after each reconnect; a loop here would rebuild
+    // a snapshot every time.
+    if (!(await this.limiter.consume(`socket-join:${client.id}`, 30, 60)).allowed) {
+      return { error: translate(DEFAULT_LOCALE, "errors.rateLimited.socket-join") };
+    }
     const companyId = client.data.user?.companyId;
     const { driveId, view } = body ?? {};
     if (view !== "board" && view !== "desk") return { error: "Unknown view" };
     if (!companyId || typeof driveId !== "string" || !(await this.board.ownsDrive(companyId, driveId))) {
-      return { error: "Drive not found" };
+      return { error: translate(DEFAULT_LOCALE, "errors.drive.notFound") };
     }
     await client.join(room(driveId, view));
     return view === "board" ? this.board.display(driveId) : this.board.snapshot(driveId);

@@ -12,6 +12,7 @@ import {
 import { isUniqueViolation } from "../common/prisma-errors";
 import { LiveGateway } from "../live/live.gateway";
 import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
+import { apiError } from "../common/api-error";
 
 @Injectable()
 export class ApplicationsService {
@@ -20,18 +21,18 @@ export class ApplicationsService {
   async apply(userId: string, driveId: string, slotId: string, answers: KnockoutAnswers): Promise<MyApplication> {
     const candidate = await this.requireCandidate(userId);
     const drive = await prisma.drive.findFirst({ where: { id: driveId, status: "LIVE" } });
-    if (!drive) throw new NotFoundException("Drive not found");
+    if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
     const now = new Date();
-    if (drive.endsAt <= now) throw new BadRequestException("This drive has ended");
+    if (drive.endsAt <= now) throw new BadRequestException(apiError("errors.application.driveEnded"));
     const slot = await prisma.driveSlot.findFirst({ where: { id: slotId, driveId } });
-    if (!slot) throw new BadRequestException("That slot isn't part of this drive");
-    if (slot.startsAt <= now) throw new BadRequestException("That slot has already started; pick a later one");
+    if (!slot) throw new BadRequestException(apiError("errors.application.slotNotInDrive"));
+    if (slot.startsAt <= now) throw new BadRequestException(apiError("errors.application.slotStarted"));
 
     // Judged before any seat is touched. A malformed answer is a bad request;
     // an unmet requirement is a decision, recorded with the employer's own
     // wording of what was needed so the candidate knows not to travel.
     const verdict = evaluateKnockouts(knockoutQuestionsSchema.parse(drive.knockoutQuestions), answers);
-    if (!verdict.passed && "invalid" in verdict) throw new BadRequestException(verdict.invalid);
+    if (!verdict.passed && "invalid" in verdict) throw new BadRequestException(apiError(verdict.invalid.key, { prompt: verdict.invalid.prompt }));
     const screenedOutReason = verdict.passed ? null : verdict.reason;
     const to = screenedOutReason ? "SCREENED_OUT" : "CONFIRMED";
 
@@ -42,9 +43,9 @@ export class ApplicationsService {
         const existing = await tx.application.findUnique({
           where: { driveId_candidateId: { driveId, candidateId: candidate.id } },
         });
-        if (existing?.state === "CONFIRMED") throw new ConflictException("You're already booked for this drive");
+        if (existing?.state === "CONFIRMED") throw new ConflictException(apiError("errors.application.alreadyBooked"));
         if (existing?.state === "SCREENED_OUT") {
-          throw new ConflictException(`You applied earlier, and this drive asks for: ${existing.screenedOutReason}`);
+          throw new ConflictException(apiError("errors.application.screenedOut", { requirement: existing.screenedOutReason ?? "" }));
         }
         const application = existing
           ? await transitionApplication(tx, { applicationId: existing.id, to, actor, ...(to === "CONFIRMED" ? { slotId } : {}) })
@@ -55,7 +56,7 @@ export class ApplicationsService {
     } catch (err) {
       // A concurrent apply by the same candidate created the row first; the
       // unique constraint rejected this one and rolled back its seat.
-      if (isUniqueViolation(err)) throw new ConflictException("You've already applied to this drive");
+      if (isUniqueViolation(err)) throw new ConflictException(apiError("errors.application.alreadyApplied"));
       throw err;
     }
     await this.live.publish(driveId);
@@ -68,8 +69,8 @@ export class ApplicationsService {
       where: { id: applicationId, candidateId: candidate.id },
       include: { drive: true },
     });
-    if (!application) throw new NotFoundException("Application not found");
-    if (application.drive.endsAt <= new Date()) throw new BadRequestException("This drive has ended");
+    if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
+    if (application.drive.endsAt <= new Date()) throw new BadRequestException(apiError("errors.application.driveEnded"));
 
     await prisma.$transaction((tx) =>
       transitionApplication(tx, { applicationId, to: "WITHDRAWN", actor: { kind: "candidate", userId } }),
@@ -99,7 +100,7 @@ export class ApplicationsService {
   // application indistinguishable from a missing one.
   async updateByEmployer(companyId: string, userId: string, applicationId: string, { to }: EmployerApplicationUpdate) {
     const application = await prisma.application.findFirst({ where: { id: applicationId, drive: { companyId } } });
-    if (!application) throw new NotFoundException("Application not found");
+    if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
     const updated = await prisma.$transaction((tx) =>
       transitionApplication(tx, { applicationId, to, actor: { kind: "employer", userId } }),
     );
@@ -109,7 +110,7 @@ export class ApplicationsService {
 
   private async requireCandidate(userId: string) {
     const candidate = await prisma.candidate.findUnique({ where: { userId }, select: { id: true } });
-    if (!candidate) throw new BadRequestException("Save your profile first");
+    if (!candidate) throw new BadRequestException(apiError("errors.profile.saveFirst"));
     return candidate;
   }
 

@@ -5,6 +5,7 @@ import { prisma } from "@walkins/db";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { redis } from "../common/redis";
 import { RateLimiterService } from "../common/rate-limiter.service";
+import { apiError } from "../common/api-error";
 
 const OTP_TTL_SECONDS = 5 * 60;
 const MAX_OTP_ATTEMPTS = 5;
@@ -31,13 +32,16 @@ export class AuthService {
 
   async requestOtp(phone: string, ip: string): Promise<{ devOtp?: string }> {
     const phoneAllowed = await this.rateLimiter.consume(`otp-request:phone:${phone}`, 3, 15 * 60);
-    if (!phoneAllowed) {
-      throw new HttpException("Too many OTP requests for this phone. Try again later.", HttpStatus.TOO_MANY_REQUESTS);
+    if (!phoneAllowed.allowed) {
+      throw new HttpException(apiError("errors.auth.otpPhoneLimit"), HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const ipAllowed = await this.rateLimiter.consume(`otp-request:ip:${ip}`, 10, 60 * 60);
-    if (!ipAllowed) {
-      throw new HttpException("Too many OTP requests from this network. Try again later.", HttpStatus.TOO_MANY_REQUESTS);
+    // The per-phone limit is the real one. An address is not a person here:
+    // carrier NAT puts thousands of phones behind one IPv4 address, so this
+    // only stops a single script requesting codes for many phones.
+    const ipAllowed = await this.rateLimiter.consume(`otp-request:ip:${ip}`, 100, 60 * 60);
+    if (!ipAllowed.allowed) {
+      throw new HttpException(apiError("errors.auth.otpNetworkLimit"), HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const otp = randomInt(0, 1_000_000).toString().padStart(6, "0");
@@ -71,24 +75,24 @@ export class AuthService {
     const stored = await redis.hgetall(otpKey(phone));
 
     if (!stored || !stored.code) {
-      throw new BadRequestException("OTP expired or was never requested");
+      throw new BadRequestException(apiError("errors.auth.otpExpired"));
     }
 
     const attempts = Number(stored.attempts ?? 0);
 
     if (attempts >= MAX_OTP_ATTEMPTS) {
       await redis.del(otpKey(phone));
-      throw new BadRequestException("Too many incorrect attempts. Request a new OTP.");
+      throw new BadRequestException(apiError("errors.auth.otpLocked"));
     }
 
     if (stored.code !== otp) {
       const nextAttempts = attempts + 1;
       if (nextAttempts >= MAX_OTP_ATTEMPTS) {
         await redis.del(otpKey(phone));
-        throw new BadRequestException("Too many incorrect attempts. Request a new OTP.");
+        throw new BadRequestException(apiError("errors.auth.otpLocked"));
       }
       await redis.hincrby(otpKey(phone), "attempts", 1);
-      throw new BadRequestException(`Incorrect OTP. ${MAX_OTP_ATTEMPTS - nextAttempts} attempts remaining.`);
+      throw new BadRequestException(apiError("errors.auth.otpWrong", { remaining: MAX_OTP_ATTEMPTS - nextAttempts }));
     }
 
     // Correct code: burn it immediately so it can't be reused.
@@ -109,7 +113,7 @@ export class AuthService {
 
     const user = await prisma.user.findUnique({ where: { id: rotated.userId } });
     if (!user) {
-      throw new UnauthorizedException("User no longer exists");
+      throw new UnauthorizedException(apiError("errors.auth.userGone"));
     }
 
     const accessToken = this.signAccessToken(user);
@@ -153,13 +157,13 @@ export class AuthService {
     const record = await redis.get(refreshTokenKey(token));
 
     if (!record) {
-      throw new UnauthorizedException("Invalid refresh token");
+      throw new UnauthorizedException(apiError("errors.auth.signedOut"));
     }
 
     if (record.startsWith("CONSUMED:")) {
       const userId = record.slice("CONSUMED:".length);
       await this.revokeAllRefreshTokens(userId);
-      throw new UnauthorizedException("Refresh token reuse detected; all sessions revoked");
+      throw new UnauthorizedException(apiError("errors.auth.sessionRevoked"));
     }
 
     const userId = record;

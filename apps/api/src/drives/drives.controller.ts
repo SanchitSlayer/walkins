@@ -4,6 +4,7 @@ import type { AccessTokenPayload } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
 import { OptionalJwtAuthGuard } from "../common/optional-jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
@@ -18,6 +19,7 @@ export class DrivesController {
   constructor(private readonly drivesService: DrivesService) {}
 
   @Post()
+  @RateLimit(LIMITS.driveCreate, LIMITS.driveCreateCompany)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   create(
@@ -28,6 +30,7 @@ export class DrivesController {
   }
 
   @Patch(":id")
+  @RateLimit(LIMITS.driveEdit)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   update(
@@ -39,6 +42,7 @@ export class DrivesController {
   }
 
   @Post(":id/venue-pin")
+  @RateLimit(LIMITS.driveEdit)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   pinVenue(
@@ -50,6 +54,7 @@ export class DrivesController {
   }
 
   @Post(":id/submit")
+  @RateLimit(LIMITS.driveEdit)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   submit(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
@@ -69,6 +74,7 @@ export class DrivesController {
   }
 
   @Get("search")
+  @RateLimit(LIMITS.publicRead)
   @UseGuards(OptionalJwtAuthGuard)
   search(
     @CurrentUser() user: AccessTokenPayload | undefined,
@@ -78,6 +84,7 @@ export class DrivesController {
   }
 
   @Get(":id/public")
+  @RateLimit(LIMITS.publicRead)
   @UseGuards(OptionalJwtAuthGuard)
   findPublicOne(@CurrentUser() user: AccessTokenPayload | undefined, @Param("id") id: string) {
     return this.drivesService.findPublicOne(id, user?.userId ?? null);
@@ -91,6 +98,7 @@ export class DrivesController {
   }
 
   @Delete(":id")
+  @RateLimit(LIMITS.driveEdit)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("EMPLOYER")
   remove(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {

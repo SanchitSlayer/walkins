@@ -8,9 +8,12 @@ import {
   telegramLinkKey,
   telegramLinkSchema,
   type UpdateCandidateProfileInput,
+  DEFAULT_LOCALE,
+  translate,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { redis } from "../common/redis";
+import { apiError } from "../common/api-error";
 
 const REQUIRED_ON_CREATE = ["cityId", "homeLat", "homeLng", "maxTravelKm", "experienceYears", "roleIds"] as const;
 
@@ -35,7 +38,7 @@ export class CandidatesService {
     if (!existing) {
       const missing = REQUIRED_ON_CREATE.filter((field) => input[field] === undefined);
       if (missing.length > 0) {
-        throw new BadRequestException(`A first save must include: ${missing.join(", ")}`);
+        throw new BadRequestException(apiError("errors.profile.incomplete", { fields: [...new Set(missing.map((f) => translate(DEFAULT_LOCALE, `fields.${f}`)))].join(", ") }));
       }
     }
 
@@ -75,11 +78,11 @@ export class CandidatesService {
   async createTelegramLink(userId: string): Promise<TelegramLink> {
     const botUsername = process.env.TELEGRAM_BOT_USERNAME;
     if (!botUsername) {
-      throw new ServiceUnavailableException("Telegram isn't configured on this server");
+      throw new ServiceUnavailableException(apiError("errors.profile.telegramUnavailable"));
     }
     const candidate = await prisma.candidate.findUnique({ where: { userId }, select: { id: true } });
     if (!candidate) {
-      throw new BadRequestException("Save your profile before connecting Telegram");
+      throw new BadRequestException(apiError("errors.profile.saveFirst"));
     }
 
     // base64url stays inside the characters Telegram allows in a start parameter.

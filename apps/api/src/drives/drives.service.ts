@@ -14,9 +14,11 @@ import {
   MAX_TRAVEL_KM,
   publicKnockoutQuestions,
   publicDriveDetailSchema,
+  formatDistance,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
+import { apiError } from "../common/api-error";
 
 type RawSearchRow = {
   id: string;
@@ -117,8 +119,11 @@ export class DrivesService {
 
     if (input.capacityPerSlot * numberOfSlots !== input.capacity) {
       throw new BadRequestException(
-        `capacity (${input.capacity}) must equal capacityPerSlot * number of slots ` +
-          `(${input.capacityPerSlot} * ${numberOfSlots} = ${input.capacityPerSlot * numberOfSlots})`,
+        apiError(
+          "errors.drive.capacityMismatch",
+          { capacity: input.capacity, perSlot: input.capacityPerSlot, slots: numberOfSlots, expected: input.capacityPerSlot * numberOfSlots },
+          { field: "capacity" },
+        ),
       );
     }
 
@@ -159,7 +164,7 @@ export class DrivesService {
     const existing = await this.findOwned(companyId, driveId);
 
     if (existing.status !== "DRAFT" && existing.status !== "PENDING") {
-      throw new BadRequestException("A drive can only be edited while DRAFT or PENDING");
+      throw new BadRequestException(apiError("errors.drive.notEditable"));
     }
 
     // The edit form sends every field on every save, so "present" is not
@@ -191,13 +196,10 @@ export class DrivesService {
   async pinVenue(companyId: string, userId: string, driveId: string, input: VenuePinInput) {
     const existing = await this.findOwned(companyId, driveId);
     if (!["DRAFT", "PENDING", "LIVE"].includes(existing.status)) {
-      throw new BadRequestException("A cancelled or ended drive's venue can't be moved");
+      throw new BadRequestException(apiError("errors.drive.venueLocked"));
     }
     if (input.accuracy > MAX_PIN_ACCURACY_METERS) {
-      throw new BadRequestException(
-        `This device's location is only accurate to ±${Math.round(input.accuracy)} m, too loose to anchor a ` +
-          "200 m check-in zone. Turn Wi-Fi on or move nearer a window, then try again.",
-      );
+      throw new BadRequestException(apiError("errors.drive.pinLoose", { accuracy: formatDistance(input.accuracy / 1000) }));
     }
 
     // A pin outside the drive's city fails quietly everywhere at once:
@@ -209,14 +211,9 @@ export class DrivesService {
     const cityName = city.name;
     const farFromCity = km > MAX_TRAVEL_KM;
     if (farFromCity && !input.confirmFar) {
-      throw new ConflictException({
-        statusCode: 409,
-        error: "Conflict",
-        code: "PIN_FAR_FROM_CITY",
-        distanceKm: Math.round(km),
-        cityName,
-        message: `This device is ${Math.round(km).toLocaleString("en-IN")} km from the centre of ${cityName}, where this drive is listed.`,
-      });
+      throw new ConflictException(
+        apiError("errors.drive.pinFar", { km: Math.round(km), city: cityName }, { distanceKm: Math.round(km), cityName }),
+      );
     }
 
     const pinned = await prisma.$transaction(async (tx) => {
@@ -250,7 +247,7 @@ export class DrivesService {
     const existing = await this.findOwned(companyId, driveId);
 
     if (existing.status !== "DRAFT") {
-      throw new BadRequestException("Only a DRAFT drive can be submitted");
+      throw new BadRequestException(apiError("errors.drive.submitOnlyDraft"));
     }
 
     return prisma.drive.update({
@@ -320,7 +317,7 @@ export class DrivesService {
 
     const origin = await this.resolveSearchOrigin(currentUserId, cityId);
     if (!origin) {
-      throw new BadRequestException("Specify a city, or log in with a saved home location, to search drives");
+      throw new BadRequestException(apiError("errors.drive.searchNeedsPlace"));
     }
 
     // endsAt is a UTC timestamp without zone, so compare against now in UTC
@@ -373,7 +370,7 @@ export class DrivesService {
       select: { cityId: true, knockoutQuestions: true },
     });
     if (!drive) {
-      throw new NotFoundException("Drive not found");
+      throw new NotFoundException(apiError("errors.drive.notFound"));
     }
 
     // cityId always resolves to a real City row via its FK, so this can
@@ -428,7 +425,7 @@ export class DrivesService {
       include: DRIVE_DETAIL_INCLUDE,
     });
     if (!drive) {
-      throw new NotFoundException("Drive not found");
+      throw new NotFoundException(apiError("errors.drive.notFound"));
     }
     // A drive sent back from review returns to DRAFT; the reviewer's reason is
     // in the audit log, and the employer needs it to fix the drive.
@@ -448,7 +445,7 @@ export class DrivesService {
   private async findOwned(companyId: string, driveId: string) {
     const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId } });
     if (!drive) {
-      throw new NotFoundException("Drive not found");
+      throw new NotFoundException(apiError("errors.drive.notFound"));
     }
     return drive;
   }
@@ -468,7 +465,7 @@ export class DrivesService {
   private computeSlotCount(startsAt: Date, endsAt: Date, slotDurationMinutes: number): number {
     const totalMinutes = (endsAt.getTime() - startsAt.getTime()) / 60_000;
     if (totalMinutes <= 0 || totalMinutes % slotDurationMinutes !== 0) {
-      throw new BadRequestException("The drive's time window must divide evenly by slotDurationMinutes");
+      throw new BadRequestException(apiError("errors.drive.slotsUneven", { minutes: slotDurationMinutes }, { field: "slotDurationMinutes" }));
     }
     return totalMinutes / slotDurationMinutes;
   }

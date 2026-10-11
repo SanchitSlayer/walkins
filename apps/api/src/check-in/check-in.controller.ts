@@ -9,6 +9,7 @@ import {
 import type { Request } from "express";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
@@ -31,6 +32,7 @@ export class CheckInController {
   }
 
   @Get("drives/:id/checkin-code")
+  @RateLimit(LIMITS.checkInCode)
   @Roles("EMPLOYER")
   issueCode(@CurrentUser() user: AccessTokenPayload, @Param("id") driveId: string) {
     return this.checkIns.issueCode(requireCompanyId(user), driveId);

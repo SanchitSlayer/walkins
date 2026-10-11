@@ -11,6 +11,7 @@ import {
 import type { Request } from "express";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { requireCompanyId } from "../common/require-company";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
@@ -29,6 +30,7 @@ export class BillingController {
   }
 
   @Post("top-ups")
+  @RateLimit(LIMITS.topUpOrder)
   createTopUp(@CurrentUser() user: AccessTokenPayload, @Body(new ZodValidationPipe(topUpRequestSchema)) body: TopUpRequest) {
     return this.billing.createTopUp(requireCompanyId(user), user.userId, body.amountPaise);
   }
@@ -39,6 +41,7 @@ export class BillingController {
   }
 
   @Post("top-ups/:id/confirm")
+  @RateLimit(LIMITS.topUpConfirm)
   @HttpCode(200)
   confirm(
     @CurrentUser() user: AccessTokenPayload,
@@ -49,6 +52,7 @@ export class BillingController {
   }
 
   @Post("top-ups/:id/mock-checkout")
+  @RateLimit(LIMITS.topUpConfirm)
   @HttpCode(200)
   mockCheckout(
     @CurrentUser() user: AccessTokenPayload,
@@ -66,6 +70,7 @@ export class PaymentWebhookController {
   constructor(private readonly billing: BillingService) {}
 
   @Post(":gateway")
+  @RateLimit(LIMITS.webhook)
   @HttpCode(200)
   receive(
     @Param("gateway") gateway: string,

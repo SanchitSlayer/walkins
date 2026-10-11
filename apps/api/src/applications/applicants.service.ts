@@ -7,6 +7,7 @@ import {
   type ApplicantsAction,
   evaluateKnockouts,
   type KnockoutAnswers,
+  type MessageKey,
   knockoutQuestionsSchema,
   MAX_TRAVEL_KM,
   transcriptConfidence,
@@ -14,6 +15,7 @@ import {
 import { JobsService } from "../common/jobs.service";
 import { StorageService } from "../common/storage.service";
 import { LiveGateway } from "../live/live.gateway";
+import { apiError } from "../common/api-error";
 
 type Row = {
   applicationId: string;
@@ -36,12 +38,6 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function showAnswer(answer: KnockoutAnswers[string] | undefined): string {
-  if (answer === undefined) return "No answer";
-  if (typeof answer === "boolean") return answer ? "Yes" : "No";
-  return String(answer);
-}
-
 @Injectable()
 export class ApplicantsService {
   constructor(
@@ -61,7 +57,7 @@ export class ApplicantsService {
       where: { id: driveId, companyId },
       select: { knockoutQuestions: true, company: { select: { readsLanguages: true } } },
     });
-    if (!drive) throw new NotFoundException("Drive not found");
+    if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
 
     const rows = await prisma.$queryRaw<Row[]>`
       SELECT
@@ -112,7 +108,8 @@ export class ApplicantsService {
         screenedOutReason: row.screenedOutReason,
         knockout: questions.map((q) => ({
           prompt: q.prompt,
-          answer: showAnswer(row.knockoutAnswers?.[q.id]),
+          // The raw answer; the page words it in the reader's language.
+          answer: row.knockoutAnswers?.[q.id] ?? null,
           met: evaluateKnockouts([q], row.knockoutAnswers ?? {}).passed,
         })),
         match: {
@@ -155,9 +152,10 @@ export class ApplicantsService {
       where: { id: { in: applicationIds }, driveId, drive: { companyId } },
       select: { id: true, candidateId: true, state: true },
     });
-    const skipped: { applicationId: string; reason: string }[] = applicationIds
+    // Each skip carries a catalog key, worded by the page in its language.
+    const skipped: { applicationId: string; code: MessageKey }[] = applicationIds
       .filter((id) => !owned.some((a) => a.id === id))
-      .map((applicationId) => ({ applicationId, reason: "Not an applicant to this drive" }));
+      .map((applicationId) => ({ applicationId, code: "errors.application.notApplicant" as const }));
 
     if (action !== "reject") {
       // A private note for the employer, so it sits beside the state rather
@@ -183,7 +181,10 @@ export class ApplicantsService {
         }
       } catch (err) {
         if (!(err instanceof IllegalTransitionError || err instanceof StaleTransitionError)) throw err;
-        skipped.push({ applicationId: application.id, reason: err.message });
+        skipped.push({
+          applicationId: application.id,
+          code: err instanceof StaleTransitionError ? "errors.application.stale" : "errors.application.illegal",
+        });
       }
     }
     await this.live.publish(driveId);
@@ -195,12 +196,12 @@ export class ApplicantsService {
       where: { id: applicationId, drive: { companyId } },
       select: { candidateId: true },
     });
-    if (!application) throw new NotFoundException("Application not found");
+    if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
     const intro = await prisma.voiceIntro.findFirst({
       where: { candidateId: application.candidateId, replacedAt: null },
       orderBy: { createdAt: "desc" },
     });
-    if (!intro) throw new NotFoundException("No recording");
+    if (!intro) throw new NotFoundException(apiError("errors.voice.noRecording"));
     return { url: await this.storage.presignPlayback(intro.objectKey) };
   }
 }
