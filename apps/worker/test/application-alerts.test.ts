@@ -47,11 +47,16 @@ beforeAll(async () => {
     });
     return { userId: user.id, candidateId: candidate.id };
   };
+  const owner = await prisma.user.create({
+    data: { phone: randomPhone(), name: "Reminder Test Owner", role: "EMPLOYER", companyId: company.id, companyRole: "OWNER" },
+  });
+  ids.users.push(owner.id);
   const confirmed = await makeCandidate("Reminder Test Confirmed");
   const withdrawn = await makeCandidate("Reminder Test Withdrawn");
 
   const driveData = (startsAt: Date, status: "LIVE" | "EXPIRED") => ({
     companyId: company.id,
+    ownerId: owner.id,
     roleId: role.id,
     cityId: city.id,
     salaryMin: 15000,

@@ -49,7 +49,7 @@ beforeAll(async () => {
     data: { name: "Charging Test Company", contactPhone: "9000000777", cityId: city.id, verificationStatus: "VERIFIED" },
   });
   const user = await prisma.user.create({
-    data: { phone: `5${String(Math.floor(Math.random() * 1e9)).padStart(9, "0")}`, name: "Charging Test Employer", role: "EMPLOYER", companyId: company.id },
+    data: { phone: `5${String(Math.floor(Math.random() * 1e9)).padStart(9, "0")}`, name: "Charging Test Employer", role: "EMPLOYER", companyId: company.id, companyRole: "OWNER" },
   });
   employer.userId = user.id;
   ids.users.push(user.id);
@@ -57,6 +57,7 @@ beforeAll(async () => {
   const drive = await prisma.drive.create({
     data: {
       companyId: company.id,
+      ownerId: user.id,
       roleId: role.id,
       cityId: city.id,
       salaryMin: 15000,

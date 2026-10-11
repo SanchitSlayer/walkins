@@ -31,8 +31,11 @@ const MAX_POSSIBLE_TRAVEL_METERS = MAX_TRAVEL_KM * 1000;
 // The one definition of "this drive is for this candidate", over aliases c
 // (candidates) and d (drives). Alerts and the bot's /jobs both read it, so a
 // candidate is never alerted about a drive /jobs would hide, or the reverse.
+// Someone who joined a company keeps their candidate profile, hidden, and is
+// no longer sent job alerts.
 const candidateReachesDrive = Prisma.sql`
-  c."cityId" = d."cityId"
+  EXISTS (SELECT 1 FROM users cu WHERE cu.id = c."userId" AND cu.role = 'CANDIDATE')
+  AND c."cityId" = d."cityId"
   AND EXISTS (SELECT 1 FROM candidate_roles cr WHERE cr."candidateId" = c.id AND cr."roleId" = d."roleId")
   AND c."experienceYears" BETWEEN d."experienceMin" AND d."experienceMax"
   AND ST_DWithin(c.geom, d.geom, ${MAX_POSSIBLE_TRAVEL_METERS})

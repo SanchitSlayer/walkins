@@ -20,6 +20,18 @@ const CANDIDATE_SEED = 42;
 
 const LAUNCH_CREDIT_PAISE = 10_000_00;
 
+// The rest of Test Company's team, one account per company role, so each
+// role's view of the console can be tried by signing in.
+const TEST_COMPANY_TEAM = [
+  { phone: "9111111111", name: "Test Recruiter", companyRole: "RECRUITER" },
+  { phone: "9222222222", name: "Test Viewer", companyRole: "VIEWER" },
+] as const;
+
+// A second company with its own owner, waiting for verification: something
+// real in the admin queue, and a company whose drives Test Company's people
+// must never see.
+const RIVAL_COMPANY = { name: "Rival Company", gstin: "29AAACR4849R1Z5", ownerPhone: "9666666666", ownerName: "Rival Owner" };
+
 const PENDING_COMPANIES = [
   { name: "Swift Couriers", gstin: "29ABCDE1234F1Z5", phone: "9888800001", city: "Bengaluru" },
   { name: "Metro Warehousing", gstin: "27ABC1234", phone: "9888800002", city: "Pune" },
@@ -97,6 +109,21 @@ const roles = [
   { title: "Customer Support Executive", slug: "customer-support-executive" },
 ];
 
+// Creates the account if it doesn't exist, and places an existing one in the
+// company if it isn't in one yet. Anyone already in a company is left where
+// they are, with the name and role they have.
+async function seedMember(companyId: string, member: { phone: string; name: string; companyRole: "OWNER" | "RECRUITER" | "VIEWER" }) {
+  const existing = await prisma.user.findUnique({ where: { phone: member.phone } });
+  if (!existing) {
+    await prisma.user.create({ data: { phone: member.phone, name: member.name, role: "EMPLOYER", companyId, companyRole: member.companyRole } });
+  } else if (!existing.companyId && existing.role !== "ADMIN") {
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { role: "EMPLOYER", companyId, companyRole: member.companyRole, ...(existing.name === existing.phone ? { name: member.name } : {}) },
+    });
+  }
+}
+
 async function main() {
   for (const city of cities) {
     const existing = await prisma.city.findFirst({ where: { name: city.name, state: city.state } });
@@ -114,9 +141,9 @@ async function main() {
   }
 
   // OTP verify only ever creates CANDIDATE users for a new phone (the
-  // {phone, otp} payload has no role field by design), so there is no
-  // self-serve path to an EMPLOYER account yet. Seed one test employer,
-  // scoped to a real company, so the drive CRUD endpoints are reachable.
+  // {phone, otp} payload has no role field by design); an employer account
+  // comes from an owner's invitation. Companies themselves can't sign up yet,
+  // so each seeded company's owner is seeded with it.
   const bengaluru = await prisma.city.findFirstOrThrow({ where: { name: "Bengaluru" } });
 
   const testCompany = await prisma.company.findFirst({ where: { name: "Test Company" } });
@@ -131,13 +158,21 @@ async function main() {
       },
     }));
 
-  const employerPhone = "9999999999";
-  const existingEmployer = await prisma.user.findUnique({ where: { phone: employerPhone } });
-  if (!existingEmployer) {
-    await prisma.user.create({
-      data: { phone: employerPhone, name: "Test Employer", role: "EMPLOYER", companyId: company.id },
-    });
-  }
+  await seedMember(company.id, { phone: "9999999999", name: "Test Employer", companyRole: "OWNER" });
+  for (const member of TEST_COMPANY_TEAM) await seedMember(company.id, member);
+
+  const rival =
+    (await prisma.company.findFirst({ where: { name: RIVAL_COMPANY.name } })) ??
+    (await prisma.company.create({
+      data: {
+        name: RIVAL_COMPANY.name,
+        gstin: RIVAL_COMPANY.gstin,
+        contactPhone: RIVAL_COMPANY.ownerPhone,
+        cityId: bengaluru.id,
+        verificationStatus: "PENDING",
+      },
+    }));
+  await seedMember(rival.id, { phone: RIVAL_COMPANY.ownerPhone, name: RIVAL_COMPANY.ownerName, companyRole: "OWNER" });
 
   // Launch credit from the platform's promotions account, so the demo
   // company's drives can be approved without a top-up first. The txnId makes

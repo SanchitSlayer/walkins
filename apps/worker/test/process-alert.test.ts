@@ -31,7 +31,7 @@ class RecordingChannel implements NotificationChannel {
   }
 }
 
-const ids = { company: "", user: "", candidate: "", drive: "" };
+const ids = { company: "", owner: "", user: "", candidate: "", drive: "" };
 let channel: RecordingChannel;
 let deps: ProcessDeps;
 let job: AlertJob;
@@ -41,6 +41,9 @@ beforeAll(async () => {
   const role = await prisma.role.findFirstOrThrow();
   const company = await prisma.company.create({
     data: { name: "Alerts Test Company", contactPhone: "9000000001", cityId: city.id, verificationStatus: "VERIFIED" },
+  });
+  const owner = await prisma.user.create({
+    data: { phone: `98${Date.now()}`, name: "Alerts Test Owner", role: "EMPLOYER", companyId: company.id, companyRole: "OWNER" },
   });
   const user = await prisma.user.create({ data: { phone: `99${Date.now()}`, name: "Alerts Test", role: "CANDIDATE" } });
   const candidate = await prisma.candidate.create({
@@ -57,6 +60,7 @@ beforeAll(async () => {
   const drive = await prisma.drive.create({
     data: {
       companyId: company.id,
+      ownerId: owner.id,
       roleId: role.id,
       cityId: city.id,
       salaryMin: 15000,
@@ -72,7 +76,7 @@ beforeAll(async () => {
       status: "LIVE",
     },
   });
-  Object.assign(ids, { company: company.id, user: user.id, candidate: candidate.id, drive: drive.id });
+  Object.assign(ids, { company: company.id, owner: owner.id, user: user.id, candidate: candidate.id, drive: drive.id });
   job = { driveId: drive.id, candidateId: candidate.id, templateKey: "drive_48h" };
 });
 
@@ -92,7 +96,7 @@ afterAll(async () => {
   await prisma.application.deleteMany({ where: { driveId: ids.drive } });
   await prisma.drive.delete({ where: { id: ids.drive } });
   await prisma.candidate.delete({ where: { id: ids.candidate } });
-  await prisma.user.delete({ where: { id: ids.user } });
+  await prisma.user.deleteMany({ where: { id: { in: [ids.user, ids.owner] } } });
   await prisma.company.delete({ where: { id: ids.company } });
   await prisma.$disconnect();
 });
