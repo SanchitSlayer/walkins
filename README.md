@@ -683,6 +683,235 @@ Still scaffolding after this phase:
   delivery, and WhatsApp, which would, is not implemented.
 - **Refunds and disputes.** Webhook events are stored, nothing more.
 
+## Rate limits
+
+**An address is not a person in India.** Carrier NAT puts thousands of
+phones behind one IPv4 address, and every candidate at a venue shares its
+Wi-Fi. A per-address limit therefore counts a whole city block or a whole
+interview hall as one client. Here, per-address limits are a coarse ceiling
+on a single abusive script and nothing more. The real limits are per user
+or per company. **Do not tighten the per-address numbers.** A limit low
+enough to slow one person down is low enough to lock out a venue. For the
+same reason, anything a candidate touches is generous: the limits stop loops
+and scripts, not people.
+
+Every limit is in `apps/api/src/common/rate-limit.ts` (the `LIMITS` table),
+with its reasoning beside it. A route opts in with `@RateLimit(...)`. A
+route without the decorator gets the default rule, so an endpoint added
+later is never unlimited by accident.
+
+| Rule | Counted per | Limit | Why this number |
+| --- | --- | --- | --- |
+| default (no decorator) | user, else address | 600 / minute | Ceiling for anything not listed below |
+| `public-read`: search, map, drive pages | address | 1200 / minute | A venue's or a NAT's worth of phones, a few requests each |
+| `application`: book, withdraw | user | 30 / hour | A handful of seats, with room for retries on a bad signal |
+| `voice-upload` | user | 20 / hour | Each take is up to 2 MB of storage |
+| `drive-create` | user, and company | 20 / hour, and 100 / day | Desk work, never a burst |
+| `drive-edit`, `profile-edit` | user | 60 / hour | Each save queues an embedding; a script looping here floods that queue |
+| `applicant-actions` | company | 30 / hour | A bulk "not selected" messages every booked candidate |
+| `top-up-order` | company | 10 / 10 minutes | Each order opens one at the payment gateway |
+| `top-up-confirm` | company | 30 / 10 minutes | Each confirmation calls the gateway |
+| `webhook` | address | 300 / minute | Public and unauthenticated; Razorpay's own retries stay far below it |
+| `checkin-code` | drive | 10 / minute | The check-in screen asks for a code about once a minute |
+| `intro-audio` | user | 300 / hour | Listening down a shortlist |
+| `telegram-link` | user | 10 / hour | |
+| OTP request | phone, and address | 3 / 15 minutes, and 100 / hour | The phone limit is the real one |
+| Wrong check-in code | account, and address | 10, and 300 / 10 minutes | Per account is the real one; a 40-bit code stays unguessable under both |
+| Board socket `join` | socket | 30 / minute | |
+
+A refused request gets a 429 with a `Retry-After` header, and the body
+carries a message saying how many minutes to wait.
+
+The limiter is a sliding window in Redis. Each check and count is a single
+Lua script, so concurrent requests can't all read "under the limit" before
+any of them counts itself. Before this, the read and the write were
+separate commands, so a parallel burst could get past the limit. A test now
+fires 50 parallel requests at a limit of 10 and expects exactly 10 through.
+
+### Why per-address limits never worked before
+
+The browser never calls the API directly. Every request goes through the
+Next.js `/api` proxy (see "Testing check-in on a phone"), and server-rendered
+pages call the API from the Next server itself. The API therefore saw every
+request coming from `::1`. Every per-address limit was one bucket shared by
+all visitors. The OTP limit, then 10 an hour per address, was in effect 10
+OTPs an hour for the whole site.
+
+Two changes fixed it:
+- The API sets Express's `trust proxy` to `loopback`, so it takes the client
+  address from `X-Forwarded-For` only when the request comes from the local
+  proxy.
+- Server-rendered fetches (`apps/web/lib/server-search.ts`) pass the
+  visitor's `X-Forwarded-For` on.
+
+With both in place, `request.ip` is the visitor's address. The per-address
+numbers were then raised to the ceilings above, because they now count
+real addresses, which are shared.
+
+### Production needs a proxy that overwrites X-Forwarded-For
+
+Next's dev server keeps any `X-Forwarded-For` a client sends and appends to
+it. That means a client can choose its own address, and with it which
+per-address bucket it counts against. This is acceptable in development
+only. In production, the web app must sit behind a reverse proxy (nginx, a
+load balancer) that **replaces** `X-Forwarded-For` with the address it
+actually saw, rather than appending to it. The per-user and per-company
+limits don't depend on this. The per-address ceilings do.
+
+### Webhook bodies
+
+Razorpay webhook events are stored. A body whose signature checks out is
+stored byte for byte. A body that fails the signature check is stored only
+up to its first 2 KB, with its full length in `payment_events.rawBodyBytes`.
+That is enough to diagnose a misconfigured secret, and it means anyone on
+the internet can't fill the table with large bodies.
+
+## Errors
+
+Every refusal the API gives a person has the same shape:
+
+```json
+{ "code": "errors.drive.notFound", "message": "...", "params": { } }
+```
+
+- `code` is a key in the message catalog (below).
+- `message` is that key's wording in the default locale, for clients that
+  don't translate (curl, logs, a future partner).
+- `params` holds the values the wording needs (a field name, a distance, a
+  number of minutes).
+
+Validation errors also carry `field`. A 429 also carries
+`retryAfterSeconds`. Services build the body with `apiError(code, params)`
+(`apps/api/src/common/api-error.ts`) and throw it in the usual Nest
+exception.
+
+Errors carry a code, rather than only text, for three reasons:
+- The web app translates the code in the reader's language, not the
+  server's.
+- Code that reacts to a specific refusal compares a stable key. The venue
+  pin's "far from the city" confirmation checks `errors.drive.pinFar`, not
+  a sentence that a copy edit could change.
+- Tests assert on what was refused, not on the wording.
+
+The same goes for things the API and worker store or send on to be shown
+later. Voice intro failures are stored as keys (`voice.failure.*`). Admin
+go-live blockers, bulk-action skips and knockout answers travel as codes or
+raw values, and the page words them.
+
+Zod's own messages ("Expected number, received string") never reach a
+person. A global error map in `packages/shared/src/validation.ts` gives every
+issue a catalog key and the field's label. For example, "salaryMax must be
+>= salaryMin" now reads: “Pay up to” is lower than “Pay from”. Set it to
+the same amount or more.
+
+Each message says what went wrong and what to do next, in the voice of the
+check-in and venue-pin messages. A generic "Something went wrong" appears
+only as the last fallback for a failure the page has no words for.
+
+## Languages
+
+The interface is English only for now. Everything is routed so that adding
+Hindi means translating, not tracking down strings.
+
+**One catalog.** All wording lives in
+`packages/shared/src/messages/en.json`. The web app, the API's error
+messages and the worker's Telegram alerts all read it. Nothing user-facing
+is written anywhere else.
+
+**Web: `next-intl`.** It works with the App Router's server components and
+`generateMetadata`. Messages are typed against the catalog through
+`AppConfig` (`apps/web/i18n/global.d.ts`), so a misspelt key is a type
+error. It runs without locale routing for now: `apps/web/i18n/request.ts`
+always picks the default locale. Adding Hindi means adding `/hi` routing
+and `hreflang` alternates there.
+
+**API and worker: `intl-messageformat` 10.** The obvious choice would have
+been `use-intl`, the formatter under `next-intl`. Version 4 is ESM-only,
+and so is `intl-messageformat` 11. The API and worker are CommonJS on Node
+20, and neither can load them. Version 10 reads the same ICU message syntax
+and runs in both. `translate()` in `packages/shared/src/i18n.ts` wraps it.
+
+**Formatting follows the same locale.** Dates, times, money, distances and
+seat counts come from `formatFor(locale)` in `packages/shared/src/format.ts`.
+The numbers come from `Intl`, and the words around them ("Today", "2–4
+yrs") come from the catalog. Language and script names come from
+`Intl.DisplayNames`, so they translate themselves. The web app uses
+`useFormat()`. The API and worker don't know a reader's language yet, so
+they use the default-locale exports.
+
+**Worker alerts are in the catalog now** (`alerts.*`). They are rendered
+with a locale argument that is always the default for now. A candidate's
+language preference only needs to be passed through to switch them.
+
+**Public pages set their own metadata.** The home page, city and role
+search pages, and drive pages have their own titles and descriptions.
+Descriptions use absolute dates, because a search result outlives "today".
+`<html lang>` follows the locale.
+
+### The check
+
+`apps/web/test/i18n.test.ts` runs with the rest of `pnpm test`. It parses
+every file under `apps/web/app`, `components` and `lib` with the TypeScript
+compiler and fails on:
+
+- **Hardcoded wording:** text in JSX, user-facing attributes (`placeholder`,
+  `aria-label`, `title`, `alt`, `label` and similar), strings passed to
+  `setError`, `setNotice`, `confirm`, `alert` or `prompt`, and phrases kept
+  in lookup tables (`{ CONFIRMED: "Booked" }`). Keys, class lists and CSS
+  values don't count.
+- **Formatting that bypasses the locale:** importing `formatTime` and the
+  other bare formatters into the web app instead of using `useFormat()`.
+- **A key the catalog doesn't have.**
+- **A catalog key nothing uses.** The server-only namespaces (`errors`,
+  `alerts`, `fields`, `format`) are exempt.
+- **A phrase written into the worker's alert templates** rather than the
+  catalog.
+
+There are three escape hatches, each visible in review:
+- `/design` is exempt as a whole. It is the design system's specimen page,
+  and its text is sample content, not product.
+- `data-i18n-ignore` on a JSX element exempts its subtree, for content that
+  is data.
+- An `i18n-ignore` comment on a line exempts that line, and should say why.
+
+### Known work for the Hindi phase
+
+These were found while building the scaffolding. They were deliberately
+not fixed: each needs real Hindi text and real screens to judge.
+
+- **Archivo has no Devanagari.** Every Hindi glyph would fall back to the
+  system font. The design system leans on Archivo's width axis
+  (`font-stretch` 75% to 125% across the board and headings), and that
+  contrast would disappear. Hindi needs a paired Devanagari face, chosen
+  for a matching weight and colour, and a decision on what replaces the
+  width contrast.
+- **Line-height clips vowel signs.** `.type-display` is set at 1.05, and the
+  headings at 1.1 to 1.15. Devanagari's matras above the headline (ि ी ें)
+  and below the baseline (ु ू ृ) need more room than Latin, and will be cut
+  off or collide between lines. The split-flap cells are worse: each half is
+  `overflow: hidden` at 50% of a 1.3em cell, which cuts off exactly the
+  parts above and below.
+- **Letter-spacing breaks conjuncts.** Any non-zero tracking (the display's
+  -0.015em, the check-in code's 0.12em) can pull apart conjuncts and break
+  the connecting headline. Tracking has to be zero for Devanagari text.
+- **Flap cell counts assume English lengths.** The arrivals board fixes its
+  cells for English: 7 for the slot column ("Walk-in"), 5 for a time, 16
+  for a name, and 3 or 2 for counts. A Hindi label is a different length in
+  graphemes. Flaps now split by grapheme, so हूँ is one flap, not three, and
+  mixed text won't be torn apart. But the counts themselves need setting
+  per locale, or the cells need to size from the longest label.
+- **Stored English.** `check_ins.flagReason` is still stored as an English
+  sentence ("Location only accurate to ±…, … from the venue"), built from
+  several flags joined into one string. Moving it to keys needs a schema
+  change: a list of flag codes with their values. Until then, the employer
+  board and the candidate's check-in result show it in English whatever the
+  locale. Rejection reasons from the payment gateway and the verification
+  provider are stored as those services send them.
+- **Language names come from each runtime's ICU data.** Node 20 names `or`
+  "Odia", and older ICU data says "Oriya". The server render and the browser
+  can disagree. Check the names when they are shown in Hindi, and override
+  any that differ in the catalog.
+
 ## Prerequisites
 
 - Node.js 20 or later
@@ -867,6 +1096,14 @@ Then:
 
 ```
 pnpm test
+```
+
+That runs the API, worker and web suites. The web suite needs no database:
+it is the i18n check (see "Languages"). To run it alone while working on
+pages:
+
+```
+pnpm --filter @walkins/web test
 ```
 
 Tests never run against `DATABASE_URL`: each suite's `test/setup.ts` refuses
