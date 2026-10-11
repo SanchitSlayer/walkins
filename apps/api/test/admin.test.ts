@@ -44,6 +44,7 @@ beforeAll(async () => {
   const pending = await prisma.drive.create({
     data: {
       companyId: fixture.company.id,
+      ownerId: fixture.employer.id,
       roleId: fixture.drive.roleId,
       cityId: fixture.drive.cityId,
       salaryMin: 15000,
@@ -156,14 +157,14 @@ describe("charging from the check-in flow", () => {
     expect(result.checkIn.isValid).toBe(false);
     expect(jobs.charge).not.toHaveBeenCalled();
 
-    await checkIns.confirmFlagged(fixture.company.id, fixture.employer.id, result.checkIn.id);
+    await checkIns.confirmFlagged(fixture.employer.id, result.checkIn.id);
     expect(jobs.charge).toHaveBeenCalledExactlyOnceWith({ checkInId: result.checkIn.id });
   });
 
   it("charges a check-in the employer marks by hand", async () => {
     const { userId } = nextCandidate();
     const application = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
-    const result = await checkIns.markPresent(fixture.company.id, fixture.employer.id, application.id);
+    const result = await checkIns.markPresent(fixture.employer.id, application.id);
     if (result.outcome !== "checked_in") throw new Error(`expected a check-in, got ${result.outcome}`);
     expect(jobs.charge).toHaveBeenCalledExactlyOnceWith({ checkInId: result.checkIn.id });
   });

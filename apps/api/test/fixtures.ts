@@ -15,7 +15,7 @@ export async function createFixture(label: string, candidateCount: number) {
     data: { name: `${label} Company`, contactPhone: randomPhone(), cityId: city.id, verificationStatus: "VERIFIED" },
   });
   const employer = await prisma.user.create({
-    data: { phone: randomPhone(), name: `${label} Employer`, role: "EMPLOYER", companyId: company.id },
+    data: { phone: randomPhone(), name: `${label} Employer`, role: "EMPLOYER", companyId: company.id, companyRole: "OWNER" },
   });
 
   const candidates: { userId: string; candidateId: string }[] = [];
@@ -35,6 +35,7 @@ export async function createFixture(label: string, candidateCount: number) {
   const drive = await prisma.drive.create({
     data: {
       companyId: company.id,
+      ownerId: employer.id,
       roleId: role.id,
       cityId: city.id,
       salaryMin: 15000,
@@ -66,30 +67,64 @@ export async function createFixture(label: string, candidateCount: number) {
     venue,
     lastSeatSlot: drive.slots[0],
     roomySlot: drive.slots[1],
+    // Created by addPerson, removed with the fixture.
+    extraUserIds: [] as string[],
+    extraCompanyIds: [] as string[],
   };
 }
 
 export type Fixture = Awaited<ReturnType<typeof createFixture>>;
 
+// Someone else at the fixture's company, in the given role; or, with
+// elsewhere, the owner of a different company of their own; or, with no
+// role, a signed-up account in no company at all.
+export async function addPerson(fixture: Fixture, label: string, role: "OWNER" | "RECRUITER" | "VIEWER" | null, elsewhere = false) {
+  let companyId: string | null = role ? fixture.company.id : null;
+  if (elsewhere) {
+    const other = await prisma.company.create({
+      data: { name: `${label} Company`, contactPhone: randomPhone(), cityId: fixture.company.cityId, verificationStatus: "VERIFIED" },
+    });
+    fixture.extraCompanyIds.push(other.id);
+    companyId = other.id;
+  }
+  const user = await prisma.user.create({
+    data: {
+      phone: randomPhone(),
+      name: label,
+      role: companyId ? "EMPLOYER" : "CANDIDATE",
+      companyId,
+      companyRole: companyId ? (role ?? "OWNER") : null,
+    },
+  });
+  fixture.extraUserIds.push(user.id);
+  return user;
+}
+
 export async function removeFixture(fixture: Fixture) {
   const driveId = fixture.drive.id;
   const applications = await prisma.application.findMany({ where: { driveId }, select: { id: true } });
   const checkIns = await prisma.checkIn.findMany({ where: { application: { driveId } }, select: { id: true } });
+  const companyIds = [fixture.company.id, ...fixture.extraCompanyIds];
+  const otherDrives = await prisma.drive.findMany({ where: { companyId: { in: companyIds }, NOT: { id: driveId } }, select: { id: true } });
   await prisma.auditLog.deleteMany({
-    where: { entityId: { in: [driveId, fixture.company.id, ...applications.map((a) => a.id), ...checkIns.map((c) => c.id)] } },
+    where: {
+      entityId: { in: [driveId, ...companyIds, ...otherDrives.map((d) => d.id), ...applications.map((a) => a.id), ...checkIns.map((c) => c.id)] },
+    },
   });
+  await prisma.companyInvitation.deleteMany({ where: { companyId: { in: companyIds } } });
   // Ledger rows are append-only and stay behind, which is why tests run
   // against their own database (test/setup.ts). Payment orders are not.
   await prisma.paymentOrder.deleteMany({ where: { companyId: fixture.company.id } });
   await prisma.checkIn.deleteMany({ where: { application: { driveId } } });
   await prisma.application.deleteMany({ where: { driveId } });
   await prisma.driveSlot.deleteMany({ where: { driveId } });
-  await prisma.drive.delete({ where: { id: driveId } });
+  await prisma.driveSlot.deleteMany({ where: { driveId: { in: otherDrives.map((d) => d.id) } } });
+  await prisma.drive.deleteMany({ where: { companyId: { in: companyIds } } });
   await prisma.candidate.deleteMany({ where: { id: { in: fixture.candidates.map((c) => c.candidateId) } } });
   await prisma.user.deleteMany({
-    where: { id: { in: [fixture.employer.id, ...fixture.candidates.map((c) => c.userId)] } },
+    where: { id: { in: [fixture.employer.id, ...fixture.extraUserIds, ...fixture.candidates.map((c) => c.userId)] } },
   });
-  await prisma.company.delete({ where: { id: fixture.company.id } });
+  await prisma.company.deleteMany({ where: { id: { in: companyIds } } });
 
   for (const { candidateId } of fixture.candidates) {
     const keys = await redis.keys(`checkin-nonce:*:${candidateId}`);

@@ -64,7 +64,7 @@ function payment(gatewayOrderId: string, amountPaise: number, status: GatewayPay
 }
 
 async function topUp(amountPaise = 5_000_00, fx = fixture) {
-  return billing.createTopUp(fx.company.id, fx.employer.id, amountPaise);
+  return billing.createTopUp(fx.employer.id, amountPaise);
 }
 
 function deliver(event: string, p: GatewayPayment) {
@@ -203,12 +203,12 @@ describe("confirming after checkout", () => {
     gateway.payments.set(p.paymentId, p);
     const signature = hmacHex(gateway.keySecret, `${order.gatewayOrderId}|${p.paymentId}`);
 
-    await expect(billing.confirmTopUp(fixture.company.id, order.orderId, { gatewayPaymentId: p.paymentId, signature: "f".repeat(64) })).rejects.toBeInstanceOf(
+    await expect(billing.confirmTopUp(fixture.employer.id, order.orderId, { gatewayPaymentId: p.paymentId, signature: "f".repeat(64) })).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expect(await balance()).toBe(before);
 
-    const status = await billing.confirmTopUp(fixture.company.id, order.orderId, { gatewayPaymentId: p.paymentId, signature });
+    const status = await billing.confirmTopUp(fixture.employer.id, order.orderId, { gatewayPaymentId: p.paymentId, signature });
     expect(status).toMatchObject({ status: "CAPTURED", balancePaise: before + order.amountPaise });
     await deliver("payment.captured", p);
     expect(await balance()).toBe(before + order.amountPaise);
@@ -219,7 +219,7 @@ describe("confirming after checkout", () => {
     const order = await topUp();
     const p = payment(order.gatewayOrderId, order.amountPaise, "pending");
     gateway.payments.set(p.paymentId, p);
-    const status = await billing.confirmTopUp(fixture.company.id, order.orderId, {
+    const status = await billing.confirmTopUp(fixture.employer.id, order.orderId, {
       gatewayPaymentId: p.paymentId,
       signature: hmacHex(gateway.keySecret, `${order.gatewayOrderId}|${p.paymentId}`),
     });
@@ -229,7 +229,7 @@ describe("confirming after checkout", () => {
 
   it("treats another company's top-up as missing", async () => {
     const order = await topUp(1_000_00, other);
-    await expect(billing.topUpStatus(fixture.company.id, order.orderId)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(billing.topUpStatus(fixture.employer.id, order.orderId)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
@@ -238,9 +238,9 @@ describe("the mock gateway, end to end with no network", () => {
 
   it("credits a successful mock payment once, through both the webhook and the confirmation", async () => {
     const before = await balance();
-    const order = await mock.createTopUp(fixture.company.id, fixture.employer.id, 3_000_00);
-    const paid = await mock.mockCheckout(fixture.company.id, order.orderId, "success");
-    const status = await mock.confirmTopUp(fixture.company.id, order.orderId, paid);
+    const order = await mock.createTopUp(fixture.employer.id, 3_000_00);
+    const paid = await mock.mockCheckout(fixture.employer.id, order.orderId, "success");
+    const status = await mock.confirmTopUp(fixture.employer.id, order.orderId, paid);
 
     expect(status).toMatchObject({ status: "CAPTURED", balancePaise: before + 3_000_00 });
     expect(await outcomes(paid.gatewayPaymentId)).toEqual(["credited"]);
@@ -249,14 +249,14 @@ describe("the mock gateway, end to end with no network", () => {
 
   it("records a declined mock payment as failed and credits nothing", async () => {
     const before = await balance();
-    const order = await mock.createTopUp(fixture.company.id, fixture.employer.id, 3_000_00);
-    const paid = await mock.mockCheckout(fixture.company.id, order.orderId, "failure");
-    const status = await mock.confirmTopUp(fixture.company.id, order.orderId, paid);
+    const order = await mock.createTopUp(fixture.employer.id, 3_000_00);
+    const paid = await mock.mockCheckout(fixture.employer.id, order.orderId, "failure");
+    const status = await mock.confirmTopUp(fixture.employer.id, order.orderId, paid);
     expect(status).toMatchObject({ status: "FAILED", failureReason: "Payment declined by the mock gateway", balancePaise: before });
   });
 
   it("refuses a webhook signed by anyone else", async () => {
-    const order = await mock.createTopUp(fixture.company.id, fixture.employer.id, 3_000_00);
+    const order = await mock.createTopUp(fixture.employer.id, 3_000_00);
     const forged = gateway.webhook("payment.captured", payment(order.gatewayOrderId, 3_000_00));
     await expect(mock.handleWebhook("mock", forged.rawBody, forged.signature, "evt_mock_forged")).rejects.toBeInstanceOf(BadRequestException);
   });

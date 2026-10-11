@@ -12,7 +12,7 @@ import { RateLimiterService } from "../src/common/rate-limiter.service";
 import { redis } from "../src/common/redis";
 import { displayName, LiveBoardService } from "../src/live/live-board.service";
 import { LiveGateway } from "../src/live/live.gateway";
-import { createFixture, type Fixture, removeFixture } from "./fixtures";
+import { addPerson, createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
 const tokens = new CheckInTokenService();
@@ -264,7 +264,7 @@ describe("the employer's side", () => {
     const { userId } = nextCandidate();
     const application = await bookSeat(userId);
 
-    const result = await checkIns.markPresent(fixture.company.id, fixture.employer.id, application.id, "no phone signal");
+    const result = await checkIns.markPresent(fixture.employer.id, application.id, "no phone signal");
 
     expect(result.outcome).toBe("checked_in");
     if (result.outcome !== "checked_in") return;
@@ -280,7 +280,7 @@ describe("the employer's side", () => {
     const flagged = await scan(userId, { code: await freshCode(), ...farFromVenue(300) });
     if (flagged.outcome !== "checked_in") throw new Error("expected a flagged check-in");
 
-    const confirmed = await checkIns.confirmFlagged(fixture.company.id, fixture.employer.id, flagged.checkIn.id);
+    const confirmed = await checkIns.confirmFlagged(fixture.employer.id, flagged.checkIn.id);
 
     expect(confirmed.isValid).toBe(true);
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: flagged.checkIn.id, action: "confirmed" } });
@@ -289,18 +289,20 @@ describe("the employer's side", () => {
 
   it("only lets an employer watch their own company's drive", async () => {
     const gateway = new LiveGateway(new JwtService({ secret: process.env.JWT_SECRET }), new LiveBoardService(), new RateLimiterService());
-    const socket = (companyId: string) => ({
-      data: { user: { userId: fixture.employer.id, role: "EMPLOYER" as const, companyId } },
+    const socket = (userId: string) => ({
+      data: { user: { userId, role: "EMPLOYER" as const, companyId: null } },
       id: `test-socket-${randomUUID()}`,
       join: vi.fn(async () => {}),
     });
 
-    const stranger = socket("some-other-company");
+    const stranger = socket((await addPerson(fixture, "Check-in Stranger", "OWNER", true)).id);
     await expect(gateway.join(stranger, { driveId: fixture.drive.id, view: "desk" })).resolves.toEqual({ error: "This drive doesn't exist or has been removed. Check the link, or find it from the list of drives." });
     expect(stranger.join).not.toHaveBeenCalled();
 
-    const owner = socket(fixture.company.id);
-    await expect(gateway.join(owner, { driveId: fixture.drive.id, view: "somewhere" })).resolves.toEqual({ error: "Unknown view" });
+    const owner = socket(fixture.employer.id);
+    await expect(gateway.join(owner, { driveId: fixture.drive.id, view: "somewhere" })).resolves.toEqual({
+      error: "This board link isn't complete. Open the board again from the drive's page.",
+    });
     const desk = await gateway.join(owner, { driveId: fixture.drive.id, view: "desk" });
     expect(owner.join).toHaveBeenCalledWith(`drive:${fixture.drive.id}:desk`);
     expect(desk).toHaveProperty("awaiting");
@@ -340,9 +342,10 @@ describe("the employer's side", () => {
 
 describe("shortening names for the board", () => {
   it("keeps the first name and the last name's initial", () => {
-    expect(displayName("Asha Kumari Rao")).toBe("Asha R.");
-    expect(displayName("  Ravi   kumar ")).toBe("Ravi K.");
-    expect(displayName("Mononym")).toBe("Mononym");
-    expect(displayName("   ")).toBe("Candidate");
+    expect(displayName("Asha Kumari Rao", "9000000000")).toBe("Asha R.");
+    expect(displayName("  Ravi   kumar ", "9000000000")).toBe("Ravi K.");
+    expect(displayName("Mononym", "9000000000")).toBe("Mononym");
+    expect(displayName("   ", "9000000000")).toBeNull();
+    expect(displayName("9876543210", "9876543210")).toBeNull();
   });
 });

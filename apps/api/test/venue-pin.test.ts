@@ -24,7 +24,7 @@ afterAll(async () => {
 });
 
 function pin(input: { lat: number; lng: number; accuracy: number; confirmFar?: boolean }) {
-  return drives.pinVenue(fixture.company.id, fixture.employer.id, fixture.drive.id, input);
+  return drives.pinVenue(fixture.employer.id, fixture.drive.id, input);
 }
 
 describe("pinning the venue", () => {

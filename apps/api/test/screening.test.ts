@@ -12,7 +12,7 @@ import { redis } from "../src/common/redis";
 import type { StorageService } from "../src/common/storage.service";
 import { LiveBoardService } from "../src/live/live-board.service";
 import type { LiveGateway } from "../src/live/live.gateway";
-import { createFixture, type Fixture, removeFixture } from "./fixtures";
+import { addPerson, createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const QUESTIONS: KnockoutQuestion[] = [
   {
@@ -152,7 +152,7 @@ describe("applying with screening questions", () => {
     const { userId } = nextCandidate();
     const application = await apply(userId, { ...PASSING, age: 16 });
 
-    const result = await checkIns.markPresent(fixture.company.id, fixture.employer.id, application.id, "admitted at the desk");
+    const result = await checkIns.markPresent(fixture.employer.id, application.id, "admitted at the desk");
 
     expect(result.outcome).toBe("checked_in");
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: application.id, action: "SCREENED_OUT->CHECKED_IN" } });
@@ -177,7 +177,7 @@ describe("acting on applicants in bulk", () => {
     const before = await bookedCount();
     vi.mocked(jobs.alert).mockClear();
 
-    const result = await applicants.act(fixture.company.id, fixture.employer.id, fixture.drive.id, {
+    const result = await applicants.act(fixture.employer.id, fixture.drive.id, {
       applicationIds: [bookedApp.id, screenedApp.id],
       action: "reject",
     });
@@ -198,20 +198,21 @@ describe("acting on applicants in bulk", () => {
     const { userId } = nextCandidate();
     const application = await apply(userId, PASSING);
 
-    await applicants.act(fixture.company.id, fixture.employer.id, fixture.drive.id, {
+    await applicants.act(fixture.employer.id, fixture.drive.id, {
       applicationIds: [application.id],
       action: "shortlist",
     });
 
     const row = await prisma.application.findUniqueOrThrow({ where: { id: application.id } });
-    expect(row).toMatchObject({ state: "CONFIRMED", shortlistedBy: fixture.employer.id });
+    expect(row).toMatchObject({ state: "CONFIRMED", shortlistedById: fixture.employer.id });
     expect(row.shortlistedAt).not.toBeNull();
   });
 
   it("won't act on another company's applicants", async () => {
     const { userId } = nextCandidate();
     const application = await apply(userId, PASSING);
-    const result = await applicants.act("another-company", fixture.employer.id, fixture.drive.id, {
+    const stranger = await addPerson(fixture, "Screening Stranger", "OWNER", true);
+    const result = await applicants.act(stranger.id, fixture.drive.id, {
       applicationIds: [application.id],
       action: "reject",
     });
@@ -252,7 +253,7 @@ describe("ranking applicants", () => {
   });
 
   async function order(weight: number) {
-    const list = await applicants.list(ranking.company.id, ranking.drive.id, weight);
+    const list = await applicants.list(ranking.employer.id, ranking.drive.id, weight);
     return list.applicants.map((a) => ids.get(a.applicationId));
   }
 
@@ -265,7 +266,7 @@ describe("ranking applicants", () => {
   });
 
   it("gives someone with no embedding the median similarity, and says so", async () => {
-    const list = await applicants.list(ranking.company.id, ranking.drive.id, 1);
+    const list = await applicants.list(ranking.employer.id, ranking.drive.id, 1);
     expect(list.medianSimilarity).toBeCloseTo(0.5);
     const byKey = new Map(list.applicants.map((a) => [ids.get(a.applicationId), a.match]));
     expect(byKey.get("unembedded")).toMatchObject({ basis: "distance_only", similarity: null });

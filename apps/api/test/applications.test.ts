@@ -4,7 +4,7 @@ import { IllegalTransitionError, prisma, SlotFullError } from "@walkins/db";
 import { ApplicationsService } from "../src/applications/applications.service";
 import { redis } from "../src/common/redis";
 import type { LiveGateway } from "../src/live/live.gateway";
-import { createFixture, type Fixture, removeFixture } from "./fixtures";
+import { addPerson, createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
 const applications = new ApplicationsService(live);
@@ -88,7 +88,7 @@ describe("applying for a slot", () => {
     const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
 
     await expect(
-      applications.updateByEmployer(fixture.company.id, fixture.employer.id, applied.id, { to: "HIRED" }),
+      applications.updateByEmployer(fixture.employer.id, applied.id, { to: "HIRED" }),
     ).rejects.toBeInstanceOf(IllegalTransitionError);
 
     const row = await prisma.application.findUniqueOrThrow({ where: { id: applied.id } });
@@ -99,9 +99,10 @@ describe("applying for a slot", () => {
   it("treats another company's application as missing", async () => {
     const { userId } = fixture.candidates[13];
     const applied = await applications.apply(userId, fixture.drive.id, fixture.roomySlot.id, {});
+    const stranger = await addPerson(fixture, "Applications Stranger", "OWNER", true);
 
     await expect(
-      applications.updateByEmployer("some-other-company", fixture.employer.id, applied.id, { to: "INTERVIEWED" }),
+      applications.updateByEmployer(stranger.id, applied.id, { to: "INTERVIEWED" }),
     ).rejects.toThrow("This application no longer exists. Reload the page.");
   });
 });
