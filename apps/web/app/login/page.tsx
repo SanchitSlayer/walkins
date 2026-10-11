@@ -64,7 +64,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { role } = await apiClient.verifyOtp(parsed.data);
-      router.push(returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile"));
+      // Someone a company invited sees the invitation first, with the
+      // company's name, before anything else.
+      const invited = role === "CANDIDATE" && (await apiClient.myInvitations()).invitations.length > 0;
+      router.push(invited ? "/join" : (returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile")));
     } catch (err) {
       setError(errorText(err, "login.checkFailed"));
     } finally {
