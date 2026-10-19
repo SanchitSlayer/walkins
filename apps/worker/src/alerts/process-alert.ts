@@ -6,8 +6,10 @@ import {
   ChannelRateLimitedError,
   DeliveryOutcomeUnknownError,
   NotImplementedError,
+  type DriveStatus,
   type Recipient,
   RecipientUnreachableError,
+  type TemplateKey,
 } from "@walkins/shared";
 import type { ChannelResolver } from "../channels/channel-resolver";
 import { type AlertContext, renderAlert } from "./templates";
@@ -27,13 +29,29 @@ export type ProcessDeps = {
 
 type Loaded = { skip: string } | { recipient: Recipient; context: AlertContext };
 
+// The status a drive must still be in for each alert to be true when it
+// arrives: a suspension notice for a drive already put back on, or a "back
+// on" for one suspended again, is skipped rather than sent.
+const DRIVE_STATUS_FOR: Record<TemplateKey, DriveStatus> = {
+  drive_48h: "LIVE",
+  drive_morning_of: "LIVE",
+  application_rejected: "LIVE",
+  drive_cancelled: "CANCELLED",
+  drive_suspended: "SUSPENDED",
+  drive_reinstated: "LIVE",
+};
+
+// Sent to everyone holding a seat, so each is skipped for anyone who has
+// since released it or been checked in.
+const TO_BOOKED: TemplateKey[] = ["drive_morning_of", "drive_cancelled", "drive_suspended", "drive_reinstated"];
+
 async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: Date, webUrl: string): Promise<Loaded | null> {
   const [drive, candidate] = await Promise.all([
     prisma.drive.findUnique({ where: { id: driveId }, include: { role: true, company: true } }),
     prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true } } } }),
   ]);
   if (!drive || !candidate) return null;
-  if (drive.status !== "LIVE") return { skip: `drive is ${drive.status.toLowerCase()}` };
+  if (drive.status !== DRIVE_STATUS_FOR[templateKey]) return { skip: `drive is ${drive.status.toLowerCase()}` };
   if (drive.endsAt <= now) return { skip: "drive has ended" };
 
   let slotStartsAt: string | null = null;
@@ -43,7 +61,7 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
     // even a withdrawn one, means they have already found this drive.
     const applied = await prisma.application.count({ where: { driveId, candidateId } });
     if (applied > 0) return { skip: "candidate has since applied" };
-  } else if (templateKey === "drive_morning_of") {
+  } else if (TO_BOOKED.includes(templateKey)) {
     const application = await prisma.application.findFirst({
       where: { driveId, candidateId, state: "CONFIRMED" },
       include: { slot: true },
@@ -73,9 +91,10 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
       startsAt: drive.startsAt.toISOString(),
       endsAt: drive.endsAt.toISOString(),
       slotStartsAt,
-      // A rejection points to other drives rather than the one that turned
-      // them down.
-      driveUrl: templateKey === "application_rejected" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
+      // A rejection or a cancellation points to other drives rather than the
+      // one that is no longer for them.
+      driveUrl: templateKey === "application_rejected" || templateKey === "drive_cancelled" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
+      reportUrl: `${webUrl}/drives/${driveId}#report`,
     },
   };
 }

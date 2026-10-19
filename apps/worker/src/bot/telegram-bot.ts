@@ -38,7 +38,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
       prisma.candidate.updateMany({ where: { telegramChatId: chatId, NOT: { id: candidateId } }, data: { telegramChatId: null } }),
       prisma.candidate.update({ where: { id: candidateId }, data: { telegramChatId: chatId } }),
     ]);
-    await ctx.reply(say("bot.connected"));
+    await ctx.reply(`${say("bot.connected")}\n\n${say("bot.neverPay")}`);
   });
 
   bot.command("jobs", async (ctx) => {
@@ -73,7 +73,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
         "",
       ];
     });
-    await ctx.reply([say("bot.jobsHeading", { km: candidate.maxTravelKm }), "", ...lines].join("\n").trim(), {
+    await ctx.reply([say("bot.jobsHeading", { km: candidate.maxTravelKm }), "", ...lines, say("bot.neverPay")].join("\n").trim(), {
       link_preview_options: { is_disabled: true },
     });
   });

@@ -181,19 +181,26 @@ async function expireDrives(deps: MaintenanceDeps): Promise<string> {
 
 // REJECTED is left out of both counts: it can come before or after an
 // interview, so it can't be read as attended or not, and a smaller sample
-// beats a score that means two things.
-async function recomputeReliability(): Promise<string> {
+// beats a score that means two things. Only drives that ran count: a booking
+// on a drive the employer cancelled, or Walkins suspended, was never a
+// chance to attend, and until Phase 10 it was counted as a missed one. The
+// filter is inside the counts, not a WHERE, so a candidate whose only
+// bookings were on such drives is rescored too, back to no score.
+// `candidateIds` narrows a run, as `scope` does for markNoShows.
+export async function recomputeReliability(candidateIds?: string[]): Promise<string> {
   const updated = await prisma.$executeRaw`
     WITH counts AS (
       SELECT
         a."candidateId",
-        count(*) FILTER (WHERE a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED')) AS attended,
+        count(*) FILTER (WHERE d.status IN ('LIVE', 'EXPIRED') AND a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED')) AS attended,
         count(*) FILTER (
-          WHERE a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED', 'NO_SHOW')
-             OR (a.state = 'CONFIRMED' AND d."endsAt" <= (now() AT TIME ZONE 'UTC'))
+          WHERE d.status IN ('LIVE', 'EXPIRED')
+            AND (a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED', 'NO_SHOW')
+              OR (a.state = 'CONFIRMED' AND d."endsAt" <= (now() AT TIME ZONE 'UTC')))
         ) AS confirmed
       FROM applications a
       JOIN drives d ON d.id = a."driveId"
+      ${candidateIds ? Prisma.sql`WHERE a."candidateId" IN (${Prisma.join(candidateIds)})` : Prisma.empty}
       GROUP BY a."candidateId"
     )
     UPDATE candidates c

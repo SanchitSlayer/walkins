@@ -11,13 +11,16 @@ export type AlertContext = {
   endsAt: string;
   slotStartsAt: string | null;
   driveUrl: string;
+  reportUrl: string;
 };
 
 // The wording lives in the shared catalog (alerts.*) like every other
 // string, so sending Hindi later is choosing the locale from the candidate's
 // preference, not rewriting templates. Until candidates have one, alerts go
 // out in the default locale. Role titles, company names and venues are
-// content and go in exactly as entered.
+// content and go in exactly as entered. Every alert ends with the same
+// warning: fake recruiters charge "registration fees", and the alert is
+// where a candidate is reading about the job.
 export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Date, locale: Locale = DEFAULT_LOCALE): TemplatedMessage {
   const format = formatFor(locale);
   const when = format.formatWhen(ctx.startsAt, ctx.endsAt, now);
@@ -31,5 +34,6 @@ export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Da
     where: translate(locale, "alerts.where", { venue: ctx.venueAddress, distance: format.formatDistance(ctx.distanceKm) }),
     pay: format.formatSalary(ctx.salaryMin, ctx.salaryMax),
   };
-  return { templateKey, text: translate(locale, `alerts.${templateKey}`, values), url: ctx.driveUrl };
+  const text = `${translate(locale, `alerts.${templateKey}`, values)}\n\n${translate(locale, "alerts.neverPay", { link: ctx.reportUrl })}`;
+  return { templateKey, text, url: ctx.driveUrl };
 }

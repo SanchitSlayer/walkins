@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { MAX_TRAVEL_KM } from "@walkins/shared";
+import { MAX_TRAVEL_KM, UNVERIFIED_ALERT_LIMIT } from "@walkins/shared";
 import { prisma } from "./client";
 
 export type TargetedCandidate = {
@@ -65,6 +65,27 @@ export async function findCandidatesForDrive(
     ORDER BY "distanceMeters", c.id
     LIMIT ${limit}
   `;
+}
+
+// Everyone the drive could alert, for the employer to compare with how many
+// it will: the same rule as findCandidatesForDrive, counted.
+export async function countCandidatesForDrive(driveId: string): Promise<number> {
+  const [{ matching }] = await prisma.$queryRaw<{ matching: number }[]>`
+    SELECT count(*)::int AS matching
+    FROM drives d
+    JOIN candidates c ON ${candidateReachesDrive}
+    WHERE d.id = ${driveId}
+  `;
+  return matching;
+}
+
+// How many candidates a drive's discovery alert may reach: everyone it
+// matches, unless its company's verification is still awaiting review, when
+// only the nearest UNVERIFIED_ALERT_LIMIT. Reminders to people who booked
+// are never limited.
+export async function alertLimitForDrive(driveId: string): Promise<number | null> {
+  const { company } = await prisma.drive.findUniqueOrThrow({ where: { id: driveId }, select: { company: { select: { verificationStatus: true } } } });
+  return company.verificationStatus === "VERIFIED" ? null : UNVERIFIED_ALERT_LIMIT;
 }
 
 export async function findLiveDrivesForCandidate(candidateId: string, limit: number): Promise<ReachableDrive[]> {

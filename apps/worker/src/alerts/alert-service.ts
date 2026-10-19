@@ -1,5 +1,5 @@
 import type { Queue } from "bullmq";
-import { findCandidatesForDrive, prisma } from "@walkins/db";
+import { alertLimitForDrive, findCandidatesForDrive, prisma } from "@walkins/db";
 import { type AlertJob, alertJobId, type TemplateKey } from "@walkins/shared";
 
 const PAGE_SIZE = 500;
@@ -12,21 +12,26 @@ export class AlertService {
     private readonly queue: Queue<AlertJob>,
     private readonly targeting: typeof findCandidatesForDrive = findCandidatesForDrive,
     private readonly pageSize = PAGE_SIZE,
+    private readonly limitFor: typeof alertLimitForDrive = alertLimitForDrive,
   ) {}
 
-  // Discovery: everyone the targeting rule matches, paged until a short page
-  // so no fanout is capped. Returns how many were targeted; jobs that already
-  // exist are dropped by their id, so it is not a count of new jobs.
+  // Discovery: everyone the targeting rule matches, nearest first, paged
+  // until a short page. Only an unverified company's drive stops early, at
+  // its limit. Returns how many were targeted; jobs that already exist are
+  // dropped by their id, so it is not a count of new jobs.
   async fanOut(driveId: string, templateKey: TemplateKey): Promise<number> {
+    const limit = (await this.limitFor(driveId)) ?? Infinity;
     let targeted = 0;
     let after: { distanceMeters: number; candidateId: string } | undefined;
-    for (;;) {
-      const page = await this.targeting(driveId, { after, limit: this.pageSize });
+    while (targeted < limit) {
+      const size = Math.min(this.pageSize, limit - targeted);
+      const page = await this.targeting(driveId, { after, limit: size });
       await this.enqueue(page.map(({ candidateId }) => ({ driveId, candidateId, templateKey })));
       targeted += page.length;
-      if (page.length < this.pageSize) return targeted;
+      if (page.length < size) break;
       after = page[page.length - 1];
     }
+    return targeted;
   }
 
   // Commitment: only people who said they'd come. Targeting would be wrong
