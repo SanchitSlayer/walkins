@@ -21,7 +21,11 @@ model City {
   @@map("cities")
 }
 
+// UNSUBMITTED: nothing sent for review yet. PENDING: a submission is
+// waiting for an admin, and the company may run drives at limited reach.
+// REJECTED companies can resubmit; until they do, they can't go live.
 enum VerificationStatus {
+  UNSUBMITTED
   PENDING
   VERIFIED
   REJECTED
@@ -31,7 +35,7 @@ model Company {
   id                 String             @id @default(cuid())
   name               String
   gstin              String?
-  verificationStatus VerificationStatus @default(PENDING)
+  verificationStatus VerificationStatus @default(UNSUBMITTED)
   contactPhone       String
   cityId             String
   createdAt          DateTime           @default(now())
@@ -39,12 +43,18 @@ model Company {
   // transcript in any other language is not shown as text to them, only
   // flagged, because script they can't read is worse than no transcript.
   readsLanguages     String[]           @default(["en", "hi"])
+  // Set by moderation. A suspended company keeps read-only access to its
+  // desk; every drive it had open is suspended with it.
+  suspendedAt        DateTime?
 
-  city          City                @relation(fields: [cityId], references: [id])
-  users         User[]
-  drives        Drive[]
-  paymentOrders PaymentOrder[]
-  invitations   CompanyInvitation[]
+  city              City                     @relation(fields: [cityId], references: [id])
+  users             User[]
+  drives            Drive[]
+  paymentOrders     PaymentOrder[]
+  invitations       CompanyInvitation[]
+  submissions       VerificationSubmission[]
+  moderationActions ModerationAction[]
+  warnings          Warning[]
 
   @@index([cityId])
   @@map("companies")
@@ -68,23 +78,28 @@ enum CompanyRole {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  phone     String   @unique
-  name      String
+  id          String       @id @default(cuid())
+  phone       String       @unique
+  name        String
   role        UserRole
   companyId   String?
   companyRole CompanyRole?
   createdAt   DateTime     @default(now())
 
-  company             Company?            @relation(fields: [companyId], references: [id])
-  candidate           Candidate?
-  auditLogs           AuditLog[]
-  paymentOrders       PaymentOrder[]
-  ownedDrives         Drive[]             @relation("DriveOwner")
-  shortlisted         Application[]       @relation("ShortlistedBy")
-  invitationsSent     CompanyInvitation[] @relation("InvitedBy")
-  invitationsAccepted CompanyInvitation[] @relation("AcceptedBy")
-  invitationsRevoked  CompanyInvitation[] @relation("RevokedBy")
+  company              Company?                 @relation(fields: [companyId], references: [id])
+  candidate            Candidate?
+  auditLogs            AuditLog[]
+  paymentOrders        PaymentOrder[]
+  ownedDrives          Drive[]                  @relation("DriveOwner")
+  shortlisted          Application[]            @relation("ShortlistedBy")
+  invitationsSent      CompanyInvitation[]      @relation("InvitedBy")
+  invitationsAccepted  CompanyInvitation[]      @relation("AcceptedBy")
+  invitationsRevoked   CompanyInvitation[]      @relation("RevokedBy")
+  submissions          VerificationSubmission[] @relation("SubmittedBy")
+  decisions            VerificationSubmission[] @relation("DecidedBy")
+  reportsMade          Report[]
+  moderationActions    ModerationAction[]
+  warningsAcknowledged Warning[]
 
   @@index([companyId])
   @@map("users")
@@ -112,12 +127,15 @@ model Candidate {
   embedding            Unsupported("vector(384)")?
   embeddedAt           DateTime?
 
-  user          User            @relation(fields: [userId], references: [id])
-  city          City            @relation(fields: [cityId], references: [id])
-  roles         CandidateRole[]
-  applications  Application[]
-  notifications Notification[]
-  voiceIntros   VoiceIntro[]
+  user              User               @relation(fields: [userId], references: [id])
+  city              City               @relation(fields: [cityId], references: [id])
+  roles             CandidateRole[]
+  applications      Application[]
+  notifications     Notification[]
+  voiceIntros       VoiceIntro[]
+  reports           Report[]
+  warnings          Warning[]
+  moderationActions ModerationAction[]
 
   @@index([cityId])
   @@index([geom], type: Gist, map: "candidates_geom_gist")
@@ -146,12 +164,21 @@ model CandidateRole {
   @@map("candidate_roles")
 }
 
+// SUSPENDED is its own status rather than a flag beside LIVE, so every
+// check that a drive is LIVE (search, applying, check-in, alerts) refuses a
+// suspended drive without being told about suspension.
 enum DriveStatus {
   DRAFT
   PENDING
   LIVE
   EXPIRED
   CANCELLED
+  SUSPENDED
+}
+
+enum SuspensionCause {
+  DRIVE
+  COMPANY
 }
 
 model Drive {
@@ -175,6 +202,11 @@ model Drive {
   // at the company may run any of its drives, since on the day whoever is
   // at the desk works it.
   ownerId            String
+  // While SUSPENDED: the status to restore when it is lifted, and whether
+  // the drive itself or its whole company was suspended. Lifting a company
+  // restores only the drives its suspension caused.
+  suspendedFrom      DriveStatus?
+  suspendedCause     SuspensionCause?
   needsManualGeocode Boolean                                @default(false)
   // Set when the employer placed the venue from a device at the venue. Area
   // geocoding can be a kilometre off, so a pinned point is kept until the
@@ -191,13 +223,15 @@ model Drive {
   embedding          Unsupported("vector(384)")?
   embeddedAt         DateTime?
 
-  company       Company        @relation(fields: [companyId], references: [id])
-  owner         User           @relation("DriveOwner", fields: [ownerId], references: [id])
-  role          Role           @relation(fields: [roleId], references: [id])
-  city          City           @relation(fields: [cityId], references: [id])
-  slots         DriveSlot[]
-  applications  Application[]
-  notifications Notification[]
+  company           Company            @relation(fields: [companyId], references: [id])
+  owner             User               @relation("DriveOwner", fields: [ownerId], references: [id])
+  role              Role               @relation(fields: [roleId], references: [id])
+  city              City               @relation(fields: [cityId], references: [id])
+  slots             DriveSlot[]
+  applications      Application[]
+  notifications     Notification[]
+  reports           Report[]
+  moderationActions ModerationAction[]
 
   @@index([companyId])
   @@index([ownerId])
@@ -254,7 +288,7 @@ model Application {
   candidate     Candidate  @relation(fields: [candidateId], references: [id])
   slot          DriveSlot? @relation(fields: [slotId], references: [id])
   shortlistedBy User?      @relation("ShortlistedBy", fields: [shortlistedById], references: [id])
-  checkIn   CheckIn?
+  checkIn       CheckIn?
 
   // One application per candidate per drive, enforced here rather than by a
   // check-then-insert, so two concurrent applies cannot both land. A release
@@ -539,4 +573,153 @@ model PaymentEvent {
   @@index([eventId])
   @@index([gatewayPaymentId])
   @@map("payment_events")
+}
+
+enum SubmissionStatus {
+  AWAITING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum VerificationRejection {
+  DOCUMENT_UNREADABLE
+  DETAILS_DONT_MATCH
+  GSTIN_INVALID
+  NOT_A_BUSINESS
+  OTHER
+}
+
+// One request for verification and how it was decided. A rejected company
+// sends a new one rather than editing this, so the history of what was sent
+// and decided stays. The provider's result is recorded as advice for the
+// admin, who makes the decision.
+model VerificationSubmission {
+  id              String                 @id @default(cuid())
+  companyId       String
+  // Null for submissions backfilled from the GSTIN a company already had.
+  submittedById   String?
+  gstin           String
+  documentKeys    String[]
+  status          SubmissionStatus       @default(AWAITING_REVIEW)
+  providerName    String?
+  providerCode    String?
+  providerParams  Json?
+  decidedById     String?
+  decidedAt       DateTime?
+  rejectionReason VerificationRejection?
+  decisionNote    String?
+  createdAt       DateTime               @default(now())
+
+  company     Company @relation(fields: [companyId], references: [id])
+  submittedBy User?   @relation("SubmittedBy", fields: [submittedById], references: [id])
+  decidedBy   User?   @relation("DecidedBy", fields: [decidedById], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([status])
+  @@map("verification_submissions")
+}
+
+enum ReportTarget {
+  DRIVE
+  CANDIDATE
+}
+
+// One enum for both targets; which reasons fit which target is
+// REPORT_REASONS in @walkins/shared.
+enum ReportReason {
+  ASKS_FOR_MONEY
+  NOT_A_REAL_JOB
+  MISLEADING_PAY
+  ABUSIVE
+  FAKE_PROFILE
+  OTHER
+}
+
+enum ReportOutcome {
+  DISMISSED
+  ACTIONED
+}
+
+// A report never changes anything by itself: it waits for an admin. That is
+// what keeps logged-out reporting from being a way to take a drive down.
+model Report {
+  id              String         @id @default(cuid())
+  targetType      ReportTarget
+  driveId         String?
+  candidateId     String?
+  reason          ReportReason
+  details         String?
+  // Null for a logged-out report, which carries reporterNetwork instead: a
+  // keyed hash of the address, enough to group one network's reports and
+  // never the address itself.
+  reporterUserId  String?
+  reporterNetwork String?
+  createdAt       DateTime       @default(now())
+  resolvedAt      DateTime?
+  outcome         ReportOutcome?
+  actionId        String?
+
+  drive     Drive?            @relation(fields: [driveId], references: [id])
+  candidate Candidate?        @relation(fields: [candidateId], references: [id])
+  reporter  User?             @relation(fields: [reporterUserId], references: [id])
+  action    ModerationAction? @relation(fields: [actionId], references: [id])
+
+  @@index([driveId, createdAt])
+  @@index([candidateId, createdAt])
+  @@index([reporterUserId])
+  @@index([reporterNetwork])
+  @@map("reports")
+}
+
+enum ModerationActionKind {
+  DISMISS
+  WARN
+  SUSPEND_DRIVE
+  SUSPEND_COMPANY
+  LIFT_DRIVE
+  LIFT_COMPANY
+}
+
+model ModerationAction {
+  id          String               @id @default(cuid())
+  kind        ModerationActionKind
+  adminId     String
+  driveId     String?
+  companyId   String?
+  candidateId String?
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  admin     User       @relation(fields: [adminId], references: [id])
+  drive     Drive?     @relation(fields: [driveId], references: [id])
+  company   Company?   @relation(fields: [companyId], references: [id])
+  candidate Candidate? @relation(fields: [candidateId], references: [id])
+  reports   Report[]
+  warnings  Warning[]
+
+  @@index([createdAt])
+  @@map("moderation_actions")
+}
+
+// Shown to the company's people, or to the candidate, until someone
+// acknowledges it: what was reported and, optionally, the admin's words.
+model Warning {
+  id               String       @id @default(cuid())
+  actionId         String
+  companyId        String?
+  candidateId      String?
+  reason           ReportReason
+  note             String?
+  createdAt        DateTime     @default(now())
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+
+  action         ModerationAction @relation(fields: [actionId], references: [id])
+  company        Company?         @relation(fields: [companyId], references: [id])
+  candidate      Candidate?       @relation(fields: [candidateId], references: [id])
+  acknowledgedBy User?            @relation(fields: [acknowledgedById], references: [id])
+
+  @@index([companyId])
+  @@index([candidateId])
+  @@map("warnings")
 }
