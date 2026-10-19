@@ -9,6 +9,8 @@ import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { Countdown } from "@/components/board/flap-display";
 import { Slab } from "@/components/board/slab";
 import { BookingPanel } from "./booking-panel";
+import { ReportDrive } from "./report-drive";
+import { NeverPay } from "@/components/never-pay";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 
@@ -51,6 +53,7 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
 
   const state = deriveBoardState(drive, now);
   const ended = state === "expired";
+  const suspended = drive.status === "SUSPENDED";
   const when = formatWhen(drive.startsAt, drive.endsAt, now);
   const cityPath = `/jobs/${drive.city.name.toLowerCase()}`;
 
@@ -74,9 +77,23 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
           </section>
         )}
 
+        {suspended && (
+          <section role="status" className="border-l-4 border-closing-lamp bg-housing-raised p-5" aria-labelledby="paused-heading">
+            <StatusMark state="suspended" surface="housing" />
+            <h2 id="paused-heading" className="type-h2 mt-2">
+              {t("pausedHeading")}
+            </h2>
+            <p className="type-body mt-2">{t("pausedBody")}</p>
+            <Link href={cityPath} className="type-meta mt-4 inline-block text-stock underline underline-offset-4">
+              {t("seeLive", { city: drive.city.name })}
+            </Link>
+          </section>
+        )}
+
         <Slab state={state} depth="lg" className="w-full">
           <h1 className="type-h2">{drive.role.title}</h1>
           <p className="type-meta mt-1 text-ink-muted">{drive.venueAddress}</p>
+          {!drive.employerVerified && <p className="type-meta mt-2 border-l-2 border-pending-lamp pl-2 text-ink">{t("unverified")}</p>}
           <dl className="mt-5">
             <Row label={t("when")}>
               <span className="whitespace-nowrap">{when.day}</span>
@@ -98,7 +115,9 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
           </div>
         </Slab>
 
-        {!ended && drive.slots.length > 0 && (
+        <NeverPay reportHref="#report" />
+
+        {!ended && !suspended && drive.slots.length > 0 && (
           <BookingPanel
             drive={drive}
             now={now}
@@ -109,13 +128,14 @@ export default function DriveDetailClient({ initial, renderedAt }: { initial: Pu
       </div>
 
       <div className="contents lg:grid lg:content-start lg:gap-6">
-        {!ended && <Countdown startsAt={drive.startsAt} endsAt={drive.endsAt} className="order-first lg:order-none" />}
+        {!ended && !suspended && <Countdown startsAt={drive.startsAt} endsAt={drive.endsAt} className="order-first lg:order-none" />}
         <section aria-label={t("venueMap")}>
           <CityPlane drives={[drive]} now={now} selectedId={null} className="h-80 lg:h-[28rem]" />
           <p className="type-meta mt-3 text-housing-muted">
             {drive.needsManualGeocode ? t("pillarCentre") : ended ? t("pillarVenue") : t("pillarVenueSeats")}
           </p>
         </section>
+        <ReportDrive driveId={drive.id} />
       </div>
     </div>
   );

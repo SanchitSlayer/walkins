@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { MAX_TRAVEL_KM } from "@walkins/shared";
+import { MAX_TRAVEL_KM, type Warning } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useRequireRole } from "@/lib/use-require-role";
 import { nearestCity } from "@/lib/geo";
@@ -12,6 +12,7 @@ import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
 import { TelegramPanel } from "./telegram-panel";
 import { VoicePanel } from "./voice-panel";
+import { WarningNotices } from "@/components/warning-notices";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
@@ -44,9 +45,12 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [warnings, setWarnings] = useState<Warning[]>([]);
+  const loadWarnings = () => apiClient.myWarnings().then(setWarnings);
 
   useEffect(() => {
     if (!ready) return;
+    loadWarnings();
     apiClient.listRoles().then(setRoles);
     apiClient.listCities().then(setCities);
     apiClient.getMyProfile().then((profile) => {
@@ -134,6 +138,8 @@ export default function ProfilePage() {
               <h1 className="type-h1">{t("heading")}</h1>
               <p className="type-body mt-2 text-housing-muted">{t("intro")}</p>
             </div>
+
+            <WarningNotices warnings={warnings} audience="candidate" onAcknowledged={loadWarnings} />
 
             <Slab depth="md" className="grid w-full gap-6 p-5">
               <BoardField label={t("travel", { distance: formatDistance(radiusKm) })} surface="stock">

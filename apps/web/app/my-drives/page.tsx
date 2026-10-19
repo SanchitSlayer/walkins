@@ -9,6 +9,7 @@ import { useRequireRole } from "@/lib/use-require-role";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
+import { NeverPay } from "@/components/never-pay";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
@@ -38,13 +39,20 @@ function UpcomingPass({
   const when = formatWhen(drive.startsAt, drive.endsAt, now);
   const checkInOpen = now.getTime() >= new Date(drive.startsAt).getTime() - CHECK_IN_OPENS_MS;
   const booked = application.state === "CONFIRMED";
+  const paused = drive.status === "SUSPENDED";
+  const cancelled = drive.status === "CANCELLED";
 
   return (
-    <Slab depth="md" state={booked ? "live" : undefined} className="grid w-full gap-4">
+    <Slab depth="md" state={paused ? "suspended" : cancelled ? "cancelled" : booked ? "live" : undefined} className="grid w-full gap-4">
       <div>
         <h3 className="type-h3">{t("roleAt", { role: drive.roleTitle, company: drive.companyName })}</h3>
         <p className="type-meta text-ink-muted">{drive.venueAddress}</p>
       </div>
+      {(paused || cancelled) && (
+        <p role="status" className="type-body border-l-4 border-closing-ink pl-3">
+          {paused ? t("paused") : t("cancelled")}
+        </p>
+      )}
       <dl className="grid gap-1">
         <div className="flex flex-wrap gap-x-2">
           <dt className="type-meta text-ink-muted">{t("drive")}</dt>
@@ -73,7 +81,7 @@ function UpcomingPass({
         <p className="type-meta text-ink-muted">{t("noSeatHeld")}</p>
       )}
       <div className="flex flex-wrap gap-3">
-        {booked && checkInOpen && (
+        {booked && checkInOpen && drive.status === "LIVE" && (
           <Link href="/checkin" className={boardButtonClass("stock")}>
             {t("checkIn")}
           </Link>
@@ -151,6 +159,8 @@ export default function MyDrivesPage() {
       <Masthead />
       <main className="mx-auto grid max-w-3xl gap-10 px-4 py-8 sm:px-6">
         <h1 className="type-h1">{t("heading")}</h1>
+
+        <NeverPay />
 
         {savedAt && (
           <p className="type-meta border-l-4 border-pending-lamp bg-housing-raised p-4">
