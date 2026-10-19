@@ -2,7 +2,6 @@ import { BadRequestException } from "@nestjs/common";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ledgerAccount, PLATFORM_ACCOUNT, postTransaction, prisma } from "@walkins/db";
 import { AdminService } from "../src/admin/admin.service";
-import { MockVerificationProvider } from "../src/admin/verification-provider";
 import { ApplicationsService } from "../src/applications/applications.service";
 import { CheckInTokenService } from "../src/check-in/check-in-token.service";
 import { CheckInService } from "../src/check-in/check-in.service";
@@ -14,7 +13,7 @@ import { createFixture, type Fixture, removeFixture } from "./fixtures";
 
 const live = { publish: vi.fn(async () => {}) } as unknown as LiveGateway;
 const jobs = { charge: vi.fn(async () => {}), queues: () => [] } as unknown as JobsService;
-const admin = new AdminService(new MockVerificationProvider(), jobs);
+const admin = new AdminService(jobs);
 const tokens = new CheckInTokenService();
 const checkIns = new CheckInService(tokens, live, new RateLimiterService(), jobs);
 const applications = new ApplicationsService(live);
@@ -82,30 +81,13 @@ afterAll(async () => {
   redis.disconnect();
 });
 
-describe("the mock verification provider", () => {
-  const provider = new MockVerificationProvider();
-
-  it("passes a well-formed GSTIN and says it looked nothing up", async () => {
-    await expect(provider.verify({ name: "x", gstin: "29ABCDE1234F1Z5" })).resolves.toEqual({
-      status: "VERIFIED",
-      reason: "GSTIN is well formed (mock check: no registry lookup)",
-    });
-  });
-
-  it("rejects a missing, malformed or impossible GSTIN with the reason", async () => {
-    await expect(provider.verify({ name: "x", gstin: null })).resolves.toMatchObject({ status: "REJECTED", reason: "No GSTIN on file" });
-    await expect(provider.verify({ name: "x", gstin: "27ABC1234" })).resolves.toMatchObject({ status: "REJECTED" });
-    await expect(provider.verify({ name: "x", gstin: "99ABCDE1234F1Z5" })).resolves.toMatchObject({ status: "REJECTED", reason: "99 is not an Indian state code" });
-  });
-});
-
 describe("approving a drive", () => {
   it("lists every blocker, refuses to approve, and leaves the drive pending", async () => {
-    await prisma.company.update({ where: { id: fixture.company.id }, data: { verificationStatus: "PENDING", gstin: "29ABCDE1234F1Z5" } });
+    await prisma.company.update({ where: { id: fixture.company.id }, data: { verificationStatus: "UNSUBMITTED" } });
 
     const listed = (await admin.drives()).find((d) => d.id === pendingDriveId)!;
     expect(listed.blockers).toEqual([
-      { code: "errors.admin.blockerNotVerified", params: { company: "Admin Test Company", status: "pending" } },
+      { code: "errors.admin.blockerNotSubmitted", params: { company: "Admin Test Company" } },
       { code: "errors.admin.blockerBalance", params: { company: "Admin Test Company", balance: "₹0", price: "₹200" } },
     ]);
 
@@ -113,15 +95,15 @@ describe("approving a drive", () => {
     expect((await prisma.drive.findUniqueOrThrow({ where: { id: pendingDriveId } })).status).toBe("PENDING");
   });
 
-  it("verifies through the provider and records who did it", async () => {
-    const outcome = await admin.verifyCompany(adminId, fixture.company.id, "check");
-    expect(outcome.company.verificationStatus).toBe("VERIFIED");
-    expect(outcome.provider).toMatchObject({ name: "mock-gstin", status: "VERIFIED" });
-    const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: fixture.company.id, action: "PENDING->VERIFIED" } });
-    expect(audit.actorUserId).toBe(adminId);
+  // Waiting on an admin shouldn't stop a company operating: it goes live at
+  // limited reach (see trust.test.ts), so only the balance blocks it now.
+  it("lets a company awaiting verification review go live", async () => {
+    await prisma.company.update({ where: { id: fixture.company.id }, data: { verificationStatus: "PENDING" } });
+    const listed = (await admin.drives()).find((d) => d.id === pendingDriveId)!;
+    expect(listed.blockers.map((b) => b.code)).toEqual(["errors.admin.blockerBalance"]);
   });
 
-  it("still refuses a verified company below the price of one check-in", async () => {
+  it("still refuses a company below the price of one check-in", async () => {
     await grant(199_00, "short");
     await expect(admin.moderateDrive(adminId, pendingDriveId, { decision: "approve" })).rejects.toThrow(/below the ₹200 cost/);
   });

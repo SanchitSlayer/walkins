@@ -112,6 +112,15 @@ export async function removeFixture(fixture: Fixture) {
     },
   });
   await prisma.companyInvitation.deleteMany({ where: { companyId: { in: companyIds } } });
+  const candidateIds = fixture.candidates.map((c) => c.candidateId);
+  const allDriveIds = [driveId, ...otherDrives.map((d) => d.id)];
+  await prisma.warning.deleteMany({ where: { OR: [{ companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] } });
+  await prisma.report.deleteMany({ where: { OR: [{ driveId: { in: allDriveIds } }, { candidateId: { in: candidateIds } }] } });
+  await prisma.moderationAction.deleteMany({
+    where: { OR: [{ driveId: { in: allDriveIds } }, { companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] },
+  });
+  await prisma.verificationSubmission.deleteMany({ where: { companyId: { in: companyIds } } });
+  await prisma.auditLog.deleteMany({ where: { entityId: { in: candidateIds } } });
   // Ledger rows are append-only and stay behind, which is why tests run
   // against their own database (test/setup.ts). Payment orders are not.
   await prisma.paymentOrder.deleteMany({ where: { companyId: fixture.company.id } });
