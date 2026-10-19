@@ -189,4 +189,46 @@ describe("processAlert", () => {
     expect(message.url).toBe("http://localhost:3000/");
     await prisma.application.delete({ where: { id: application.id } });
   });
+
+  it("ends every alert with the never-pay warning and where to report", async () => {
+    await processAlert({ data: job, attemptsMade: 0 }, deps);
+
+    const [message] = channel.sent;
+    expect(message.text).toContain("Walkins never charges candidates");
+    expect(message.text).toContain(`http://localhost:3000/drives/${ids.drive}#report`);
+  });
+
+  it("tells a booked candidate a suspended drive is paused, and not anyone once it is back on", async () => {
+    const suspended: AlertJob = { ...job, templateKey: "drive_suspended" };
+    const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED" } });
+
+    await expect(processAlert({ data: suspended, attemptsMade: 0 }, deps)).resolves.toBe("skipped: drive is live");
+
+    await prisma.notification.deleteMany({ where: { driveId: ids.drive } });
+    await prisma.drive.update({ where: { id: ids.drive }, data: { status: "SUSPENDED" } });
+    await expect(processAlert({ data: suspended, attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+
+    const [message] = channel.sent;
+    expect(message.text).toContain("paused while Walkins checks it");
+    expect(message.text).toContain("You haven't done anything wrong");
+    expect(message.text).toContain("Walkins never charges candidates");
+    await prisma.application.delete({ where: { id: application.id } });
+  });
+
+  it("tells a booked candidate a cancelled drive won't count against them, and nobody who released their seat", async () => {
+    const cancelled: AlertJob = { ...job, templateKey: "drive_cancelled" };
+    await prisma.drive.update({ where: { id: ids.drive }, data: { status: "CANCELLED" } });
+    const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "WITHDRAWN" } });
+
+    await expect(processAlert({ data: cancelled, attemptsMade: 0 }, deps)).resolves.toBe("skipped: candidate is no longer confirmed");
+
+    await prisma.notification.deleteMany({ where: { driveId: ids.drive } });
+    await prisma.application.update({ where: { id: application.id }, data: { state: "CONFIRMED" } });
+    await expect(processAlert({ data: cancelled, attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+
+    const [message] = channel.sent;
+    expect(message.text).toContain("won't count against you");
+    expect(message.url).toBe("http://localhost:3000/");
+    await prisma.application.delete({ where: { id: application.id } });
+  });
 });

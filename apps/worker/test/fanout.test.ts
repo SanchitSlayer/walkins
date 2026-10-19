@@ -29,7 +29,7 @@ afterAll(async () => {
 
 describe("AlertService.fanOut", () => {
   it("queues exactly one job per targeted candidate, paging past the page size", async () => {
-    const alerts = new AlertService(queue, fakeTargeting, 2);
+    const alerts = new AlertService(queue, fakeTargeting, 2, async () => null);
 
     await expect(alerts.fanOut("d1", "drive_48h")).resolves.toBe(5);
     expect(targetingCalls).toBe(3);
@@ -39,10 +39,20 @@ describe("AlertService.fanOut", () => {
   });
 
   it("queues nothing new when the same fanout runs again", async () => {
-    const alerts = new AlertService(queue, fakeTargeting, 2);
+    const alerts = new AlertService(queue, fakeTargeting, 2, async () => null);
 
     await alerts.fanOut("d1", "drive_48h");
 
     expect(await queue.count()).toBe(5);
+  });
+
+  it("stops at the nearest few for a company awaiting verification", async () => {
+    await queue.obliterate({ force: true });
+    const alerts = new AlertService(queue, fakeTargeting, 2, async () => 3);
+
+    await expect(alerts.fanOut("d1", "drive_48h")).resolves.toBe(3);
+
+    const ids = (await queue.getJobs(["waiting"])).map((job) => job.id).sort();
+    expect(ids).toEqual(candidates.slice(0, 3).map((c) => `alert.d1.${c.candidateId}.drive_48h`).sort());
   });
 });
