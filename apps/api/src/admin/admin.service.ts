@@ -1,8 +1,6 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { CHECK_IN_PRICE_EVENT, companyBalance, priceAt, prisma, toPaise } from "@walkins/db";
 import {
-  type AdminCompany,
-  adminCompanySchema,
   type AdminDrive,
   adminDriveSchema,
   type CreatePricingRule,
@@ -17,11 +15,8 @@ import {
   type PricingRuleView,
   pricingRuleSchema,
   translate,
-  type VerificationOutcome,
-  verificationOutcomeSchema,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
-import { type IVerificationProvider, VERIFICATION_PROVIDER } from "./verification-provider";
 import { apiError } from "../common/api-error";
 
 const FAILED_JOBS_PER_QUEUE = 100;
@@ -29,55 +24,7 @@ const LEDGER_PAGE = 200;
 
 @Injectable()
 export class AdminService {
-  constructor(
-    @Inject(VERIFICATION_PROVIDER) private readonly provider: IVerificationProvider,
-    private readonly jobs: JobsService,
-  ) {}
-
-  async companies(): Promise<AdminCompany[]> {
-    const companies = await prisma.company.findMany({
-      include: { city: { select: { name: true } } },
-      // Waiting for a decision first, then newest.
-      orderBy: [{ verificationStatus: "asc" }, { createdAt: "desc" }],
-    });
-    return Promise.all(companies.map((c) => this.toAdminCompany(c)));
-  }
-
-  // "check" runs the provider and applies what it says; "reject" is the
-  // admin's own decision, with their reason. Either way the change and who
-  // made it go in the audit log.
-  async verifyCompany(adminId: string, companyId: string, decision: "check" | "reject", reason?: string): Promise<VerificationOutcome> {
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
-    if (!company) throw new NotFoundException(apiError("errors.admin.companyNotFound"));
-
-    const result =
-      decision === "check"
-        ? { provider: this.provider.name, ...(await this.provider.verify(company)) }
-        : { provider: null, status: "REJECTED" as const, reason: reason || "Rejected by an admin" };
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const next = await tx.company.update({
-        where: { id: companyId },
-        data: { verificationStatus: result.status },
-        include: { city: { select: { name: true } } },
-      });
-      await tx.auditLog.create({
-        data: {
-          actorUserId: adminId,
-          entityType: "company",
-          entityId: companyId,
-          action: `${company.verificationStatus}->${result.status}`,
-          before: { verificationStatus: company.verificationStatus },
-          after: { verificationStatus: result.status, reason: result.reason, provider: result.provider },
-        },
-      });
-      return next;
-    });
-    return verificationOutcomeSchema.parse({
-      company: await this.toAdminCompany(updated),
-      provider: result.provider ? { name: result.provider, status: result.status, reason: result.reason } : null,
-    });
-  }
+  constructor(private readonly jobs: JobsService) {}
 
   async drives(): Promise<AdminDrive[]> {
     const drives = await prisma.drive.findMany({
@@ -89,8 +36,10 @@ export class AdminService {
   }
 
   // Approval is where a drive goes live, so it is where the rules that keep a
-  // live drive honest are enforced: a verified company, and enough credit for
-  // at least one check-in. Everything that blocks it is reported at once.
+  // live drive honest are enforced: a company that is verified or waiting on
+  // review (waiting goes live at limited reach), not suspended, with enough
+  // credit for at least one check-in. Everything that blocks it is reported
+  // at once.
   async moderateDrive(adminId: string, driveId: string, { decision, reason }: ModerateDrive): Promise<AdminDrive> {
     const drive = await prisma.drive.findUnique({ where: { id: driveId }, include: { company: true, role: true, city: true } });
     if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
@@ -201,23 +150,10 @@ export class AdminService {
     return pricingRuleSchema.parse({ ...rule, effectiveFrom: rule.effectiveFrom.toISOString(), createdAt: rule.createdAt.toISOString() });
   }
 
-  private async toAdminCompany(c: { id: string; name: string; gstin: string | null; contactPhone: string; verificationStatus: AdminCompany["verificationStatus"]; createdAt: Date; city: { name: string } }) {
-    return adminCompanySchema.parse({
-      id: c.id,
-      name: c.name,
-      gstin: c.gstin,
-      contactPhone: c.contactPhone,
-      cityName: c.city.name,
-      verificationStatus: c.verificationStatus,
-      createdAt: c.createdAt.toISOString(),
-      balancePaise: await companyBalance(prisma, c.id),
-    });
-  }
-
   private async toAdminDrive(d: {
     id: string;
     companyId: string;
-    company: { name: string; verificationStatus: string };
+    company: { name: string; verificationStatus: string; suspendedAt: Date | null };
     role: { title: string };
     city: { name: string };
     venueAddress: string;
@@ -230,9 +166,10 @@ export class AdminService {
     const [balance, price] = await Promise.all([companyBalance(prisma, d.companyId), priceAt(prisma, CHECK_IN_PRICE_EVENT, now)]);
     const blockers: AdminDrive["blockers"] = [];
     if (d.status === "PENDING") {
-      if (d.company.verificationStatus !== "VERIFIED") {
-        blockers.push({ code: "errors.admin.blockerNotVerified", params: { company: d.company.name, status: d.company.verificationStatus.toLowerCase() } });
+      if (d.company.verificationStatus === "UNSUBMITTED" || d.company.verificationStatus === "REJECTED") {
+        blockers.push({ code: `errors.admin.blockerNot${d.company.verificationStatus === "REJECTED" ? "Verified" : "Submitted"}`, params: { company: d.company.name } });
       }
+      if (d.company.suspendedAt) blockers.push({ code: "errors.admin.blockerSuspended", params: { company: d.company.name } });
       if (price !== null && balance < price) {
         blockers.push({
           code: "errors.admin.blockerBalance",

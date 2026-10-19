@@ -5,8 +5,6 @@ import {
   createPricingRuleSchema,
   type ModerateDrive,
   moderateDriveSchema,
-  type VerifyCompany,
-  verifyCompanySchema,
 } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
@@ -20,21 +18,6 @@ import { AdminService } from "./admin.service";
 @Roles("ADMIN")
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
-
-  @Get("companies")
-  companies() {
-    return this.admin.companies();
-  }
-
-  @Post("companies/:id/verification")
-  @HttpCode(200)
-  verify(
-    @CurrentUser() user: AccessTokenPayload,
-    @Param("id") companyId: string,
-    @Body(new ZodValidationPipe(verifyCompanySchema)) body: VerifyCompany,
-  ) {
-    return this.admin.verifyCompany(user.userId, companyId, body.decision, body.reason);
-  }
 
   @Get("drives")
   drives() {
