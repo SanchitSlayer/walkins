@@ -14,7 +14,11 @@
     "where": "{venue} ({distance} from your home)",
     "drive_48h": "New walk-in near you\n{role} at {company}\n\nWhen: {day}, {time}\nWhere: {where}\nPay: {pay}\n\nWalk in any time in that window. No application needed.",
     "drive_morning_of": "Reminder: your walk-in interview is today\n{role} at {company}\n\n{slot, select, none {Doors: {doors}} other {Your slot: {slot} (doors {doors})}}\nWhere: {where}\nPay: {pay}\n\nYou're getting this because you confirmed you'd attend.",
-    "application_rejected": "Update on {role} at {company}\n\n{company} isn't taking your application forward for this drive, so please don't travel to it.\nYour slot has been released.\n\nThank you for your interest. Other walk-ins near you are on the link below."
+    "application_rejected": "Update on {role} at {company}\n\n{company} isn't taking your application forward for this drive, so please don't travel to it.\nYour slot has been released.\n\nThank you for your interest. Other walk-ins near you are on the link below.",
+    "neverPay": "Walkins never charges candidates, and no employer should ask you for money. If anyone does, report it here: {link}",
+    "drive_cancelled": "Cancelled: {role} at {company}\n\n{company} has cancelled this walk-in on {day}, so please don't travel to it. This won't count against you in any way.\n\nOther walk-ins near you are on the link below.",
+    "drive_suspended": "Paused: {role} at {company}\n\nThis drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now. We'll message you here if it goes ahead, and holding this booking won't count against you.",
+    "drive_reinstated": "Back on: {role} at {company}\n\nWalkins has finished checking this drive, and it's going ahead as planned.\n\nWhen: {day}, {time}\nWhere: {where}\n\nYour booking is still held."
   },
   "errors": {
     "generic": "That didn't go through. Try again in a moment.",
@@ -76,7 +80,8 @@
       "tooFar": "You're {distance} from the venue. Check-in works within {limit}; if you're here, ask the employer at the desk to check you in.",
       "notACode": "That isn't a Walkins check-in code. Scan the code on the screen at the venue.",
       "refused": "This check-in was refused. Ask the employer at the desk to check you in.",
-      "needsRegistering": "This check-in needs registering at the desk. Show this screen to the employer."
+      "needsRegistering": "This check-in needs registering at the desk. Show this screen to the employer.",
+      "suspended": "This drive is paused while Walkins checks it, so check-in is closed. You haven't done anything wrong. Please don't pay anyone at the venue for this job."
     },
     "drive": {
       "notFound": "This drive doesn't exist or has been removed. Check the link, or find it from the list of drives.",
@@ -87,7 +92,9 @@
       "pinFar": "This device is {km} km from the centre of {city}, where this drive is listed.",
       "submitOnlyDraft": "Only a draft can be sent for review, and this drive has already been sent.",
       "searchNeedsPlace": "Choose a city, or sign in with a saved home location, to search.",
-      "slotsUneven": "The time between doors open and close doesn't divide into {minutes}-minute slots. Change the times or the slot length."
+      "slotsUneven": "The time between doors open and close doesn't divide into {minutes}-minute slots. Change the times or the slot length.",
+      "suspendedDesk": "This drive is paused while Walkins checks it, so its check-ins and applicants can't be changed for now. Everything stays as it was until the check ends.",
+      "notCancellable": "Only a draft, a drive waiting for review or a live drive can be cancelled, and this one has already ended or been cancelled."
     },
     "application": {
       "notFound": "This application no longer exists. Reload the page.",
@@ -100,7 +107,8 @@
       "slotFull": "That slot has just filled up. Pick another one.",
       "illegal": "That change isn't possible for this application now. Reload the page to see where it stands.",
       "stale": "This application changed while you were looking at it. Reload the page and try again.",
-      "notApplicant": "Not an applicant to this drive."
+      "notApplicant": "Not an applicant to this drive.",
+      "suspended": "This drive is paused while Walkins checks it, so it isn't taking bookings right now. You haven't done anything wrong. Other walk-ins near you are on the home page."
     },
     "knockout": {
       "missing": "Answer “{prompt}”.",
@@ -117,16 +125,17 @@
       "topUpNotFound": "This top-up doesn't exist. Start a new one."
     },
     "admin": {
-      "companyNotFound": "This company doesn't exist. Reload the list.",
       "jobNotFound": "This job is no longer in the queue. Reload the list.",
       "jobNotFailed": "Only a failed job can be retried, and this one has already run or is running.",
       "priceInPast": "A new price can only start now or later. Choose a later time.",
       "moderateOnlyPending": "Only a drive waiting for review can be approved or sent back, and this one is {status}.",
       "cantGoLive": "This drive can't go live yet: {blockers}",
       "changedWhileReviewing": "The drive changed while you were reviewing it. Reload and try again.",
-      "blockerNotVerified": "{company} isn't verified ({status}).",
+      "blockerNotVerified": "{company}'s verification was turned down. It can go live again once it resubmits.",
       "blockerBalance": "{company}'s balance is {balance}, below the {price} cost of one check-in.",
-      "blockerEnded": "The drive has already ended."
+      "blockerEnded": "The drive has already ended.",
+      "blockerNotSubmitted": "{company} hasn't sent anything for verification yet.",
+      "blockerSuspended": "{company} is suspended."
     },
     "validation": {
       "required": "{field} is missing. Fill it in, then try again.",
@@ -154,7 +163,8 @@
       "knockoutAccepted": "An answer marked as able to book isn't in the list of answers. Tick it again after editing the list.",
       "tooLowExclusive": "{field} needs to be more than {minimum}.",
       "tooHighExclusive": "{field} needs to be less than {maximum}.",
-      "invitePhone": "Enter the 10-digit mobile number they sign in with, without +91 or spaces."
+      "invitePhone": "Enter the 10-digit mobile number they sign in with, without +91 or spaces.",
+      "gstin": "Enter the 15-character GSTIN as it appears on your GST certificate, for example 29ABCDE1234F1Z5."
     },
     "people": {
       "cannot": {
@@ -169,7 +179,8 @@
       "alreadyInvited": "{phone} already has an invitation waiting. Revoke it first if you want to send a new one.",
       "invitationGone": "That invitation has already been accepted, revoked or replaced. Reload the page to see where it stands.",
       "notMember": "That person isn't in your company any more. Reload the page to see who is.",
-      "notARecruiter": "Drives can only be handed to an owner or a recruiter in your company. Choose someone who runs drives."
+      "notARecruiter": "Drives can only be handed to an owner or a recruiter in your company. Choose someone who runs drives.",
+      "companySuspended": "{company} is suspended while Walkins looks into reports about it, so nothing can be changed for now. You can still see everything, and it all stays as it was."
     },
     "invitation": {
       "adminAccount": "This is a platform admin account, which can't join a company. Ask the company to invite a different number.",
@@ -180,6 +191,24 @@
     },
     "live": {
       "unknownView": "This board link isn't complete. Open the board again from the drive's page."
+    },
+    "moderation": {
+      "notApplicable": "That action doesn't apply to this kind of report. Choose another action.",
+      "notSuspendable": "Only a live drive, or one waiting for review, can be suspended. Reload the queue to see where it stands.",
+      "alreadySuspended": "This company is already suspended. Reload the queue.",
+      "notSuspended": "This isn't suspended any more. Reload the queue.",
+      "liftCompanyFirst": "This drive was suspended along with its company. Lift the company's suspension instead.",
+      "endedWhileSuspended": "This drive ended while it was suspended, so it stays suspended as a record. Nobody will be marked as not attending it.",
+      "warningGone": "This notice has already been dismissed. Reload the page."
+    },
+    "verification": {
+      "documentTooLarge": "That file is over 5 MB. Send a smaller scan or photo of the document.",
+      "noDocuments": "Add at least one document, such as your GST registration certificate.",
+      "documentMissing": "One of the documents didn't finish uploading. Remove it and add it again.",
+      "alreadyWaiting": "Your company's documents are already waiting for review. You'll see the decision on this page.",
+      "alreadyVerified": "Your company is already verified. There's nothing more to send.",
+      "submissionNotFound": "This submission doesn't exist. Reload the list.",
+      "alreadyDecided": "Someone has already decided on this submission. Reload the list to see the decision."
     }
   },
   "fields": {
@@ -220,7 +249,11 @@
     "applicationIds": "Applicants",
     "role": "Their role",
     "successorId": "Who takes over",
-    "ownerId": "Owner"
+    "ownerId": "Owner",
+    "gstin": "GSTIN",
+    "documentKeys": "Documents",
+    "details": "What happened",
+    "note": "Note"
   },
   "board": {
     "state": {
@@ -230,7 +263,8 @@
       "pending": "Pending review",
       "draft": "Draft",
       "expired": "Expired",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "suspended": "Paused"
     },
     "slots": {
       "open": "Open {perToken, plural, =1 {seat} other {(# seats each)}}",
@@ -330,7 +364,10 @@
       "venueMap": "Venue map",
       "pillarCentre": "This venue's address couldn't be placed exactly, so the pillar stands at the city centre. Go by the address.",
       "pillarVenue": "The pillar stands at the venue.",
-      "pillarVenueSeats": "The pillar stands at the venue. Its lit top is seats still open."
+      "pillarVenueSeats": "The pillar stands at the venue. Its lit top is seats still open.",
+      "pausedHeading": "This drive is paused",
+      "pausedBody": "Walkins is checking this drive, so it isn't taking bookings and check-in is closed. If you booked a seat, you haven't done anything wrong, and holding it won't count against you. Please don't travel to it for now. If it goes ahead, everyone booked will be told.",
+      "unverified": "This employer's documents are still waiting for Walkins to check them. It can run drives meanwhile, but never pay anyone for a job."
     }
   },
   "booking": {
@@ -389,7 +426,9 @@
     "offline": "You're offline. Showing your drives as saved at {time}; booking changes need signal.",
     "comingUp": "Coming up",
     "nothingBooked": "Nothing booked yet. <link>Find walk-ins near you</link>.",
-    "past": "Past"
+    "past": "Past",
+    "paused": "This drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now; you'll be told if it goes ahead, and this booking won't count against you.",
+    "cancelled": "The employer cancelled this drive, so please don't travel to it. This won't count against you."
   },
   "login": {
     "sendFailed": "The code couldn't be sent. Check the number and try again.",
@@ -513,7 +552,8 @@
     "verification": "Verification",
     "failedJobs": "Failed jobs",
     "ledger": "Ledger",
-    "people": "People"
+    "people": "People",
+    "moderation": "Moderation"
   },
   "employerDrives": {
     "booked": "{booked} of {capacity} booked",
@@ -630,6 +670,10 @@
       "handTo": "Hand to",
       "handOver": "Hand over",
       "failed": "The drive couldn't be handed over. Reload the page and try again."
+    },
+    "suspended": "Walkins has paused this drive while it checks reports about it. Everyone booked has been told it's paused, not why. Check-ins and applicant changes are closed until the check ends.",
+    "reach": {
+      "limited": "{capped, select, yes {This drive's alerts go to the nearest {limit} of the {matching} candidates who match, because {company} isn't verified yet.} other {All {matching} candidates who match will be alerted. Because {company} isn't verified yet, alerts would stop at the nearest {limit}.}} <link>Verification lifts the limit.</link>"
     }
   },
   "deskState": {
@@ -859,36 +903,17 @@
       "PENDING": "pending review",
       "LIVE": "live",
       "EXPIRED": "ended",
-      "CANCELLED": "cancelled"
+      "CANCELLED": "cancelled",
+      "SUSPENDED": "paused"
     }
   },
   "admin": {
-    "verificationStatus": {
-      "PENDING": "pending",
-      "VERIFIED": "verified",
-      "REJECTED": "rejected"
-    },
-    "companies": {
-      "loadFailed": "Companies couldn't be loaded. Reload the page to try again.",
-      "rejectPrompt": "Reject {company}? Give the reason they'll need to fix it.",
-      "heading": "Company verification",
-      "intro": "“Check” asks the verification provider and applies its answer. The provider here is a mock that only checks the GSTIN is well formed; it looks nothing up. A drive can't go live for an unverified company.",
-      "providerSaid": "{company}: {provider} said {status}, “{reason}”.",
-      "loading": "Loading companies",
-      "company": "Company",
-      "gstin": "GSTIN",
-      "status": "Status",
-      "balance": "Balance",
-      "noGstin": "none",
-      "check": "Check",
-      "reject": "Reject"
-    },
     "drives": {
       "loadFailed": "Drives couldn't be loaded. Reload the page to try again.",
       "sendBackPrompt": "Send “{role}” back to {company}? They see your reason on the drive.",
       "approveConfirm": "Put “{role}” by {company} live? Candidates will see it and be alerted.",
       "heading": "Drive moderation",
-      "intro": "Approving is how a drive goes live. It needs a verified company with at least the cost of one check-in in its balance; anything blocking it is listed on the drive.",
+      "intro": "Approving is how a drive goes live. The company must be verified or have documents waiting for review (then the drive goes live at limited reach), must not be suspended, and needs at least the cost of one check-in in its balance. Anything blocking it is listed on the drive.",
       "loading": "Loading drives",
       "waiting": "Waiting for review ({count})",
       "nothingWaiting": "Nothing waiting.",
@@ -948,6 +973,66 @@
         "PROMO_GRANT": "promo grant"
       },
       "platformAccount": "Platform: {name}"
+    },
+    "submissionStatus": {
+      "AWAITING_REVIEW": "Waiting for review",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected"
+    },
+    "provider": {
+      "wellFormed": "the GSTIN is well formed",
+      "malformed": "{gstin} isn't a well-formed GSTIN",
+      "badState": "{state} isn't an Indian state code"
+    },
+    "verification": {
+      "heading": "Company verification",
+      "intro": "Companies send their GSTIN and documents, and you decide. The automatic check shown on each is a mock: it only checks the GSTIN's format and looks nothing up, so treat it as a typo check, not evidence. A company waiting here can run drives at limited reach.",
+      "loading": "Loading submissions",
+      "loadFailed": "Submissions couldn't be loaded. Reload the page to try again.",
+      "none": "Nothing has been submitted yet.",
+      "line": "{city} · {phone} · sent {day}{name, select, other { by {name}}}",
+      "providerSaid": "Automatic check ({provider}, mock): {verdict}.",
+      "noDocuments": "No documents: sent before documents were asked for. Ask the company to resubmit if the GSTIN alone isn't enough.",
+      "document": "Document {n}",
+      "earlier": "{count, plural, one {# earlier submission} other {# earlier submissions}} from this company",
+      "decided": "Decided by {name} on {day}.",
+      "noteSaid": "Note: {note}",
+      "rejectBecause": "If rejecting, why",
+      "note": "Note to the company (optional)",
+      "noteHint": "They see this with the decision.",
+      "approve": "Approve",
+      "reject": "Reject",
+      "approveConfirm": "Verify {company}? Its drives will reach everyone they match."
+    },
+    "moderation": {
+      "heading": "Moderation",
+      "intro": "Reports grouped by what they're about, most recent first. Nothing happens to a drive or a person until you act here. A logged-out reporter is known only by network, and one network can be a whole venue's Wi-Fi or thousands of phones behind a carrier, so weigh those counts lightly.",
+      "loading": "Loading reports",
+      "loadFailed": "Reports couldn't be loaded. Reload the page to try again.",
+      "open": "Open reports ({count})",
+      "nothingOpen": "No open reports.",
+      "summary": "{kind, select, DRIVE {Drive} other {Candidate}}{status, select, other { · {status}}}{verification, select, other { · company {verification}}}{companySuspended, select, yes { · company suspended} other {}}",
+      "counts": "{accounts, plural, one {# signed-in reporter} other {# signed-in reporters}} · {network, plural, one {# logged-out report} other {# logged-out reports}}{overflow, plural, =0 {} other { (+# past today's cap, counted not kept)}}",
+      "reasonCount": "{reason}: {count}",
+      "said": "“{details}”",
+      "note": "Note (shown to the company or candidate with a warning)",
+      "dismiss": "Dismiss",
+      "warn": "Warn",
+      "warnConfirm": "Send a warning to the {kind, select, DRIVE {company} other {candidate}}? They see it until they acknowledge it.",
+      "suspendDrive": "Suspend drive",
+      "suspendDriveConfirm": "Suspend “{title}”? It leaves search, stops alerting and refuses check-ins, and everyone booked is told it's paused.",
+      "suspendCompany": "Suspend company",
+      "suspendCompanyConfirm": "Suspend {company}? Every drive it has open is paused, and its desk becomes read-only.",
+      "suspended": "Suspended ({count})",
+      "suspendedRow": "{kind, select, DRIVE {Drive} other {Company}}: {title}, since {day}",
+      "lift": "Lift",
+      "liftConfirm": "Lift the suspension of {title}? {kind, select, DRIVE {If it hasn't ended, it goes back as it was and everyone booked is told.} other {Its drives that haven't ended go back as they were.}}",
+      "recent": "Recent actions",
+      "recentRow": "{kind, select, DISMISS {Dismissed} WARN {Warned} SUSPEND_DRIVE {Suspended drive} SUSPEND_COMPANY {Suspended company} LIFT_DRIVE {Lifted drive} other {Lifted company}}: {target}, by {admin}, {day} {time}",
+      "reporter": {
+        "account": "{name}: {total, plural, one {# report} other {# reports}} so far, {dismissed} dismissed, {actioned} acted on",
+        "network": "logged out, this network: {total, plural, one {# report} other {# reports}}, {dismissed} dismissed, {actioned} acted on"
+      }
     }
   },
   "people": {
@@ -1042,6 +1127,109 @@
     "jobsHeading": "Nearest live drives within {km} km:",
     "jobLine": "{n}. {role} at {company}",
     "jobWhen": "{day}, {time} · {distance}",
-    "stopped": "Alerts are off and this chat is disconnected. You can connect again any time from your profile:\n{profile}"
+    "stopped": "Alerts are off and this chat is disconnected. You can connect again any time from your profile:\n{profile}",
+    "neverPay": "Walkins never charges candidates, and no employer should ask you for money. If anyone does, open that drive's link and tap Report."
+  },
+  "neverPay": {
+    "heading": "Walkins never charges candidates",
+    "body": "No employer should ask you for money: not for registration, training, a uniform, a document or a job letter. If anyone does, don't pay.",
+    "report": "Report this drive",
+    "howToReport": "If anyone asks you for money, open that drive's page and use Report this drive. You don't need to sign in."
+  },
+  "report": {
+    "reason": {
+      "ASKS_FOR_MONEY": "They asked for money",
+      "NOT_A_REAL_JOB": "It isn't a real job",
+      "MISLEADING_PAY": "The pay is misleading",
+      "ABUSIVE": "Abusive behaviour",
+      "FAKE_PROFILE": "Fake profile",
+      "OTHER": "Something else"
+    },
+    "drive": {
+      "heading": "Report this drive",
+      "intro": "Tell Walkins if something about this drive is wrong. You don't need an account, and the employer won't see who reported it.",
+      "whatsWrong": "What's wrong?",
+      "chooseReason": "Choose what's wrong, then send the report.",
+      "details": "What happened (optional)",
+      "detailsHint": "Up to 500 characters. Only Walkins reads this.",
+      "send": "Send report",
+      "sending": "Sending",
+      "thanks": "Thank you. Walkins will look at this drive. If someone asked you for money, please don't pay them.",
+      "failed": "The report didn't go through. Check your signal and try again."
+    },
+    "candidate": {
+      "open": "Report",
+      "question": "Report {name} to Walkins? They won't be told who reported them, and nothing changes for them until Walkins has looked.",
+      "reason": "Reason",
+      "details": "What happened (optional)",
+      "send": "Send report",
+      "sending": "Sending",
+      "sent": "Reported to Walkins.",
+      "cancel": "Cancel",
+      "failed": "The report didn't go through. Try again."
+    }
+  },
+  "warning": {
+    "heading": "A notice from Walkins",
+    "company": "Walkins has had reports about your company's drives: {reason, select, ASKS_FOR_MONEY {asking candidates for money} NOT_A_REAL_JOB {a job that isn't real} MISLEADING_PAY {pay that doesn't match the listing} ABUSIVE {abusive behaviour} FAKE_PROFILE {a profile that isn't genuine} other {something else}}. Nothing has been suspended. Please check your listings so every drive is exactly what it says.",
+    "candidate": "An employer reported a problem with your account: {reason, select, ASKS_FOR_MONEY {asking candidates for money} NOT_A_REAL_JOB {a job that isn't real} MISLEADING_PAY {pay that doesn't match the listing} ABUSIVE {abusive behaviour} FAKE_PROFILE {a profile that isn't genuine} other {something else}}. Nothing has changed, and you can keep booking walk-ins. This is a notice so you know.",
+    "note": "From the reviewer: {note}",
+    "acknowledge": "I've read this"
+  },
+  "standing": {
+    "suspendedHeading": "{company} is suspended",
+    "suspendedBody": "Walkins is looking into reports about your company, so its drives are paused and nothing can be changed for now. You can still see everything, and it all stays as it was. Candidates who booked have been told the drive is paused, not why.",
+    "limited": "{company} isn't verified yet, so each drive's alerts reach only the nearest {limit} candidates who match. Once Walkins approves your documents, alerts reach everyone who matches.",
+    "rejected": "{company}'s verification wasn't accepted, so new drives can't go live. Your verification page says why and lets you send documents again.",
+    "unsubmitted": "{company} hasn't sent documents for verification, so its drives can't go live yet. Once you send them, drives can go live while you wait, at limited reach.",
+    "verifyNow": "Send verification documents",
+    "seeVerification": "See verification"
+  },
+  "verification": {
+    "loading": "Loading verification",
+    "heading": "Verification",
+    "status": {
+      "UNSUBMITTED": "{company} hasn't sent documents yet",
+      "PENDING": "{company}'s documents are waiting for review",
+      "VERIFIED": "{company} is verified",
+      "REJECTED": "{company}'s verification wasn't accepted"
+    },
+    "explain": {
+      "UNSUBMITTED": "Send your GSTIN and your GST registration certificate. Until you do, drives can't go live.",
+      "PENDING": "Your drives can go live while you wait, but each one's alerts reach only the nearest candidates. That limit lifts once Walkins approves you.",
+      "VERIFIED": "Your drives reach everyone they match, and candidates see that you're verified.",
+      "REJECTED": "The reason is below. Fix it and send your documents again; the earlier submission stays on record."
+    },
+    "howChecked": "A person at Walkins looks at your documents and decides. An automatic check runs too, but here it is a stand-in that only checks the GSTIN's format; it doesn't look your company up in the GST registry.",
+    "ownerOnly": "Only an owner of your company can send verification documents.",
+    "history": "What you've sent",
+    "submission": {
+      "AWAITING_REVIEW": "Waiting for review",
+      "APPROVED": "Approved",
+      "REJECTED": "Not accepted"
+    },
+    "sentLine": "Sent {day}{name, select, other { by {name}}} · {documents, plural, =0 {no documents} one {# document} other {# documents}}",
+    "rejection": {
+      "DOCUMENT_UNREADABLE": "A document couldn't be read. Send a clearer scan or photo.",
+      "DETAILS_DONT_MATCH": "The details on the documents don't match the company's name or GSTIN. Check they match, then send them again.",
+      "GSTIN_INVALID": "The GSTIN couldn't be confirmed. Check it against your GST certificate.",
+      "NOT_A_BUSINESS": "The documents don't show a registered business. Send your GST registration certificate.",
+      "OTHER": "See the reviewer's note."
+    },
+    "reviewerNote": "From the reviewer: {note}",
+    "form": {
+      "heading": "Send documents",
+      "gstin": "GSTIN",
+      "gstinHint": "15 characters, as on your GST certificate.",
+      "documents": "Documents",
+      "documentsHint": "Your GST registration certificate, and anything else that shows the business. PDF, JPG or PNG, up to 5 MB each, at most {max}.",
+      "remove": "Remove",
+      "uploading": "Uploading",
+      "tooLarge": "{name} is over 5 MB. Send a smaller scan or photo.",
+      "uploadFailed": "A document didn't upload. Check your signal and try again.",
+      "failed": "Your documents couldn't be sent. Try again.",
+      "send": "Send for review",
+      "sending": "Sending"
+    }
   }
 }

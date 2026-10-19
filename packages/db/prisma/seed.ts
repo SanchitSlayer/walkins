@@ -170,6 +170,7 @@ async function main() {
         contactPhone: RIVAL_COMPANY.ownerPhone,
         cityId: bengaluru.id,
         verificationStatus: "PENDING",
+        submissions: { create: { gstin: RIVAL_COMPANY.gstin, documentKeys: [] } },
       },
     }));
   await seedMember(rival.id, { phone: RIVAL_COMPANY.ownerPhone, name: RIVAL_COMPANY.ownerName, companyRole: "OWNER" });
@@ -197,8 +198,17 @@ async function main() {
     const exists = await prisma.company.findFirst({ where: { name: pending.name } });
     if (!exists) {
       const city = await prisma.city.findFirstOrThrow({ where: { name: pending.city } });
+      // A GSTIN on file stands for a submission waiting for review, with no
+      // documents; without one the company has sent nothing yet.
       await prisma.company.create({
-        data: { name: pending.name, gstin: pending.gstin, contactPhone: pending.phone, cityId: city.id, verificationStatus: "PENDING" },
+        data: {
+          name: pending.name,
+          gstin: pending.gstin,
+          contactPhone: pending.phone,
+          cityId: city.id,
+          verificationStatus: pending.gstin ? "PENDING" : "UNSUBMITTED",
+          ...(pending.gstin ? { submissions: { create: { gstin: pending.gstin, documentKeys: [] } } } : {}),
+        },
       });
     }
   }
