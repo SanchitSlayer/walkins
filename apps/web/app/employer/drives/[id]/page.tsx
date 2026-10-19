@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type DriveDetail, type Member, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
+import { type DriveDetail, type DriveReach, type Member, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { BoardButton, boardButtonClass, BoardField, BoardInput, BoardSelect } from "@/components/board/field";
@@ -17,6 +17,36 @@ import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { PersonName } from "@/components/person-name";
+
+// Why a drive is quiet, said up front: an unverified company's alerts go
+// only to the nearest few, and the employer should know it and why.
+function ReachNotice({ drive }: { drive: DriveDetail }) {
+  const t = useTranslations("editDrive.reach");
+  const { membership } = useMembership();
+  const [reach, setReach] = useState<DriveReach | null>(null);
+  const open = drive.status === "DRAFT" || drive.status === "PENDING" || drive.status === "LIVE";
+
+  useEffect(() => {
+    if (open) apiClient.getDriveReach(drive.id).then(setReach);
+  }, [drive.id, open]);
+
+  if (!reach || reach.limit === null) return null;
+  return (
+    <p className="type-meta border-l-2 border-pending-lamp pl-3 text-stock">
+      {t.rich("limited", {
+        company: membership.company.name,
+        limit: reach.limit,
+        matching: reach.matching,
+        capped: reach.matching > reach.limit ? "yes" : "no",
+        link: (chunks) => (
+          <Link href="/employer/verification" className="underline underline-offset-4">
+            {chunks}
+          </Link>
+        ),
+      })}
+    </p>
+  );
+}
 
 // Who answers for the drive. Owners can hand it to anyone who runs drives;
 // everyone else just sees the name.
@@ -232,6 +262,8 @@ export default function EditDrivePage() {
           <section className="grid gap-3">
             <h2 className="type-meta text-housing-muted">{t("status")}</h2>
             <StatusMark state={state} surface="housing" className="type-body" />
+            {drive.status === "SUSPENDED" && <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">{t("suspended")}</p>}
+            <ReachNotice drive={drive} />
             {drive.reviewNote != null && (
               <p className="type-meta border-l-2 border-closing-lamp pl-3 text-stock">
                 {drive.reviewNote ? t("sentBack", { note: drive.reviewNote }) : t("sentBackNoReason")}

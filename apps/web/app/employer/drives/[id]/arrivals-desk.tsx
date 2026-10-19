@@ -11,6 +11,7 @@ import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { usePersonName } from "@/components/person-name";
+import { ReportCandidate } from "@/components/report-candidate";
 
 // The moves the transition table allows an employer from each state.
 const NEXT: Partial<Record<ApplicationState, ("INTERVIEWED" | "HIRED" | "REJECTED")[]>> = {
@@ -156,6 +157,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  <ReportCandidate applicationId={a.applicationId} name={a.name} />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(runs ? (NEXT[a.state] ?? []) : []).map((to) => (

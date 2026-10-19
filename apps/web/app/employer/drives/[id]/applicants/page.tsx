@@ -13,6 +13,7 @@ import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { usePersonName } from "@/components/person-name";
+import { ReportCandidate } from "@/components/report-candidate";
 
 const percent = (n: number) => Math.round(n * 100);
 
@@ -301,6 +302,7 @@ export default function ApplicantsPage() {
                           {a.shortlistedBy ? t("shortlistedBy", { name: personName(a.shortlistedBy) }) : t("shortlisted")}
                         </span>
                       )}
+                      <ReportCandidate applicationId={a.applicationId} name={a.candidateName} />
                       {runs && a.state === "SCREENED_OUT" && (
                         <BoardButton
                           variant="quiet"
