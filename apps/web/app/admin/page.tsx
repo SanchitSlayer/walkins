@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AdminHome() {
-  redirect("/admin/companies");
+  redirect("/admin/verification");
 }

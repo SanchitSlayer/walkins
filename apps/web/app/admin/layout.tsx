@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { DeskShell } from "@/components/board/desk-shell";
 
 const NAV = [
-  { href: "/admin/companies", label: "verification" },
+  { href: "/admin/verification", label: "verification" },
+  { href: "/admin/moderation", label: "moderation" },
   { href: "/admin/drives", label: "drives" },
   { href: "/admin/jobs", label: "failedJobs" },
   { href: "/admin/ledger", label: "ledger" },
