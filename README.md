@@ -615,18 +615,15 @@ pnpm admin:create <10-digit phone> <name>
 It is a script rather than a seed flag so it runs once against any database
 without reseeding. It changes nothing if the phone is already an admin, and
 refuses a phone that belongs to a candidate or employer. Sign in with that
-phone, and the login page sends admins to `/admin`. The panel has four pages:
+phone, and the login page sends admins to `/admin`. The panel has five pages:
 
-- **Verification.** "Check" asks the verification provider and applies its
-  answer; "reject" records the admin's own reason. Both go in the audit log.
-  The provider is `MockVerificationProvider`, behind `IVerificationProvider`.
-  It only checks that a GSTIN is present and well formed (a valid state code,
-  then PAN, entity number and check character). It looks nothing up, and its
-  answer says so. The seed adds three pending companies, one GSTIN of each
-  kind it tells apart.
-- **Drives.** Approving is how a drive goes live. It needs a verified company
-  with at least one check-in's worth of credit, and every blocker is listed
-  on the drive at once. Sending a drive back returns it to draft with the
+- **Verification.** Companies' submissions, which an admin approves or
+  rejects with a reason (see "Trust and safety").
+- **Moderation.** Reports, warnings and suspensions (see "Trust and
+  safety").
+- **Drives.** Approving is how a drive goes live. It needs a company that is
+  verified or waiting on review, not suspended, with at least one check-in's
+  worth of credit. Every blocker is listed on the drive at once. Sending a drive back returns it to draft with the
   reason, which the employer sees on their drive page.
 - **Failed jobs.** Every queue's dead-letter set: alerts, charges, voice,
   embeddings and maintenance. Each job has a "Retry" button with a
@@ -667,8 +664,8 @@ these live:
 | In the schema | Before Phase 7 | Now |
 | --- | --- | --- |
 | `UserRole.ADMIN` | Nothing created or checked it | `pnpm admin:create`, and the `/admin` panel |
-| `Company.verificationStatus` | Only the seed set it; nothing read it | Changed through the verification provider; approving a drive needs VERIFIED |
-| `Company.gstin` | Stored, never read | Read by the verification provider |
+| `Company.verificationStatus` | Only the seed set it; nothing read it | Set by an admin's decision on a submission (Phase 10); approving a drive needs a company verified or awaiting review |
+| `Company.gstin` | Stored, never read | Sent with each verification submission |
 | `DriveStatus.PENDING → LIVE` | Employers could submit, but nothing moved a drive live; seeded drives were simply created LIVE | Admin approval, after the verification and balance checks |
 
 Still scaffolding after this phase:
@@ -677,7 +674,8 @@ Still scaffolding after this phase:
   only from the seed. Everyone after the first owner joins by invitation
   (see "Teams"). The verification queue is filled by seeded companies until
   companies can register themselves.
-- **The verification provider** checks GSTIN format, not a registry.
+- **The verification provider** checks GSTIN format, not a registry. It only
+  advises; an admin decides.
 - **`ApplicationState.INTERESTED`.** No transition leads into it, so no
   application can be in it. The transitions out of it, and the screens that
   handle it, are waiting for a "save for later" feature.
@@ -855,6 +853,202 @@ provides drives that Test Company's people must never see.
 - **A phone number can belong to only one account.** Someone who wants to
   be both a recruiter and a job seeker needs two numbers.
 
+### Trust and safety
+
+Indian blue-collar job platforms are overrun with fake recruiters who
+charge "registration fees". Everything here is a defence against that.
+
+**Who the messages are for.** The person reading a notice here is usually
+the one with least power in the situation, and no idea why it is
+happening. So every message about a suspension, cancellation, report or
+warning says:
+- what is happening;
+- that the reader hasn't done anything wrong, when they haven't;
+- what to do now.
+
+None of them names an accusation to the people it doesn't concern: a
+candidate is told a drive is "paused while Walkins checks it", never why.
+
+#### Verification
+
+1. An owner sends the company's GSTIN and documents (PDF, JPG or PNG, up to
+   5 MB each, at most 3) from the console's Verification page. Files go
+   straight to storage under the company's own prefix, so a submission can
+   only name files its company uploaded.
+2. The verification provider runs when the submission arrives. Its verdict
+   is recorded as **advice**: the admin's Verification page shows it, worded
+   as a mock.
+3. An admin opens the documents (links signed for five minutes) and
+   approves, or rejects with a reason code (unreadable, details don't match,
+   GSTIN invalid, not a business, other) and an optional note. The decision
+   is recorded on the submission and in the audit log, with the admin.
+4. A rejected company sees the reason in plain words and can send again.
+   Every submission stays as history.
+
+**The provider is still a mock.** `MockVerificationProvider` checks a
+GSTIN's format and looks nothing up. Both the admin page and the employer
+page say so. A real GST registry or KYC provider replaces it behind
+`IVerificationProvider` without touching anything else.
+
+A company's status is one of:
+
+| Status | Meaning | Can it go live? |
+| --- | --- | --- |
+| UNSUBMITTED | Nothing sent yet | No |
+| PENDING | A submission is waiting for an admin | Yes, at limited reach |
+| VERIFIED | Approved | Yes |
+| REJECTED | Turned down; it can send again | No, until it does |
+
+A company waiting on an admin can still operate. A rule that stopped it
+completely would push real employers to a competitor while doing nothing a
+reach limit doesn't already do.
+
+The migration made each existing PENDING company with a GSTIN a submission
+awaiting review, with no documents, so the queue stayed real. One with no
+GSTIN became UNSUBMITTED.
+
+#### Reach for unverified companies
+
+**The rule:** a drive from a company awaiting review alerts only **the
+nearest 50 candidates who match it** (`UNVERIFIED_ALERT_LIMIT`). Targeting
+already sorts nearest first, so the alert fan-out stops at 50. Reminders to
+people who booked are never limited, and the drive still appears in
+search.
+
+Fifty is small enough that a fake recruiter can't reach a whole city with
+one drive, and large enough that a real employer waiting on review can
+still fill a walk-in.
+
+**The employer is told:**
+- every desk page shows a banner while the company isn't verified, saying
+  alerts reach only the nearest 50, and why;
+- each drive's page shows the numbers, for example "the nearest 50 of the
+  312 candidates who match", with a link to Verification.
+
+**Candidates are told:** the public page of an unverified company's drive
+says its documents are still waiting to be checked.
+
+#### Reporting
+
+- **Anyone can report a drive** from its public page, signed in or not:
+  asks for money, not a real job, misleading pay, abusive, or something
+  else, with optional details of up to 500 characters.
+- **Anyone at a company can report a candidate** who applied to one of its
+  drives, from the applicants page or the arrivals desk: abusive, fake
+  profile, or something else.
+
+**Why logged-out reporting isn't a spam vector**
+- **A report never does anything by itself.** Nothing is hidden or
+  suspended until an admin acts, so flooding reports costs an admin's
+  attention, not a company its drive.
+- **Repeats collapse.** The same account or network reporting the same
+  drive for the same reason within 24 hours adds no row.
+- **Logged-out reports are capped per drive.** Past 200 in a day, more are
+  counted in Redis rather than stored, and the queue shows that count. The
+  table can't be filled from outside.
+- **A honeypot field** that no person sees catches crude scripts.
+- **No raw addresses are kept.** A logged-out report stores a keyed hash of
+  the address, enough to group one network's reports. The queue says
+  plainly that one network can be thousands of people.
+- **Every path answers "received" the same way**, so a script can't tell
+  which of its reports were kept.
+- **A generous rate limit:** 30 an hour, per account or else per address.
+
+#### Moderation
+
+The admin Moderation page shows:
+- open reports grouped by drive or candidate, most recently reported first;
+- for each target, counts of signed-in reporters and logged-out reports
+  (plus any past the cap), and reasons;
+- for each report, the reporter's record: how many reports they have made,
+  and how many were dismissed or acted on. A reporter whose reports are
+  mostly dismissed shows in red.
+
+Actions: **dismiss, warn, suspend drive, suspend company**, and lifting a
+suspension from the suspended list.
+- Each action writes a `moderation_actions` row and an audit row, and
+  resolves the open reports it answers.
+- A **warning** is shown to the company's people, or to the candidate,
+  until someone acknowledges it. It says what was reported, that nothing
+  has been taken away, and the admin's note if there is one.
+- **Candidates can't be suspended this phase.** Suspending a candidate
+  needs rules for their bookings, and half-building it would be worse than
+  not building it.
+
+#### When a drive or company is suspended mid-day
+
+`DriveStatus.SUSPENDED` is a status of its own, not a flag beside LIVE.
+Every check that a drive is LIVE (search, applying, the check-in code,
+check-in, alerts, targeting) therefore refuses a suspended drive without
+having to know about suspension.
+
+| Area | What happens |
+| --- | --- |
+| Search and `/jobs` | Gone at once |
+| Public page | A civil "paused" notice instead of a 404, so someone arriving from an old alert understands |
+| Bookings | Kept as they are; candidates can release them |
+| Telling people | Everyone booked gets a `drive_suspended` Telegram alert and a notice on My drives: paused while Walkins checks it, they haven't done anything wrong, don't travel for now, and holding it won't count against them |
+| Queued alerts | Each alert checks the drive is still in the status it was written for, so a stale reminder is skipped |
+| Check-in | Refused with the same civil wording; no code is issued |
+| The desk | Read-only: nothing can be confirmed, marked present or moved on |
+| Charges | Check-ins made before the suspension stay charged. Flagged ones can't be confirmed, so they're never charged |
+| No-shows and reliability | Never marked against anyone on a suspended drive |
+| Lifting it | If the drive hasn't ended, it goes back to the status it had and everyone booked gets a `drive_reinstated` alert. If it ended while suspended, it stays SUSPENDED for good, as the record of what happened |
+
+**Suspending a company:**
+- sets `Company.suspendedAt` and suspends every drive it has live or in
+  review, marked as caused by the company;
+- makes its desk read-only, in `requireCompanyAccess`: its people can see
+  everything and change nothing, including approvals, invitations and
+  top-ups.
+
+Lifting the company restores only the drives its suspension caused. A drive
+suspended on its own stays suspended until it is lifted on its own.
+
+**No refunds on suspension.** Check-ins charged before a suspension were
+real show-ups. If a refund is ever needed, the ledger can carry it as a
+reversal transaction: new balancing entries that leave the original charge
+in place.
+
+#### Never pay anyone
+
+The same statement stands wherever a candidate reads about a job: Walkins
+never charges candidates, no employer should ask them for money, and here
+is how to report it. It appears:
+- as a band on every public drive page, above booking, linking to that
+  drive's report form;
+- as the last line of every Telegram alert, with the drive's report link;
+- in the bot's `/jobs` and connection replies;
+- on My drives.
+
+#### A bug this phase fixed: cancelled drives harmed candidates' reliability
+
+The nightly reliability score counted a CONFIRMED booking on any drive that
+had ended as a missed interview, **including drives the employer had
+cancelled**. A candidate's score was damaged by a decision that wasn't
+theirs, and they had the least chance of noticing.
+
+The recompute now counts only drives that ran (LIVE or EXPIRED). It
+rescores every candidate, so a candidate whose only bookings were on
+cancelled drives goes back to having no score.
+`apps/worker/test/reliability.test.ts` covers it, and fails against the old
+query.
+
+Cancelling a live drive also used to tell nobody who had booked it. It now
+sends each of them a `drive_cancelled` alert: don't travel, and this won't
+count against you. A drive can no longer be cancelled once it has ended, or
+while it's suspended.
+
+#### Known gaps
+
+- **Alerts reach only candidates with Telegram linked.** Everyone else
+  learns of a suspension or cancellation from My drives or the drive page.
+- **Each alert is sent at most once per drive.** If a drive is suspended,
+  lifted and suspended again, the second suspension alert isn't sent; the
+  My drives notice still shows.
+- **There's no appeal flow.** A suspended company has no way to respond
+  inside the product.
+
 ## Rate limits
 
 **An address is not a person in India.** Carrier NAT puts thousands of
@@ -888,6 +1082,9 @@ later is never unlimited by accident.
 | `checkin-code` | drive | 10 / minute | The check-in screen asks for a code about once a minute |
 | `intro-audio` | user | 300 / hour | Listening down a shortlist |
 | `telegram-link` | user | 10 / hour | |
+| `report`: reporting a drive, logged in or not | user, else address | 30 / hour | A venue's Wi-Fi may carry many honest reports of one scam; the real defences are in "Trust and safety" |
+| `report-candidate` | user | 20 / day | |
+| `verification-upload`, `verification-submit` | company | 30 / hour, 10 / day | |
 | OTP request | phone, and address | 3 / 15 minutes, and 100 / hour | The phone limit is the real one |
 | Wrong check-in code | account, and address | 10, and 300 / 10 minutes | Per account is the real one; a 40-bit code stays unguessable under both |
 | Board socket `join` | socket | 30 / minute | |
@@ -1063,9 +1260,11 @@ What the check does **not** cover on the server:
   text. They are:
   - `check_ins.flagReason`;
   - a payment's `failureReason`, as the gateway sent it;
-  - the verification provider's reason;
-  - an admin's rejection note, and its default `"Rejected by an admin"`.
-  These are listed under the Hindi phase's known work below.
+  - the notes admins write on verification decisions and warnings, which
+    are their own words to the company, in whatever language they wrote.
+  These are listed under the Hindi phase's known work below. The
+  verification provider's verdict and the reasons for rejecting a company
+  became codes in Phase 10, so they are worded from the catalog.
 - **Log lines, job outcomes and embedding input.** These are for operators
   and the model, not people, and stay in English on purpose.
 
@@ -1107,9 +1306,9 @@ not fixed: each needs real Hindi text and real screens to judge.
   several flags joined into one string. Moving it to keys needs a schema
   change: a list of flag codes with their values. Until then, the employer
   board and the candidate's check-in result show it in English whatever the
-  locale. Rejection reasons from the payment gateway and the verification
-  provider are stored as those services send them, and an admin's
-  rejection note defaults to the English "Rejected by an admin".
+  locale. Decline reasons from the payment gateway are stored as the gateway
+  sends them, and admins' notes on decisions and warnings are their own
+  words.
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override
