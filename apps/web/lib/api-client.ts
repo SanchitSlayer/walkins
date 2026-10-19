@@ -1,8 +1,18 @@
 "use client";
 
 import type {
-  AdminCompany,
   AdminDrive,
+  AdminSubmission,
+  CandidateReport,
+  CompanyStanding,
+  DecideSubmission,
+  DocumentUpload,
+  DriveReach,
+  DriveReport,
+  Moderate,
+  ModerationQueue,
+  SubmitVerification,
+  Warning,
   Analytics,
   Applicants,
   ApplicantsAction,
@@ -45,8 +55,6 @@ import type {
   UpdateCandidateProfileInput,
   UpdateDriveInput,
   VenuePinInput,
-  VerificationOutcome,
-  VerifyCompany,
   VoiceContentType,
   VoiceIntro,
   VoiceUpload,
@@ -333,14 +341,6 @@ export const apiClient = {
     return parseOrThrow(await request(`/billing/top-ups/${orderId}/mock-checkout`, { method: "POST", body: JSON.stringify({ outcome }) }));
   },
 
-  async adminCompanies(): Promise<AdminCompany[]> {
-    return parseOrThrow(await request("/admin/companies"));
-  },
-
-  async adminVerifyCompany(companyId: string, input: VerifyCompany): Promise<VerificationOutcome> {
-    return parseOrThrow(await request(`/admin/companies/${companyId}/verification`, { method: "POST", body: JSON.stringify(input) }));
-  },
-
   async adminDrives(): Promise<AdminDrive[]> {
     return parseOrThrow(await request("/admin/drives"));
   },
@@ -434,6 +434,65 @@ export const apiClient = {
 
   async checkIn(input: CheckInRequest): Promise<CheckInResult> {
     return parseOrThrow(await request("/check-in", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  // No session needed; one is sent if there is.
+  async reportDrive(driveId: string, input: DriveReport): Promise<{ received: true }> {
+    return parseOrThrow(await request(`/drives/${driveId}/report`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async reportCandidate(input: CandidateReport): Promise<{ received: true }> {
+    return parseOrThrow(await request("/reports/candidate", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async getStanding(): Promise<CompanyStanding> {
+    return parseOrThrow(await request("/companies/me/standing"));
+  },
+
+  // Straight to storage with the signed policy, like a voice intro; the
+  // returned key goes into the submission.
+  async uploadVerificationDocument(file: File): Promise<string> {
+    const upload: DocumentUpload = await parseOrThrow(
+      await request("/companies/me/verification/documents", { method: "POST", body: JSON.stringify({ contentType: file.type, bytes: file.size }) }),
+    );
+    const form = new FormData();
+    for (const [name, value] of Object.entries(upload.fields)) form.append(name, value);
+    form.append("file", file);
+    const stored = await fetch(upload.url, { method: "POST", body: form });
+    if (!stored.ok) throw new ApiError("errors.verification.documentMissing", stored.status, null, "errors.verification.documentMissing");
+    return upload.key;
+  },
+
+  async submitVerification(input: SubmitVerification): Promise<CompanyStanding> {
+    return parseOrThrow(await request("/companies/me/verification", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async getDriveReach(driveId: string): Promise<DriveReach> {
+    return parseOrThrow(await request(`/drives/${driveId}/reach`));
+  },
+
+  async myWarnings(): Promise<Warning[]> {
+    return parseOrThrow(await request("/warnings/mine"));
+  },
+
+  async acknowledgeWarning(id: string): Promise<void> {
+    return parseOrThrow(await request(`/warnings/${id}/acknowledge`, { method: "POST" }));
+  },
+
+  async adminVerificationQueue(): Promise<AdminSubmission[]> {
+    return parseOrThrow(await request("/admin/verification"));
+  },
+
+  async adminDecideSubmission(id: string, input: DecideSubmission): Promise<AdminSubmission> {
+    return parseOrThrow(await request(`/admin/verification/${id}/decision`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async adminModerationQueue(): Promise<ModerationQueue> {
+    return parseOrThrow(await request("/admin/moderation"));
+  },
+
+  async adminModerate(input: Moderate): Promise<ModerationQueue> {
+    return parseOrThrow(await request("/admin/moderation", { method: "POST", body: JSON.stringify(input) }));
   },
 
   async getPublicDrive(id: string): Promise<PublicDriveDetail> {

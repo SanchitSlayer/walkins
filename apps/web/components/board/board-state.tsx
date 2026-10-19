@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { dayKey, type DriveStatus } from "@walkins/shared";
 import { cn } from "@/lib/utils";
 
-export type BoardState = "live" | "filling" | "closing" | "pending" | "draft" | "expired" | "cancelled";
+export type BoardState = "live" | "filling" | "closing" | "pending" | "draft" | "expired" | "cancelled" | "suspended";
 
 export const FILLING_THRESHOLD = 0.7;
 
@@ -24,6 +24,8 @@ export function deriveBoardState(
       return "cancelled";
     case "EXPIRED":
       return "expired";
+    case "SUSPENDED":
+      return "suspended";
   }
   const endsAt = new Date(drive.endsAt);
   if (endsAt <= now) return "expired";
@@ -49,6 +51,7 @@ const STATES: Record<BoardState, { shape: Shape; tone: "live" | "filling" | "clo
   draft: { shape: "square", tone: null },
   expired: { shape: "dash", tone: null },
   cancelled: { shape: "cross", tone: null },
+  suspended: { shape: "cross", tone: "closing" },
 };
 
 // The token name rather than a var() reference, for consumers that need the
