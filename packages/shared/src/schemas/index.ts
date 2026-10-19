@@ -3,11 +3,11 @@ import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionS
 import { personRefSchema } from "../people";
 import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
 
-export const verificationStatusSchema = z.enum(["PENDING", "VERIFIED", "REJECTED"]);
+export const verificationStatusSchema = z.enum(["UNSUBMITTED", "PENDING", "VERIFIED", "REJECTED"]);
 
 export const userRoleSchema = z.enum(["CANDIDATE", "EMPLOYER", "ADMIN"]);
 
-export const driveStatusSchema = z.enum(["DRAFT", "PENDING", "LIVE", "EXPIRED", "CANCELLED"]);
+export const driveStatusSchema = z.enum(["DRAFT", "PENDING", "LIVE", "EXPIRED", "CANCELLED", "SUSPENDED"]);
 
 export const applicationStateSchema = z.enum([
   "INTERESTED",
@@ -167,6 +167,9 @@ export const driveSearchPageSchema = z.object({
 export const publicDriveDetailSchema = driveSearchResultSchema.extend({
   slots: z.array(driveSlotSchema),
   knockoutQuestions: z.array(publicKnockoutQuestionSchema),
+  // False while the company's verification is awaiting review: it may run
+  // drives, and candidates are told it isn't verified yet.
+  employerVerified: z.boolean(),
 });
 
 const latitude = z.number().min(-90).max(90);

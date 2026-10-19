@@ -10,6 +10,7 @@ export * from "./voice";
 export * from "./billing";
 export * from "./admin";
 export * from "./people";
+export * from "./trust";
 export * from "./analytics";
 export * from "./i18n";
 export * from "./validation";

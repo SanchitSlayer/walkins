@@ -1,13 +1,13 @@
 // Mirrors the enums in packages/db/prisma/schema.prisma. Kept as plain
 // union types (not re-exported from @prisma/client) so apps/web can import
 // this package without pulling the Prisma client into the frontend bundle.
-export type VerificationStatus = "PENDING" | "VERIFIED" | "REJECTED";
+export type VerificationStatus = "UNSUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED";
 
 export type UserRole = "CANDIDATE" | "EMPLOYER" | "ADMIN";
 
 // CompanyRole, the second axis, is in people.ts with what each role may do.
 
-export type DriveStatus = "DRAFT" | "PENDING" | "LIVE" | "EXPIRED" | "CANCELLED";
+export type DriveStatus = "DRAFT" | "PENDING" | "LIVE" | "EXPIRED" | "CANCELLED" | "SUSPENDED";
 
 export type ApplicationState =
   | "INTERESTED"
