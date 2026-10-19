@@ -130,4 +130,13 @@ export const LIMITS = {
   // Listening down a shortlist.
   introAudio: { name: "intro-audio", scope: "user", limit: 300, windowSeconds: HOUR },
   telegramLink: { name: "telegram-link", scope: "user", limit: 10, windowSeconds: HOUR },
+  // Reporting a drive needs no login, so this is per account when there is
+  // one and per address when there isn't. A venue's Wi-Fi may carry many
+  // honest reports about one scam, so the address ceiling is generous; the
+  // real defences are in ReportsService (nothing acts on a report by
+  // itself, repeats collapse, and a drive's logged-out reports are capped).
+  reportDrive: { name: "report", scope: "user", limit: 30, windowSeconds: HOUR },
+  reportCandidate: { name: "report-candidate", scope: "user", limit: 20, windowSeconds: 24 * HOUR },
+  verificationUpload: { name: "verification-upload", scope: "company", limit: 30, windowSeconds: HOUR },
+  verificationSubmit: { name: "verification-submit", scope: "company", limit: 10, windowSeconds: 24 * HOUR },
 } satisfies Record<string, RateLimitRule>;

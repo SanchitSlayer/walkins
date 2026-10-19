@@ -16,7 +16,7 @@ import { JobsService } from "../common/jobs.service";
 import { StorageService } from "../common/storage.service";
 import { LiveGateway } from "../live/live.gateway";
 import { apiError } from "../common/api-error";
-import { personRef, requireCompanyAccess } from "../common/require-company";
+import { personRef, requireCompanyAccess, requireNotSuspended } from "../common/require-company";
 
 type Row = {
   applicationId: string;
@@ -162,6 +162,8 @@ export class ApplicantsService {
 
   async act(userId: string, driveId: string, { applicationIds, action }: ApplicantsAction) {
     const { companyId } = await requireCompanyAccess(userId, "runDrives");
+    const drive = await prisma.drive.findFirst({ where: { id: driveId, companyId }, select: { status: true } });
+    if (drive) requireNotSuspended(drive);
     const owned = await prisma.application.findMany({
       where: { id: { in: applicationIds }, driveId, drive: { companyId } },
       select: { id: true, candidateId: true, state: true },

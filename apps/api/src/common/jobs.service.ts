@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleDestroy } from "@nestjs/common";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
+import { prisma } from "@walkins/db";
 import {
   ALERT_JOB_OPTIONS,
   type AlertJob,
@@ -10,6 +11,7 @@ import {
   CHARGE_QUEUE,
   type ChargeJob,
   chargeJobId,
+  type TemplateKey,
   EMBED_JOB_OPTIONS,
   EMBED_QUEUE,
   type EmbedJob,
@@ -44,6 +46,19 @@ export class JobsService implements OnModuleDestroy {
 
   async alert(job: AlertJob) {
     await this.alerts.add(job.templateKey, job, { jobId: alertJobId(job) });
+  }
+
+  // Everyone holding a seat on the drive, when something happens to it that
+  // they must know before travelling: it was cancelled, suspended or put
+  // back on.
+  async alertBooked(driveId: string, templateKey: TemplateKey) {
+    const booked = await prisma.application.findMany({ where: { driveId, state: "CONFIRMED" }, select: { candidateId: true } });
+    await this.alerts.addBulk(
+      booked.map(({ candidateId }) => {
+        const data = { driveId, candidateId, templateKey };
+        return { name: templateKey, data, opts: { jobId: alertJobId(data) } };
+      }),
+    );
   }
 
   async charge(job: ChargeJob) {

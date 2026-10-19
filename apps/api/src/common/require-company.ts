@@ -12,10 +12,14 @@ export type CompanyAccess = { companyId: string; companyName: string; role: Comp
 export async function requireCompanyAccess(userId: string, permission: CompanyPermission): Promise<CompanyAccess> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { companyRole: true, company: { select: { id: true, name: true } } },
+    select: { companyRole: true, company: { select: { id: true, name: true, suspendedAt: true } } },
   });
   if (!user?.company || !user.companyRole) {
     throw new ForbiddenException(apiError("errors.auth.noCompany"));
+  }
+  // A suspended company can still see everything it has, and change nothing.
+  if (user.company.suspendedAt && permission !== "read") {
+    throw new ForbiddenException(apiError("errors.people.companySuspended", { company: user.company.name }));
   }
   if (!companyCan(user.companyRole, permission)) {
     throw new ForbiddenException(apiError(`errors.people.cannot.${permission}`, { company: user.company.name }));
@@ -29,4 +33,10 @@ export const PERSON_SELECT = { id: true, name: true, companyId: true } as const;
 // leave, marked as no longer current, so the record still says who did it.
 export function personRef(user: { id: string; name: string; companyId: string | null }, companyId: string): PersonRef {
   return { userId: user.id, name: user.name, current: user.companyId === companyId };
+}
+
+// A suspended drive's desk is read-only: nothing on it can be confirmed,
+// charged or moved on while Walkins looks at it.
+export function requireNotSuspended(drive: { status: string }) {
+  if (drive.status === "SUSPENDED") throw new ForbiddenException(apiError("errors.drive.suspendedDesk"));
 }

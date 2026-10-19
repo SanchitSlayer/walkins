@@ -13,7 +13,7 @@ import { isUniqueViolation } from "../common/prisma-errors";
 import { LiveGateway } from "../live/live.gateway";
 import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
 import { apiError } from "../common/api-error";
-import { requireCompanyAccess } from "../common/require-company";
+import { requireCompanyAccess, requireNotSuspended } from "../common/require-company";
 
 @Injectable()
 export class ApplicationsService {
@@ -21,8 +21,9 @@ export class ApplicationsService {
 
   async apply(userId: string, driveId: string, slotId: string, answers: KnockoutAnswers): Promise<MyApplication> {
     const candidate = await this.requireCandidate(userId);
-    const drive = await prisma.drive.findFirst({ where: { id: driveId, status: "LIVE" } });
+    const drive = await prisma.drive.findFirst({ where: { id: driveId, status: { in: ["LIVE", "SUSPENDED"] } } });
     if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
+    if (drive.status === "SUSPENDED") throw new BadRequestException(apiError("errors.application.suspended"));
     const now = new Date();
     if (drive.endsAt <= now) throw new BadRequestException(apiError("errors.application.driveEnded"));
     const slot = await prisma.driveSlot.findFirst({ where: { id: slotId, driveId } });
@@ -101,8 +102,9 @@ export class ApplicationsService {
   // application indistinguishable from a missing one.
   async updateByEmployer(userId: string, applicationId: string, { to }: EmployerApplicationUpdate) {
     const { companyId } = await requireCompanyAccess(userId, "runDrives");
-    const application = await prisma.application.findFirst({ where: { id: applicationId, drive: { companyId } } });
+    const application = await prisma.application.findFirst({ where: { id: applicationId, drive: { companyId } }, include: { drive: { select: { status: true } } } });
     if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
+    requireNotSuspended(application.drive);
     const updated = await prisma.$transaction((tx) =>
       transitionApplication(tx, { applicationId, to, actor: { kind: "employer", userId } }),
     );

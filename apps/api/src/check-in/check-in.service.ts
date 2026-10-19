@@ -17,7 +17,7 @@ import { redis } from "../common/redis";
 import { LiveGateway } from "../live/live.gateway";
 import { CHECKIN_TOKEN_ROTATE_SECONDS, CheckInTokenService, OFFLINE_GRACE_MS } from "./check-in-token.service";
 import { apiError } from "../common/api-error";
-import { requireCompanyAccess } from "../common/require-company";
+import { requireCompanyAccess, requireNotSuspended } from "../common/require-company";
 
 const GEOFENCE_METERS = 200;
 const MAX_ACCURACY_METERS = 100;
@@ -120,6 +120,7 @@ export class CheckInService {
     if (usedBefore) throw new ConflictException(apiError("errors.checkIn.codeUsed"));
 
     const drive = await prisma.drive.findUnique({ where: { id: token.driveId }, include: { role: true, company: true } });
+    if (drive?.status === "SUSPENDED") throw new BadRequestException(apiError("errors.checkIn.suspended"));
     if (!drive || drive.status !== "LIVE") throw new BadRequestException(apiError("errors.checkIn.notOpen"));
 
     // For a late offline sync the scan happened before the code expired; the
@@ -220,9 +221,10 @@ export class CheckInService {
     const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const application = await prisma.application.findFirst({
       where: { id: applicationId, drive: { companyId } },
-      include: { checkIn: true },
+      include: { checkIn: true, drive: { select: { status: true } } },
     });
     if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
+    requireNotSuspended(application.drive);
     if (application.checkIn) {
       return checkInResultSchema.parse({ outcome: "already_checked_in", checkIn: toCheckIn(application.checkIn) });
     }
@@ -251,9 +253,10 @@ export class CheckInService {
     const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const checkIn = await prisma.checkIn.findFirst({
       where: { id: checkInId, application: { drive: { companyId } } },
-      include: { application: { select: { driveId: true } } },
+      include: { application: { select: { driveId: true, drive: { select: { status: true } } } } },
     });
     if (!checkIn) throw new NotFoundException(apiError("errors.application.notFound"));
+    requireNotSuspended(checkIn.application.drive);
     if (checkIn.isValid) return toCheckIn(checkIn);
 
     const confirmed = await prisma.$transaction(async (tx) => {

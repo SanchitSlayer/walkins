@@ -19,7 +19,7 @@ import {
 import { JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
 import { apiError } from "../common/api-error";
-import { PERSON_SELECT, personRef, requireCompanyAccess } from "../common/require-company";
+import { PERSON_SELECT, personRef, requireCompanyAccess, requireNotSuspended } from "../common/require-company";
 
 type RawSearchRow = {
   id: string;
@@ -280,10 +280,16 @@ export class DrivesService {
     return withOwner(await this.moveTo(userId, driveId, existing.status, "PENDING"));
   }
 
+  // A suspended drive can't be cancelled out from under the review, and an
+  // ended one has nothing left to cancel. Anyone booked is told not to come.
   async remove(userId: string, driveId: string) {
     const { companyId } = await requireCompanyAccess(userId, "runDrives");
     const existing = await this.findOwned(companyId, driveId);
-    return withOwner(await this.moveTo(userId, driveId, existing.status, "CANCELLED"));
+    requireNotSuspended(existing);
+    if (!["DRAFT", "PENDING", "LIVE"].includes(existing.status)) throw new BadRequestException(apiError("errors.drive.notCancellable"));
+    const cancelled = await this.moveTo(userId, driveId, existing.status, "CANCELLED");
+    if (existing.status === "LIVE") await this.jobs.alertBooked(driveId, "drive_cancelled");
+    return withOwner(cancelled);
   }
 
   // Owners answer for who answers for a drive. The new owner must be able to
@@ -409,11 +415,12 @@ export class DrivesService {
 
   async findPublicOne(driveId: string, currentUserId: string | null): Promise<PublicDriveDetail> {
     // EXPIRED is served as well as LIVE so a stale forwarded link shows that
-    // the drive has ended instead of a 404, including after the Phase 4
-    // expiry job starts writing EXPIRED. Drafts and pending drives stay private.
+    // the drive has ended instead of a 404, and SUSPENDED so someone arriving
+    // from an alert learns it is paused. Drafts and pending drives stay
+    // private.
     const drive = await prisma.drive.findFirst({
-      where: { id: driveId, status: { in: ["LIVE", "EXPIRED"] } },
-      select: { cityId: true, knockoutQuestions: true },
+      where: { id: driveId, status: { in: ["LIVE", "EXPIRED", "SUSPENDED"] } },
+      select: { cityId: true, knockoutQuestions: true, company: { select: { verificationStatus: true } } },
     });
     if (!drive) {
       throw new NotFoundException(apiError("errors.drive.notFound"));
@@ -443,6 +450,7 @@ export class DrivesService {
       ...toSearchResult(row),
       slots: slots.map((slot) => ({ ...slot, startsAt: slot.startsAt.toISOString() })),
       knockoutQuestions: publicKnockoutQuestions(knockoutQuestionsSchema.parse(drive.knockoutQuestions)),
+      employerVerified: drive.company.verificationStatus === "VERIFIED",
     });
   }
 

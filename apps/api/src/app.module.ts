@@ -11,6 +11,7 @@ import { InfrastructureModule } from "./common/infrastructure.module";
 import { DrivesModule } from "./drives/drives.module";
 import { HealthModule } from "./health/health.module";
 import { LiveModule } from "./live/live.module";
+import { TrustModule } from "./trust/trust.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { LiveModule } from "./live/live.module";
     LiveModule,
     BillingModule,
     AdminModule,
+    TrustModule,
   ],
 })
 export class AppModule {}
