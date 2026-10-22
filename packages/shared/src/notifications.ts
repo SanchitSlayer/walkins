@@ -11,7 +11,9 @@ export type TemplateKey =
   | "drive_cancelled"
   | "drive_suspended"
   | "drive_reinstated"
-  | "drive_rescheduled";
+  | "drive_rescheduled"
+  // The Telegram copy of a message from the company; claimed per message.
+  | "message";
 
 export type Recipient = {
   candidateId: string;

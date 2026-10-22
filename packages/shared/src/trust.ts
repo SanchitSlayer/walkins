@@ -11,7 +11,8 @@ export type ReportReason = z.infer<typeof reportReasonSchema>;
 export const REPORT_REASONS = {
   DRIVE: ["ASKS_FOR_MONEY", "NOT_A_REAL_JOB", "MISLEADING_PAY", "ABUSIVE", "OTHER"],
   CANDIDATE: ["ABUSIVE", "FAKE_PROFILE", "OTHER"],
-} as const satisfies Record<"DRIVE" | "CANDIDATE", readonly ReportReason[]>;
+  MESSAGE: ["ASKS_FOR_MONEY", "ABUSIVE", "OTHER"],
+} as const satisfies Record<"DRIVE" | "CANDIDATE" | "MESSAGE", readonly ReportReason[]>;
 
 const details = z.string().trim().max(500).optional();
 
@@ -29,6 +30,13 @@ export const candidateReportSchema = z.object({
   details,
 });
 
+// Either side may report a message from the other.
+export const messageReportSchema = z.object({
+  reason: z.enum(REPORT_REASONS.MESSAGE),
+  details,
+});
+
+export type MessageReport = z.infer<typeof messageReportSchema>;
 export type DriveReport = z.infer<typeof driveReportSchema>;
 export type CandidateReport = z.infer<typeof candidateReportSchema>;
 
@@ -95,6 +103,10 @@ export const companyStandingSchema = z.object({
   submissions: z.array(submissionSchema),
   suspended: z.boolean(),
   warnings: z.array(warningSchema),
+  // Messages from the company's own people that the money-request tripwire
+  // caught and no owner has looked at yet. Shown to owners, so a rogue
+  // recruiter is visible inside the company, not only to Walkins.
+  flaggedMessages: z.number().int(),
 });
 
 // How far a drive's alerts go, shown to the employer so limited reach has a
@@ -129,7 +141,8 @@ export const moderationActionKindSchema = z.enum(["DISMISS", "WARN", "SUSPEND_DR
 // have reported before and how it was decided. A logged-out reporter is
 // known only by network, which can be many people.
 export const reporterSchema = z.object({
-  kind: z.enum(["account", "network"]),
+  // "system": filed by the money-request tripwire, not a person.
+  kind: z.enum(["account", "network", "system"]),
   name: z.string().nullable(),
   total: z.number().int(),
   dismissed: z.number().int(),
@@ -138,6 +151,8 @@ export const reporterSchema = z.object({
 
 export const queuedReportSchema = z.object({
   id: z.string(),
+  // The reported message, for reports about one: what was said and by whom.
+  message: z.object({ side: z.enum(["COMPANY", "CANDIDATE"]), body: z.string(), sender: z.string() }).nullable(),
   reason: reportReasonSchema,
   details: z.string().nullable(),
   createdAt: z.string(),
@@ -145,7 +160,8 @@ export const queuedReportSchema = z.object({
 });
 
 export const moderationTargetSchema = z.object({
-  targetType: z.enum(["DRIVE", "CANDIDATE"]),
+  // THREAD groups reports about messages in one conversation.
+  targetType: z.enum(["DRIVE", "CANDIDATE", "THREAD"]),
   targetId: z.string(),
   title: z.string(),
   subtitle: z.string(),
@@ -181,7 +197,7 @@ export const moderationQueueSchema = z.object({
 
 export const moderateSchema = z.object({
   kind: moderationActionKindSchema,
-  targetType: z.enum(["DRIVE", "CANDIDATE", "COMPANY"]),
+  targetType: z.enum(["DRIVE", "CANDIDATE", "COMPANY", "THREAD"]),
   targetId: z.string().min(1),
   note: z.string().trim().max(500).optional(),
 });

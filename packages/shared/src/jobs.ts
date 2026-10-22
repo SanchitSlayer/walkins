@@ -16,6 +16,8 @@ export type AlertJob = {
   candidateId: string;
   templateKey: TemplateKey;
   scheduleVersion?: number;
+  // For templateKey "message": which message this is the Telegram copy of.
+  messageId?: string;
 };
 
 // BullMQ drops an add whose id already exists, which stops a re-run fanout
@@ -23,7 +25,8 @@ export type AlertJob = {
 // the id is forgotten once the job is removed, and the notifications claim
 // index is what actually rules out a second send. Dots, because BullMQ
 // rejects custom ids with more than two colons.
-export function alertJobId({ driveId, candidateId, templateKey, scheduleVersion }: AlertJob): string {
+export function alertJobId({ driveId, candidateId, templateKey, scheduleVersion, messageId }: AlertJob): string {
+  if (messageId) return `message.${messageId}`;
   return `alert.${driveId}.${candidateId}.${templateKey}${scheduleVersion ? `.v${scheduleVersion}` : ""}`;
 }
 
