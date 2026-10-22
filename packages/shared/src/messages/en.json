@@ -19,7 +19,9 @@
     "drive_cancelled": "Cancelled: {role} at {company}\n\n{company} has cancelled this walk-in on {day}, so please don't travel to it. This won't count against you in any way.\n\nOther walk-ins near you are on the link below.",
     "drive_suspended": "Paused: {role} at {company}\n\nThis drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now. We'll message you here if it goes ahead, and holding this booking won't count against you.",
     "drive_reinstated": "Back on: {role} at {company}\n\nWalkins has finished checking this drive, and it's going ahead as planned.\n\nWhen: {day}, {time}\nWhere: {where}\n\nYour booking is still held.",
-    "drive_rescheduled": "Moved: {role} at {company}\n\nThe employer has changed the time of this walk-in.\n\nWas: {wasDay}, {wasTime}\nNow: {day}, {time}\n{slot, select, none {} other {Your slot: {slot}\n}}Where: {where}\n\nYour booking is still held. If the new time doesn't work for you, release your seat on Walkins; it won't count against you."
+    "drive_rescheduled": "Moved: {role} at {company}\n\nThe employer has changed the time of this walk-in.\n\nWas: {wasDay}, {wasTime}\nNow: {day}, {time}\n{slot, select, none {} other {Your slot: {slot}\n}}Where: {where}\n\nYour booking is still held. If the new time doesn't work for you, release your seat on Walkins; it won't count against you.",
+    "message": "Message from {sender} at {company} about {role}:\n\n{body}\n\nReply on Walkins with the link below.",
+    "messageFlagged": "Warning: this message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it from the conversation on Walkins."
   },
   "errors": {
     "generic": "That didn't go through. Try again in a moment.",
@@ -216,6 +218,18 @@
       "alreadyVerified": "Your company is already verified. There's nothing more to send.",
       "submissionNotFound": "This submission doesn't exist. Reload the list.",
       "alreadyDecided": "Someone has already decided on this submission. Reload the list to see the decision."
+    },
+    "messages": {
+      "notFound": "That message doesn't exist any more. Reload the conversation.",
+      "reportOwnSide": "You can report messages from the other side of the conversation, not your own.",
+      "notReported": "This conversation can only be opened once a message in it has been reported.",
+      "blocked": {
+        "closed": "This conversation closed 30 days after the drive ended, so no more messages can be sent. Everything said stays here.",
+        "applicationClosed": "This application was withdrawn or screened out, so the conversation is closed. Everything said stays here.",
+        "companySuspended": "Your company is suspended while Walkins looks into reports about it, so it can't send messages for now. The conversation stays here.",
+        "driveSuspended": "This drive is paused while Walkins checks it, so your company can't send messages about it for now. The conversation stays here.",
+        "viewOnly": "Your role is view only, so you can read this conversation but not reply. Ask an owner to make you a recruiter."
+      }
     }
   },
   "fields": {
@@ -260,7 +274,9 @@
     "gstin": "GSTIN",
     "documentKeys": "Documents",
     "details": "What happened",
-    "note": "Note"
+    "note": "Note",
+    "body": "Message",
+    "seq": "Message"
   },
   "board": {
     "state": {
