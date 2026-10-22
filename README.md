@@ -1139,6 +1139,116 @@ to be current.
   have moved again since that copy was saved.
 - **Check-in's offline pass** shows the same.
 
+### Messaging
+
+Each application has one thread between the company and the candidate.
+Either side starts it with a message once the application exists.
+
+**The thread belongs to the company, not to a person.**
+- Everyone at the company reads every thread, and each message names who
+  sent it.
+- Viewers read but can't send.
+- There is one unread count for the whole company, with a note of who read
+  last. Whoever is at the desk works the drive, as in "Teams".
+- A recruiter can't hold a private conversation the owner can't see.
+
+#### The delivery guarantee
+
+- **Stored first.** A message is committed with its place in the thread
+  before anyone is told. The in-app thread is the record: if it's in the
+  thread, it was sent.
+- **One order everyone sees.** Sending locks the thread's row to take the
+  next sequence number. Two people sending at the same moment both succeed,
+  one after the other, and every reader sees the same order. Order is by
+  that number, never by timestamp.
+- **Read markers are sequence numbers**, not times. Marking a thread read
+  can never skip a message that committed a moment later.
+- **Telegram gets at most one copy of each company message**, claimed the
+  same way alerts are:
+  - a PENDING delivery row is inserted before the send, and a partial
+    unique index allows one per message;
+  - a definite failure frees the claim, so the queue's retries can try
+    again;
+  - an unknown outcome (a timeout, a dropped connection) keeps the claim
+    and dead-letters the job. It is never resent;
+  - copies go on the alerts queue, so they share the bot's rate limit.
+- **Nothing is lost between storing and queuing.** The copy is queued after
+  the message commits, without waiting. If queuing fails, a 15-minute sweep
+  re-queues company messages from the last 24 hours that have no delivery
+  row, after a minute's grace so it doesn't race a normal queue.
+- **Candidates' messages to the company aren't sent anywhere.** Employers
+  have no Telegram; their console shows unread counts.
+
+**What a company sees about delivery:**
+- each of its messages shows how it reached the candidate: sent on
+  Telegram, waiting, failed, or in the app only;
+- the thread says whether the candidate has Telegram linked.
+
+**A candidate without Telegram** sees messages only when they next open
+Walkins. Nothing else reaches them: no SMS, no WhatsApp. The company is
+told this on the thread, so it doesn't treat a message as a phone call.
+
+#### When a thread stops taking messages
+
+Read-only means nothing can be sent. The thread and everything in it stay
+visible to both sides. The reasons are worked out on every read and send,
+not by a job:
+- **closed:** 30 days after the drive ends, for both sides. A reschedule
+  that moves the end moves the close with it;
+- **application closed:** the application was screened out or withdrawn,
+  for both sides. A rejected application's thread stays open, since the
+  employer may want to explain or offer another role;
+- **company suspended** or **drive suspended:** the company can't send,
+  but the candidate can;
+- **view only:** a viewer can't send.
+
+A thread can be read-only for several reasons at once. All of them are
+reported, the permanent ones first, so a thread closed for 30 days and also
+withdrawn says both.
+
+#### The money-request detector is a tripwire, not a guard
+
+**Messages are not screened.** `moneyRequestSignals` looks for the common
+wording of a fee demand: a UPI handle, a bank account or IFSC, a payment
+app, or a fee word next to an amount, in English, Hinglish and Devanagari.
+It is easy to defeat. "send me 500 on the number you have" passes it
+completely, and a test pins that down so nobody mistakes it for a screen.
+
+**The real protection is elsewhere:**
+- the never-pay band at the foot of every thread and on every Telegram
+  copy;
+- the report action on every message.
+
+The detector only decides when to shout. When it trips on a company's
+message:
+- **The message is delivered, never held**, with a warning in front of it
+  in the app and on Telegram. Holding would punish the false positives, and
+  salary talk near the word "deposit" trips it often enough to matter.
+- **An automatic report** (no reporter: the queue shows "system") goes into
+  the moderation queue.
+- **The company's owners see it.** It is counted in the company's standing,
+  and listed for owners until one marks it reviewed. A rogue recruiter is
+  visible inside the company, not only to Walkins.
+
+Only company messages are checked. A candidate asking "do I need to pay
+the ₹500 registration fee?" is a warning about the employer, not a reason
+to file a report against the candidate.
+
+#### Other rules
+
+- **Plain text** of up to 1,000 characters. No attachments, and links
+  aren't made clickable in the app. Telegram's own apps make links in a
+  copy clickable, and Walkins can't stop that.
+- **Reporting:** either side can report a message from the other side
+  (asks for money, abusive, something else). Reports go to the same
+  moderation queue, grouped by thread. Admin actions on a thread reach its
+  drive and company, and a warning goes to whichever side wrote what was
+  reported.
+- **Admins read a thread only once a message in it has been reported.**
+  Each opening is an audit entry.
+- **Rate limits:** 60 messages an hour per person and 300 per company on
+  the company side, and 30 an hour per candidate.
+
 ## Rate limits
 
 **An address is not a person in India.** Carrier NAT puts thousands of
@@ -1174,6 +1284,9 @@ later is never unlimited by accident.
 | `telegram-link` | user | 10 / hour | |
 | `report`: reporting a drive, logged in or not | user, else address | 30 / hour | A venue's Wi-Fi may carry many honest reports of one scam; the real defences are in "Trust and safety" |
 | `report-candidate` | user | 20 / day | |
+| `message`: the company side | user, and company | 60 / hour, and 300 / hour | Each message can reach a phone |
+| `message-candidate` | user | 30 / hour | |
+| `report-message` | user | 30 / day | |
 | `verification-upload`, `verification-submit` | company | 30 / hour, 10 / day | |
 | OTP request | phone, and address | 3 / 15 minutes, and 100 / hour | The phone limit is the real one |
 | Wrong check-in code | account, and address | 10, and 300 / 10 minutes | Per account is the real one; a 40-bit code stays unguessable under both |
