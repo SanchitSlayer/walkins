@@ -10,6 +10,8 @@ export type AlertContext = {
   startsAt: string;
   endsAt: string;
   slotStartsAt: string | null;
+  // For a reschedule notice: the time the candidate knew before.
+  previous: { startsAt: string; endsAt: string } | null;
   driveUrl: string;
   reportUrl: string;
 };
@@ -24,6 +26,7 @@ export type AlertContext = {
 export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Date, locale: Locale = DEFAULT_LOCALE): TemplatedMessage {
   const format = formatFor(locale);
   const when = format.formatWhen(ctx.startsAt, ctx.endsAt, now);
+  const was = ctx.previous ? format.formatWhen(ctx.previous.startsAt, ctx.previous.endsAt, now) : null;
   const values = {
     role: ctx.roleTitle,
     company: ctx.companyName,
@@ -33,6 +36,7 @@ export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Da
     slot: ctx.slotStartsAt ? format.formatTime(ctx.slotStartsAt) : "none",
     where: translate(locale, "alerts.where", { venue: ctx.venueAddress, distance: format.formatDistance(ctx.distanceKm) }),
     pay: format.formatSalary(ctx.salaryMin, ctx.salaryMax),
+    ...(was ? { wasDay: was.day, wasTime: was.time } : {}),
   };
   const text = `${translate(locale, `alerts.${templateKey}`, values)}\n\n${translate(locale, "alerts.neverPay", { link: ctx.reportUrl })}`;
   return { templateKey, text, url: ctx.driveUrl };

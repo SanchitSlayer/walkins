@@ -39,13 +39,34 @@ const DRIVE_STATUS_FOR: Record<TemplateKey, DriveStatus> = {
   drive_cancelled: "CANCELLED",
   drive_suspended: "SUSPENDED",
   drive_reinstated: "LIVE",
+  drive_rescheduled: "LIVE",
 };
 
 // Sent to everyone holding a seat, so each is skipped for anyone who has
 // since released it or been checked in.
-const TO_BOOKED: TemplateKey[] = ["drive_morning_of", "drive_cancelled", "drive_suspended", "drive_reinstated"];
+const TO_BOOKED: TemplateKey[] = ["drive_morning_of", "drive_cancelled", "drive_suspended", "drive_reinstated", "drive_rescheduled"];
 
-async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: Date, webUrl: string): Promise<Loaded | null> {
+// The time the candidate last knew, for a reschedule notice to say what it
+// was. Two reschedules in quick succession send only the latest notice, so
+// "was" is the time before the first change they haven't been told about,
+// never an in-between time nobody announced to them. Someone who booked
+// after a change already knew its new time. Null when there is nothing they
+// haven't been told.
+async function lastKnownTime(driveId: string, candidateId: string, bookedAt: Date) {
+  const [told, seen] = await Promise.all([
+    prisma.notification.findFirst({
+      where: { driveId, candidateId, templateKey: "drive_rescheduled", status: "SENT" },
+      orderBy: { scheduleVersion: "desc" },
+      select: { scheduleVersion: true },
+    }),
+    prisma.driveReschedule.findFirst({ where: { driveId, createdAt: { lte: bookedAt } }, orderBy: { version: "desc" }, select: { version: true } }),
+  ]);
+  const known = Math.max(told?.scheduleVersion ?? 0, seen?.version ?? 0);
+  const next = await prisma.driveReschedule.findFirst({ where: { driveId, version: known + 1 } });
+  return next ? { startsAt: next.fromStartsAt.toISOString(), endsAt: next.fromEndsAt.toISOString() } : null;
+}
+
+async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }: AlertJob, now: Date, webUrl: string): Promise<Loaded | null> {
   const [drive, candidate] = await Promise.all([
     prisma.drive.findUnique({ where: { id: driveId }, include: { role: true, company: true } }),
     prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true } } } }),
@@ -53,8 +74,10 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
   if (!drive || !candidate) return null;
   if (drive.status !== DRIVE_STATUS_FOR[templateKey]) return { skip: `drive is ${drive.status.toLowerCase()}` };
   if (drive.endsAt <= now) return { skip: "drive has ended" };
+  if (scheduleVersion !== undefined && scheduleVersion !== drive.scheduleVersion) return { skip: "the drive has been rescheduled since" };
 
   let slotStartsAt: string | null = null;
+  let previous: { startsAt: string; endsAt: string } | null = null;
   if (templateKey === "drive_48h") {
     // Targeting leaves applicants out, but only at the moment of fanout; a
     // job queued before they applied is still waiting. Any application,
@@ -68,6 +91,10 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
     });
     if (!application) return { skip: "candidate is no longer confirmed" };
     slotStartsAt = application.slot?.startsAt.toISOString() ?? null;
+    if (templateKey === "drive_rescheduled") {
+      previous = await lastKnownTime(driveId, candidateId, application.stateChangedAt);
+      if (!previous) return { skip: "candidate already knows this time" };
+    }
   } else if (templateKey === "application_rejected") {
     const rejected = await prisma.application.count({ where: { driveId, candidateId, state: "REJECTED" } });
     if (rejected === 0) return { skip: "application is no longer rejected" };
@@ -91,6 +118,7 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
       startsAt: drive.startsAt.toISOString(),
       endsAt: drive.endsAt.toISOString(),
       slotStartsAt,
+      previous,
       // A rejection or a cancellation points to other drives rather than the
       // one that is no longer for them.
       driveUrl: templateKey === "application_rejected" || templateKey === "drive_cancelled" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
@@ -106,10 +134,11 @@ async function loadAlert({ driveId, candidateId, templateKey }: AlertJob, now: D
 export async function processAlert({ data, attemptsMade }: AlertAttempt, deps: ProcessDeps): Promise<string> {
   const { driveId, candidateId, templateKey } = data;
   const now = new Date();
-  const row = { driveId, candidateId, templateKey, attempt: attemptsMade + 1, jobId: alertJobId(data) };
+  const version = data.scheduleVersion ?? 0;
+  const row = { driveId, candidateId, templateKey, scheduleVersion: version, attempt: attemptsMade + 1, jobId: alertJobId(data) };
 
   const claimed = await prisma.notification.findFirst({
-    where: { driveId, candidateId, templateKey, status: { in: ["PENDING", "SENT"] } },
+    where: { driveId, candidateId, templateKey, scheduleVersion: version, status: { in: ["PENDING", "SENT"] } },
     select: { id: true },
   });
   if (claimed) return "already sent";

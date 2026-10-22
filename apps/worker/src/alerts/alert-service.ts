@@ -36,12 +36,14 @@ export class AlertService {
 
   // Commitment: only people who said they'd come. Targeting would be wrong
   // here twice over; it matches strangers, and leaves out applicants.
+  // Versioned by the drive's schedule: the reminder for a drive moved to
+  // another day is a new alert, not the one already sent for the old day.
   async remindConfirmed(driveId: string): Promise<number> {
-    const confirmed = await prisma.application.findMany({
-      where: { driveId, state: "CONFIRMED" },
-      select: { candidateId: true },
-    });
-    await this.enqueue(confirmed.map(({ candidateId }) => ({ driveId, candidateId, templateKey: "drive_morning_of" })));
+    const [{ scheduleVersion }, confirmed] = await Promise.all([
+      prisma.drive.findUniqueOrThrow({ where: { id: driveId }, select: { scheduleVersion: true } }),
+      prisma.application.findMany({ where: { driveId, state: "CONFIRMED" }, select: { candidateId: true } }),
+    ]);
+    await this.enqueue(confirmed.map(({ candidateId }) => ({ driveId, candidateId, templateKey: "drive_morning_of", scheduleVersion })));
     return confirmed.length;
   }
 
