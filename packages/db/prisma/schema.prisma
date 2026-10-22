@@ -101,6 +101,9 @@ model User {
   moderationActions    ModerationAction[]
   warningsAcknowledged Warning[]
   reschedules          DriveReschedule[]
+  messagesSent         Message[]                @relation("MessageSender")
+  threadsRead          MessageThread[]          @relation("CompanyReader")
+  flagsReviewed        Message[]                @relation("FlagReviewer")
 
   @@index([companyId])
   @@map("users")
@@ -290,11 +293,12 @@ model Application {
   shortlistedAt     DateTime?
   shortlistedById   String?
 
-  drive         Drive      @relation(fields: [driveId], references: [id])
-  candidate     Candidate  @relation(fields: [candidateId], references: [id])
-  slot          DriveSlot? @relation(fields: [slotId], references: [id])
-  shortlistedBy User?      @relation("ShortlistedBy", fields: [shortlistedById], references: [id])
+  drive         Drive          @relation(fields: [driveId], references: [id])
+  candidate     Candidate      @relation(fields: [candidateId], references: [id])
+  slot          DriveSlot?     @relation(fields: [slotId], references: [id])
+  shortlistedBy User?          @relation("ShortlistedBy", fields: [shortlistedById], references: [id])
   checkIn       CheckIn?
+  thread        MessageThread?
 
   // One application per candidate per drive, enforced here rather than by a
   // check-then-insert, so two concurrent applies cannot both land. A release
@@ -403,11 +407,16 @@ model Notification {
   scheduleVersion   Int                @default(0)
   // Only for channels that report delivery; Telegram does not.
   deliveredAt       DateTime?
+  // Set for the Telegram copy of a message; such rows are claimed by
+  // message, not by drive and template (see the migration's indexes).
+  messageId         String?
 
   candidate Candidate @relation(fields: [candidateId], references: [id])
   drive     Drive     @relation(fields: [driveId], references: [id])
+  message   Message?  @relation(fields: [messageId], references: [id])
 
   @@index([driveId, candidateId])
+  @@index([messageId])
   @@map("notifications")
 }
 
@@ -631,6 +640,7 @@ model VerificationSubmission {
 enum ReportTarget {
   DRIVE
   CANDIDATE
+  MESSAGE
 }
 
 // One enum for both targets; which reasons fit which target is
@@ -663,6 +673,9 @@ model Report {
   // never the address itself.
   reporterUserId  String?
   reporterNetwork String?
+  // A message report with neither reporter was filed by the money-request
+  // tripwire, not by a person.
+  messageId       String?
   createdAt       DateTime       @default(now())
   resolvedAt      DateTime?
   outcome         ReportOutcome?
@@ -670,11 +683,13 @@ model Report {
 
   drive     Drive?            @relation(fields: [driveId], references: [id])
   candidate Candidate?        @relation(fields: [candidateId], references: [id])
+  message   Message?          @relation(fields: [messageId], references: [id])
   reporter  User?             @relation(fields: [reporterUserId], references: [id])
   action    ModerationAction? @relation(fields: [actionId], references: [id])
 
   @@index([driveId, createdAt])
   @@index([candidateId, createdAt])
+  @@index([messageId])
   @@index([reporterUserId])
   @@index([reporterNetwork])
   @@map("reports")
@@ -754,4 +769,63 @@ model DriveReschedule {
 
   @@unique([driveId, version])
   @@map("drive_reschedules")
+}
+
+enum MessageSide {
+  COMPANY
+  CANDIDATE
+}
+
+// One per application, between the company and the candidate. It belongs to
+// the company, not to whoever wrote first: everyone there reads it, which is
+// also what keeps a rogue recruiter from working in private. Created by the
+// first message from either side.
+model MessageThread {
+  id               String    @id @default(cuid())
+  applicationId    String    @unique
+  // The last seq handed out. Sending locks this row to take the next one, so
+  // a thread's messages have one order everyone sees, whoever sends at once.
+  lastSeq          Int       @default(0)
+  lastMessageAt    DateTime?
+  // Read markers are seqs, not times, so marking read can't skip a message
+  // that committed a moment later. The company's is shared, like the desk,
+  // with a note of who read last.
+  companyReadSeq   Int       @default(0)
+  companyReadById  String?
+  companyReadAt    DateTime?
+  candidateReadSeq Int       @default(0)
+  createdAt        DateTime  @default(now())
+
+  application   Application @relation(fields: [applicationId], references: [id])
+  companyReadBy User?       @relation("CompanyReader", fields: [companyReadById], references: [id])
+  messages      Message[]
+
+  @@map("message_threads")
+}
+
+// Stored before anyone is told; the thread is the record, and the Telegram
+// copy is a notification of it. Plain text, never edited or deleted.
+model Message {
+  id               String      @id @default(cuid())
+  threadId         String
+  seq              Int
+  side             MessageSide
+  senderId         String
+  body             String
+  // Set by the money-request tripwire (see moneyRequestSignals). Never
+  // holds the message back: it decides when to shout, not what gets through.
+  moneyFlag        Boolean     @default(false)
+  flagReviewedAt   DateTime?
+  flagReviewedById String?
+  createdAt        DateTime    @default(now())
+
+  thread         MessageThread  @relation(fields: [threadId], references: [id])
+  sender         User           @relation("MessageSender", fields: [senderId], references: [id])
+  flagReviewedBy User?          @relation("FlagReviewer", fields: [flagReviewedById], references: [id])
+  notifications  Notification[]
+  reports        Report[]
+
+  @@unique([threadId, seq])
+  @@index([createdAt])
+  @@map("messages")
 }
