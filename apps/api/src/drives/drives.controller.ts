@@ -1,5 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { createDriveSchema, driveSearchQuerySchema, reassignDriveSchema, updateDriveSchema, type VenuePinInput, venuePinSchema } from "@walkins/shared";
+import {
+  createDriveSchema,
+  driveSearchQuerySchema,
+  reassignDriveSchema,
+  type RescheduleDriveInput,
+  rescheduleDriveSchema,
+  updateDriveSchema,
+  type VenuePinInput,
+  venuePinSchema,
+} from "@walkins/shared";
 import type { AccessTokenPayload } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
@@ -58,6 +67,18 @@ export class DrivesController {
   @Roles("EMPLOYER")
   submit(@CurrentUser() user: AccessTokenPayload, @Param("id") id: string) {
     return this.drivesService.submit(user.userId, id);
+  }
+
+  @Post(":id/reschedule")
+  @RateLimit(LIMITS.driveEdit)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("EMPLOYER")
+  reschedule(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(rescheduleDriveSchema)) body: RescheduleDriveInput,
+  ) {
+    return this.drivesService.reschedule(user.userId, id, body);
   }
 
   @Post(":id/owner")

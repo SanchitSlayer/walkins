@@ -15,6 +15,11 @@ import {
   publicKnockoutQuestions,
   publicDriveDetailSchema,
   formatDistance,
+  formatTime,
+  CHECK_IN_OPENS_BEFORE_START_MS,
+  DEFAULT_LOCALE,
+  INTL_LOCALE,
+  type RescheduleDriveInput,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
@@ -107,12 +112,37 @@ const DRIVE_DETAIL_INCLUDE = {
   role: { select: { title: true, slug: true } },
   city: { select: { name: true, centerLat: true, centerLng: true } },
   owner: { select: PERSON_SELECT },
+  reschedules: { include: { by: { select: PERSON_SELECT } }, orderBy: { version: "desc" } },
 } as const;
 
 type DriveWithDetail = Prisma.DriveGetPayload<{ include: typeof DRIVE_DETAIL_INCLUDE }>;
 
 function withOwner<T extends Pick<DriveWithDetail, "companyId" | "owner">>(drive: T) {
   return { ...drive, owner: personRef(drive.owner, drive.companyId) };
+}
+
+function toDetail(drive: DriveWithDetail) {
+  return {
+    ...withOwner(drive),
+    reschedules: drive.reschedules.map((r) => ({
+      fromStartsAt: r.fromStartsAt.toISOString(),
+      fromEndsAt: r.fromEndsAt.toISOString(),
+      toStartsAt: r.toStartsAt.toISOString(),
+      toEndsAt: r.toEndsAt.toISOString(),
+      reseated: r.reseated,
+      by: personRef(r.by, drive.companyId),
+      createdAt: r.createdAt.toISOString(),
+    })),
+  };
+}
+
+function slotsTile(slots: { startsAt: Date }[], startsAt: Date, endsAt: Date, slotMs: number): boolean {
+  return (
+    slots.length > 0 &&
+    slotMs > 0 &&
+    slots.every((slot, i) => slot.startsAt.getTime() === startsAt.getTime() + i * slotMs) &&
+    startsAt.getTime() + slots.length * slotMs === endsAt.getTime()
+  );
 }
 
 // Every change to a drive names the person who made it: with several people
@@ -179,7 +209,7 @@ export class DrivesService {
       return created;
     });
     await this.jobs.reembed({ kind: "drive", id: drive.id });
-    return withOwner(drive);
+    return toDetail(drive);
   }
 
   async update(userId: string, driveId: string, input: UpdateDriveInput) {
@@ -188,6 +218,14 @@ export class DrivesService {
 
     if (existing.status !== "DRAFT" && existing.status !== "PENDING") {
       throw new BadRequestException(apiError("errors.drive.notEditable"));
+    }
+    // Changing the time through the edit form left the slots at the old
+    // times. Only a reschedule moves a drive's time, and its slots with it.
+    if (
+      (input.startsAt && input.startsAt.getTime() !== existing.startsAt.getTime()) ||
+      (input.endsAt && input.endsAt.getTime() !== existing.endsAt.getTime())
+    ) {
+      throw new BadRequestException(apiError("errors.drive.useReschedule"));
     }
 
     // The edit form sends every field on every save, so "present" is not
@@ -215,7 +253,7 @@ export class DrivesService {
       return updated;
     });
     await this.jobs.reembed({ kind: "drive", id: drive.id });
-    return withOwner(drive);
+    return toDetail(drive);
   }
 
   // Set from a device at the venue, usually on the day, so unlike other edits
@@ -266,7 +304,7 @@ export class DrivesService {
       return drive;
     });
     await this.jobs.reembed({ kind: "drive", id: driveId });
-    return withOwner(pinned);
+    return toDetail(pinned);
   }
 
   async submit(userId: string, driveId: string) {
@@ -277,7 +315,7 @@ export class DrivesService {
       throw new BadRequestException(apiError("errors.drive.submitOnlyDraft"));
     }
 
-    return withOwner(await this.moveTo(userId, driveId, existing.status, "PENDING"));
+    return toDetail(await this.moveTo(userId, driveId, existing.status, "PENDING"));
   }
 
   // A suspended drive can't be cancelled out from under the review, and an
@@ -289,7 +327,7 @@ export class DrivesService {
     if (!["DRAFT", "PENDING", "LIVE"].includes(existing.status)) throw new BadRequestException(apiError("errors.drive.notCancellable"));
     const cancelled = await this.moveTo(userId, driveId, existing.status, "CANCELLED");
     if (existing.status === "LIVE") await this.jobs.alertBooked(driveId, "drive_cancelled");
-    return withOwner(cancelled);
+    return toDetail(cancelled);
   }
 
   // Owners answer for who answers for a drive. The new owner must be able to
@@ -306,7 +344,133 @@ export class DrivesService {
       await auditDrive(tx, userId, driveId, "owner_changed", { ownerId: existing.ownerId }, { ownerId });
       return updated;
     });
-    return withOwner(drive);
+    return toDetail(drive);
+  }
+
+  // Moves a drive's time and its slots with it, and tells everyone booked.
+  // Slots keep their length and order: a longer window gains slots at the
+  // end with the same seats, a shorter one loses slots from the end and
+  // moves the people booked into them to the nearest remaining slot that
+  // hasn't started and has room. If anyone can't be moved, nothing changes:
+  // the employer sees exactly who would be stranded, and a drive that can't
+  // run at all is cancelled, which tells everyone properly. Once check-in
+  // has opened the start is fixed, since people may already be there.
+  async reschedule(userId: string, driveId: string, { startsAt, endsAt }: RescheduleDriveInput) {
+    const { companyId } = await requireCompanyAccess(userId, "runDrives");
+    const now = new Date();
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Locks the drive and its slots against a booking or another
+      // reschedule arriving mid-way.
+      await tx.$queryRaw`SELECT id FROM drives WHERE id = ${driveId} AND "companyId" = ${companyId} FOR UPDATE`;
+      const drive = await tx.drive.findFirst({ where: { id: driveId, companyId }, include: { slots: { orderBy: { startsAt: "asc" } } } });
+      if (!drive) throw new NotFoundException(apiError("errors.drive.notFound"));
+      requireNotSuspended(drive);
+      if (!["DRAFT", "PENDING", "LIVE"].includes(drive.status) || drive.endsAt <= now) {
+        throw new BadRequestException(apiError("errors.drive.notReschedulable"));
+      }
+      await tx.$queryRaw`SELECT id FROM drive_slots WHERE "driveId" = ${driveId} FOR UPDATE`;
+
+      // Everything below works out where slots go, and where the people in
+      // them go, from slots that fill the drive's window end to end in equal
+      // steps from its start, as create() makes them. A drive whose slots
+      // don't is refused here rather than reseated on a wrong assumption.
+      const slotMs = drive.slots.length > 1 ? drive.slots[1].startsAt.getTime() - drive.slots[0].startsAt.getTime() : drive.endsAt.getTime() - drive.startsAt.getTime();
+      if (!slotsTile(drive.slots, drive.startsAt, drive.endsAt, slotMs)) {
+        throw new ConflictException(apiError("errors.drive.slotsDontTile"));
+      }
+
+      const begun = drive.status === "LIVE" && now.getTime() >= drive.startsAt.getTime() - CHECK_IN_OPENS_BEFORE_START_MS;
+      if (begun && startsAt.getTime() !== drive.startsAt.getTime()) {
+        throw new BadRequestException(apiError("errors.drive.startLocked", { time: formatTime(drive.startsAt.toISOString()) }));
+      }
+      if (!begun && startsAt <= now) throw new BadRequestException(apiError("errors.drive.rescheduleIntoPast"));
+      if (endsAt <= now) throw new BadRequestException(apiError("errors.drive.rescheduleIntoPast"));
+
+      const windowMs = endsAt.getTime() - startsAt.getTime();
+      if (windowMs % slotMs !== 0) {
+        throw new BadRequestException(apiError("errors.drive.slotsUneven", { minutes: slotMs / 60_000 }, { field: "endsAt" }));
+      }
+      const count = windowMs / slotMs;
+      const shift = startsAt.getTime() - drive.startsAt.getTime();
+      const kept = drive.slots.slice(0, count).map((slot) => ({ ...slot, startsAt: new Date(slot.startsAt.getTime() + shift) }));
+      const dropped = drive.slots.slice(count);
+      const perSlot = drive.slots[drive.slots.length - 1]?.capacity ?? drive.capacity;
+
+      // Everyone booked into a dropped slot, moved to the latest remaining
+      // slot that hasn't started and has room: the nearest to the time they
+      // chose.
+      const stranded = await tx.application.findMany({
+        where: { slotId: { in: dropped.map((s) => s.id) }, state: "CONFIRMED" },
+        include: { candidate: { include: { user: { select: { name: true } } } } },
+      });
+      const room = new Map(kept.map((s) => [s.id, s.capacity - s.bookedCount]));
+      const moves: { applicationId: string; slotId: string }[] = [];
+      const unplaced: string[] = [];
+      for (const application of stranded) {
+        const target = [...kept].reverse().find((s) => s.startsAt > now && (room.get(s.id) ?? 0) > 0);
+        if (!target) {
+          unplaced.push(application.candidate.user.name);
+          continue;
+        }
+        room.set(target.id, room.get(target.id)! - 1);
+        moves.push({ applicationId: application.id, slotId: target.id });
+      }
+      if (unplaced.length > 0) {
+        throw new ConflictException(
+          apiError(
+            "errors.drive.rescheduleStrands",
+            { count: unplaced.length, names: new Intl.ListFormat(INTL_LOCALE[DEFAULT_LOCALE], { type: "conjunction" }).format(unplaced) },
+            { stranded: unplaced },
+          ),
+        );
+      }
+
+      for (const slot of kept) await tx.driveSlot.update({ where: { id: slot.id }, data: { startsAt: slot.startsAt } });
+      for (const move of moves) {
+        await tx.application.update({ where: { id: move.applicationId }, data: { slotId: move.slotId } });
+        await tx.driveSlot.update({ where: { id: move.slotId }, data: { bookedCount: { increment: 1 } } });
+      }
+      // Anyone still pointing at a dropped slot isn't holding a seat in it
+      // (they withdrew, arrived early or were turned away); the record of
+      // their slot goes with it.
+      await tx.application.updateMany({ where: { slotId: { in: dropped.map((s) => s.id) } }, data: { slotId: null } });
+      await tx.driveSlot.deleteMany({ where: { id: { in: dropped.map((s) => s.id) } } });
+      const added = Array.from({ length: Math.max(0, count - drive.slots.length) }, (_, i) => ({
+        driveId,
+        startsAt: new Date(startsAt.getTime() + (drive.slots.length + i) * slotMs),
+        capacity: perSlot,
+      }));
+      if (added.length) await tx.driveSlot.createMany({ data: added });
+
+      const version = drive.scheduleVersion + 1;
+      const capacity = kept.reduce((sum, s) => sum + s.capacity, 0) + added.length * perSlot;
+      await tx.drive.update({ where: { id: driveId }, data: { startsAt, endsAt, capacity, scheduleVersion: version } });
+      await tx.driveReschedule.create({
+        data: {
+          driveId,
+          version,
+          fromStartsAt: drive.startsAt,
+          fromEndsAt: drive.endsAt,
+          toStartsAt: startsAt,
+          toEndsAt: endsAt,
+          reseated: moves.length,
+          byId: userId,
+        },
+      });
+      await auditDrive(
+        tx,
+        userId,
+        driveId,
+        "rescheduled",
+        { startsAt: drive.startsAt, endsAt: drive.endsAt },
+        { startsAt, endsAt, version, reseated: moves.map((m) => m.applicationId) },
+      );
+      return { live: drive.status === "LIVE", version };
+    });
+
+    if (result.live) await this.jobs.alertBooked(driveId, "drive_rescheduled", result.version);
+    return toDetail(await prisma.drive.findUniqueOrThrow({ where: { id: driveId }, include: DRIVE_DETAIL_INCLUDE }));
   }
 
   private moveTo(userId: string, driveId: string, from: string, to: "PENDING" | "CANCELLED") {
@@ -491,7 +655,7 @@ export class DrivesService {
     // An empty note means review sent it back without saying why; the page
     // words that itself.
     const reason = (review?.after as { reason?: string } | null)?.reason;
-    return { ...withOwner(drive), reviewNote: drive.status === "DRAFT" && review ? (reason ?? "") : null };
+    return { ...toDetail(drive), reviewNote: drive.status === "DRAFT" && review ? (reason ?? "") : null };
   }
 
   // Company-scoping enforcement point: every by-id operation (update, submit,
