@@ -100,6 +100,7 @@ model User {
   reportsMade          Report[]
   moderationActions    ModerationAction[]
   warningsAcknowledged Warning[]
+  reschedules          DriveReschedule[]
 
   @@index([companyId])
   @@map("users")
@@ -207,6 +208,10 @@ model Drive {
   // restores only the drives its suspension caused.
   suspendedFrom      DriveStatus?
   suspendedCause     SuspensionCause?
+  // Counts reschedules. Alerts about the drive's time carry it, so a
+  // reminder for the new day isn't mistaken for the one already sent for
+  // the old day, and an alert about a superseded time is skipped.
+  scheduleVersion    Int                                    @default(0)
   needsManualGeocode Boolean                                @default(false)
   // Set when the employer placed the venue from a device at the venue. Area
   // geocoding can be a kilometre off, so a pinned point is kept until the
@@ -232,6 +237,7 @@ model Drive {
   notifications     Notification[]
   reports           Report[]
   moderationActions ModerationAction[]
+  reschedules       DriveReschedule[]
 
   @@index([companyId])
   @@index([ownerId])
@@ -392,6 +398,9 @@ model Notification {
   error             String?
   createdAt         DateTime           @default(now())
   sentAt            DateTime?
+  // The drive's scheduleVersion the alert was about, for alerts that depend
+  // on its time; part of the one-claim index.
+  scheduleVersion   Int                @default(0)
   // Only for channels that report delivery; Telegram does not.
   deliveredAt       DateTime?
 
@@ -722,4 +731,27 @@ model Warning {
   @@index([companyId])
   @@index([candidateId])
   @@map("warnings")
+}
+
+// One change of a drive's time, as it was announced: what the people booked
+// knew before and what they were told after. version is the drive's
+// scheduleVersion once this change was made.
+model DriveReschedule {
+  id           String   @id @default(cuid())
+  driveId      String
+  version      Int
+  fromStartsAt DateTime
+  fromEndsAt   DateTime
+  toStartsAt   DateTime
+  toEndsAt     DateTime
+  // Bookings moved to another slot because theirs no longer existed.
+  reseated     Int      @default(0)
+  byId         String
+  createdAt    DateTime @default(now())
+
+  drive Drive @relation(fields: [driveId], references: [id])
+  by    User  @relation(fields: [byId], references: [id])
+
+  @@unique([driveId, version])
+  @@map("drive_reschedules")
 }
