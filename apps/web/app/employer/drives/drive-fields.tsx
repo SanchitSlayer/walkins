@@ -31,7 +31,7 @@ export const EMPTY_DRIVE_FIELDS: DriveFieldValues = {
   endsAt: "",
 };
 
-function toDatetimeLocal(iso: string): string {
+export function toDatetimeLocal(iso: string): string {
   const date = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -82,11 +82,15 @@ export function DriveFields({
   onChange,
   disabled = false,
   venuePinnedAt = null,
+  timesLocked = false,
 }: {
   values: DriveFieldValues;
   onChange: (key: keyof DriveFieldValues, value: string) => void;
   disabled?: boolean;
   venuePinnedAt?: string | null;
+  // An existing drive's time changes only through Reschedule, which moves
+  // its slots and tells everyone booked.
+  timesLocked?: boolean;
 }) {
   const t = useTranslations("driveForm");
   const { dayLabel, formatTime } = useFormat();
@@ -156,11 +160,11 @@ export function DriveFields({
       </FieldGroup>
 
       <FieldGroup legend={t("when")}>
-        <BoardField label={t("doorsOpen")}>
-          <BoardInput board type="datetime-local" {...input("startsAt")} />
+        <BoardField label={t("doorsOpen")} hint={timesLocked ? t("timesLocked") : undefined}>
+          <BoardInput board type="datetime-local" {...input("startsAt")} disabled={disabled || timesLocked} />
         </BoardField>
         <BoardField label={t("doorsClose")}>
-          <BoardInput board type="datetime-local" {...input("endsAt")} />
+          <BoardInput board type="datetime-local" {...input("endsAt")} disabled={disabled || timesLocked} />
         </BoardField>
       </FieldGroup>
     </>

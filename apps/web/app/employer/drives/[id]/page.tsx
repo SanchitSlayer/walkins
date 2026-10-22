@@ -3,18 +3,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type DriveDetail, type DriveReach, type Member, type MessageKey, updateDriveSchema, type Wallet } from "@walkins/shared";
+import { type DriveDetail, type DriveReach, type Member, type MessageKey, rescheduleDriveSchema, updateDriveSchema, type Wallet } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { deriveBoardState, StatusMark } from "@/components/board/board-state";
 import { BoardButton, boardButtonClass, BoardField, BoardInput, BoardSelect } from "@/components/board/field";
 import { SlotStack } from "@/components/board/slot-stack";
 import { VenueOutsideCityNotice } from "../venue-notice";
 import { ArrivalsDesk } from "./arrivals-desk";
-import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields } from "../drive-fields";
+import { DriveFields, type DriveFieldValues, driveFieldValues, FieldGroup, parseDriveFields, toDatetimeLocal } from "../drive-fields";
 import { type KnockoutDraft, knockoutDrafts, KnockoutEditor, knockoutQuestions, useDriveIssue } from "../knockout-editor";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
-import { useErrorText } from "@/lib/use-error-text";
+import { useErrorText, useIssueText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { PersonName } from "@/components/person-name";
 
@@ -45,6 +45,92 @@ function ReachNotice({ drive }: { drive: DriveDetail }) {
         ),
       })}
     </p>
+  );
+}
+
+// Moving a drive's time. The server decides what's allowed (the start is
+// fixed once check-in opens; a shorter window must leave everyone booked a
+// slot) and its refusal names whoever would be stranded, so the page only
+// collects the times and says plainly who will be told.
+function Reschedule({ drive, onChange }: { drive: DriveDetail; onChange: (next: DriveDetail) => void }) {
+  const t = useTranslations("editDrive.reschedule");
+  const errorText = useErrorText();
+  const issueText = useIssueText();
+  const { formatWhen } = useFormat();
+  const { can } = useMembership();
+  const [startsAt, setStartsAt] = useState(() => toDatetimeLocal(drive.startsAt));
+  const [endsAt, setEndsAt] = useState(() => toDatetimeLocal(drive.endsAt));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [now] = useState(() => new Date());
+  const booked = drive.slots.reduce((sum, s) => sum + s.bookedCount, 0);
+  const open = ["DRAFT", "PENDING", "LIVE"].includes(drive.status) && new Date(drive.endsAt) > now;
+
+  async function move() {
+    const parsed = rescheduleDriveSchema.safeParse({ startsAt, endsAt });
+    if (!parsed.success) {
+      setError(issueText(parsed.error.errors[0]));
+      return;
+    }
+    if (drive.status === "LIVE" && booked > 0 && !confirm(t("confirm", { count: booked }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await apiClient.rescheduleDrive(drive.id, parsed.data));
+    } catch (err) {
+      setError(errorText(err, "editDrive.reschedule.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="reschedule-heading" className="grid gap-3">
+      <h2 id="reschedule-heading" className="type-meta text-housing-muted">
+        {t("heading")}
+      </h2>
+      {open && can("runDrives") && (
+        <>
+          <p className="type-meta text-housing-muted">{t("explain")}</p>
+          <BoardField label={t("startsAt")}>
+            <BoardInput board type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+          </BoardField>
+          <BoardField label={t("endsAt")}>
+            <BoardInput board type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+          </BoardField>
+          {error && (
+            <p role="alert" className="type-meta text-closing-lamp">
+              {error}
+            </p>
+          )}
+          <div>
+            <BoardButton variant="quiet" disabled={busy} onClick={move}>
+              {busy ? t("moving") : t("move")}
+            </BoardButton>
+          </div>
+        </>
+      )}
+      {drive.reschedules.length > 0 && (
+        <ul className="grid gap-2">
+          {drive.reschedules.map((r) => {
+            const from = formatWhen(r.fromStartsAt, r.fromEndsAt, now);
+            const to = formatWhen(r.toStartsAt, r.toEndsAt, now);
+            return (
+              <li key={r.createdAt} className="type-meta text-housing-muted">
+                {t.rich("history", {
+                  fromDay: from.day,
+                  fromTime: from.time,
+                  toDay: to.day,
+                  toTime: to.time,
+                  reseated: r.reseated,
+                  name: () => <PersonName person={r.by} />,
+                })}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -167,7 +253,9 @@ export default function EditDrivePage() {
       setError(driveIssue(parsed.error.errors[0]));
       return;
     }
-    setSaved(await run(() => apiClient.updateDrive(drive.id, parsed.data), "editDrive.saveFailed"));
+    // The time is Reschedule's to change; the form never sends it.
+    const { startsAt: _startsAt, endsAt: _endsAt, ...changes } = parsed.data;
+    setSaved(await run(() => apiClient.updateDrive(drive.id, changes), "editDrive.saveFailed"));
   }
 
   function handleCancel() {
@@ -205,6 +293,7 @@ export default function EditDrivePage() {
 
           <form className="grid gap-6" onSubmit={handleSave} noValidate>
             <DriveFields
+              timesLocked
               venuePinnedAt={drive.venuePinnedAt}
               values={fields}
               onChange={(key, value) => {
@@ -310,6 +399,8 @@ export default function EditDrivePage() {
           </section>
 
           <DriveOwner drive={drive} onChange={show} />
+
+          <Reschedule key={`${drive.startsAt}-${drive.endsAt}`} drive={drive} onChange={show} />
 
           <section aria-labelledby="slots-heading">
             <h2 id="slots-heading" className="type-meta text-housing-muted">
