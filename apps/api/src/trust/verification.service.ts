@@ -62,10 +62,11 @@ export class VerificationService {
 
   async standing(userId: string): Promise<CompanyStanding> {
     const { companyId } = await requireCompanyAccess(userId, "read");
-    const [company, submissions, warnings] = await Promise.all([
+    const [company, submissions, warnings, flaggedMessages] = await Promise.all([
       prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { verificationStatus: true, suspendedAt: true } }),
       prisma.verificationSubmission.findMany({ where: { companyId }, include: SUBMISSION_INCLUDE, orderBy: { createdAt: "desc" } }),
       prisma.warning.findMany({ where: { companyId, acknowledgedAt: null }, orderBy: { createdAt: "desc" } }),
+      prisma.message.count({ where: { moneyFlag: true, flagReviewedAt: null, thread: { application: { drive: { companyId } } } } }),
     ]);
     return companyStandingSchema.parse({
       verificationStatus: company.verificationStatus,
@@ -73,6 +74,7 @@ export class VerificationService {
       submissions: submissions.map(toSubmission),
       suspended: company.suspendedAt !== null,
       warnings: warnings.map((w) => ({ id: w.id, reason: w.reason, note: w.note, createdAt: w.createdAt.toISOString() })),
+      flaggedMessages,
     });
   }
 
