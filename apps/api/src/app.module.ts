@@ -12,6 +12,7 @@ import { DrivesModule } from "./drives/drives.module";
 import { HealthModule } from "./health/health.module";
 import { LiveModule } from "./live/live.module";
 import { TrustModule } from "./trust/trust.module";
+import { MessagesModule } from "./messages/messages.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { TrustModule } from "./trust/trust.module";
     BillingModule,
     AdminModule,
     TrustModule,
+    MessagesModule,
   ],
 })
 export class AppModule {}

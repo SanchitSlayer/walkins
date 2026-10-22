@@ -139,4 +139,11 @@ export const LIMITS = {
   reportCandidate: { name: "report-candidate", scope: "user", limit: 20, windowSeconds: 24 * HOUR },
   verificationUpload: { name: "verification-upload", scope: "company", limit: 30, windowSeconds: HOUR },
   verificationSubmit: { name: "verification-submit", scope: "company", limit: 10, windowSeconds: 24 * HOUR },
+  // Messages: a busy desk answers many candidates in an hour, but each
+  // message can reach a phone, so a person, a company and a candidate each
+  // have a ceiling that a script would hit and a person wouldn't.
+  messageSend: { name: "message", scope: "user", limit: 60, windowSeconds: HOUR },
+  messageSendCompany: { name: "message", scope: "company", limit: 300, windowSeconds: HOUR },
+  messageSendCandidate: { name: "message-candidate", scope: "user", limit: 30, windowSeconds: HOUR },
+  reportMessage: { name: "report-message", scope: "user", limit: 30, windowSeconds: 24 * HOUR },
 } satisfies Record<string, RateLimitRule>;

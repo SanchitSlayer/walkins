@@ -61,6 +61,13 @@ export class JobsService implements OnModuleDestroy {
     );
   }
 
+  // The Telegram copy of a company's message. On the alerts queue, so it
+  // shares the bot's rate limit and the same claim-before-send guarantee.
+  async message(data: { driveId: string; candidateId: string; messageId: string }) {
+    const job: AlertJob = { ...data, templateKey: "message" };
+    await this.alerts.add("message", job, { jobId: alertJobId(job) });
+  }
+
   async charge(job: ChargeJob) {
     await this.charges.add("charge", job, { jobId: chargeJobId(job) });
   }
