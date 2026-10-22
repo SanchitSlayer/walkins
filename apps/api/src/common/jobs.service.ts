@@ -49,13 +49,13 @@ export class JobsService implements OnModuleDestroy {
   }
 
   // Everyone holding a seat on the drive, when something happens to it that
-  // they must know before travelling: it was cancelled, suspended or put
-  // back on.
-  async alertBooked(driveId: string, templateKey: TemplateKey) {
+  // they must know before travelling: it was cancelled, suspended, put back
+  // on or moved.
+  async alertBooked(driveId: string, templateKey: TemplateKey, scheduleVersion?: number) {
     const booked = await prisma.application.findMany({ where: { driveId, state: "CONFIRMED" }, select: { candidateId: true } });
     await this.alerts.addBulk(
       booked.map(({ candidateId }) => {
-        const data = { driveId, candidateId, templateKey };
+        const data = { driveId, candidateId, templateKey, scheduleVersion };
         return { name: templateKey, data, opts: { jobId: alertJobId(data) } };
       }),
     );

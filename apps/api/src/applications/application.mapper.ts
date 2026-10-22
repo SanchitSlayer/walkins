@@ -1,14 +1,14 @@
-import type { Application, CheckIn as CheckInRow, Company, Drive, DriveSlot, Role } from "@walkins/db";
+import type { Application, CheckIn as CheckInRow, Company, Drive, DriveReschedule, DriveSlot, Role } from "@walkins/db";
 import type { CheckIn, MyApplication } from "@walkins/shared";
 
 export const MY_APPLICATION_INCLUDE = {
-  drive: { include: { role: true, company: true } },
+  drive: { include: { role: true, company: true, reschedules: { orderBy: { version: "desc" }, take: 1 } } },
   slot: true,
   checkIn: true,
 } as const;
 
 type MyApplicationRow = Application & {
-  drive: Drive & { role: Role; company: Company };
+  drive: Drive & { role: Role; company: Company; reschedules: DriveReschedule[] };
   slot: DriveSlot | null;
   checkIn: CheckInRow | null;
 };
@@ -43,6 +43,9 @@ export function toMyApplication(row: MyApplicationRow): MyApplication {
       startsAt: row.drive.startsAt.toISOString(),
       endsAt: row.drive.endsAt.toISOString(),
       status: row.drive.status,
+      rescheduledFrom: row.drive.reschedules[0]
+        ? { startsAt: row.drive.reschedules[0].fromStartsAt.toISOString(), endsAt: row.drive.reschedules[0].fromEndsAt.toISOString() }
+        : null,
     },
     checkIn: row.checkIn ? toCheckIn(row.checkIn) : null,
   };

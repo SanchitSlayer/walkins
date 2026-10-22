@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { type Actor, createApplication, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import {
+  CHECK_IN_OPENS_BEFORE_START_MS,
   type CheckInRequest,
   type CheckInResult,
   checkInResultSchema,
@@ -21,7 +22,6 @@ import { requireCompanyAccess, requireNotSuspended } from "../common/require-com
 
 const GEOFENCE_METERS = 200;
 const MAX_ACCURACY_METERS = 100;
-const OPENS_BEFORE_START_MS = 60 * 60_000;
 
 // Wrong codes allowed per 10 minutes before lookups are refused. The code is a
 // 40-bit secret rather than a signed token, so guessing is what this limits.
@@ -126,7 +126,7 @@ export class CheckInService {
     // For a late offline sync the scan happened before the code expired; the
     // expiry is server-signed, so it stands in for the untrusted phone clock.
     const scannedAt = lateByMs > 0 ? token.expiresAt : now;
-    const opensAt = new Date(drive.startsAt.getTime() - OPENS_BEFORE_START_MS);
+    const opensAt = new Date(drive.startsAt.getTime() - CHECK_IN_OPENS_BEFORE_START_MS);
     if (scannedAt < opensAt) {
       throw new BadRequestException(apiError("errors.checkIn.opensAt", { time: formatTime(opensAt.toISOString()) }));
     }
