@@ -1049,6 +1049,96 @@ while it's suspended.
 - **There's no appeal flow.** A suspended company has no way to respond
   inside the product.
 
+### Rescheduling a drive
+
+Before this, an employer who needed to move a drive could only cancel it
+and create a new one, which silently lost every booking. Now anyone at the
+company who can run drives can move one from its page, with
+`POST /drives/:id/reschedule`. It works on a draft, a drive in review, or a
+live drive that hasn't ended. A suspended drive's desk is read-only, so it
+can't be moved.
+
+**Slots move with the drive.** They keep their length and order:
+- **a later or earlier time** shifts every slot by the same amount;
+- **a longer window** adds slots at the end, with the same number of seats
+  as the last one;
+- **a shorter window** drops slots from the end. Anyone booked into a dropped
+  slot moves to the latest remaining slot that hasn't started and has room:
+  the nearest to the time they chose.
+
+**Slots must fill the window, or nothing moves.** Where everything goes is
+worked out from slots that fill the drive's window end to end, in equal
+steps from its start, which is how `create()` makes them. Nothing else
+guarantees that layout. So a reschedule first checks it, and refuses a drive
+whose slots don't fit, saying so: the drive can still run at its current
+time, or be cancelled. A refusal the employer can act on beats moving
+someone to the wrong slot.
+
+**Nobody is stranded silently.** If anyone booked can't be moved, the
+reschedule is refused before anything changes. The refusal names each
+person and says how many. The friction is deliberate: the employer is
+making a change that harms people who did nothing wrong, and should see
+exactly whom. An employer who truly can't run the drive can still cancel
+it, which tells everyone properly. The refusal says so.
+
+**Once check-in has opened** (an hour before the start), people may already
+be at the venue, so the start is fixed and only the end can move:
+- **later**, freely;
+- **earlier**, never before now, and only if everyone booked into a dropped
+  slot can move to a slot that hasn't started.
+
+People already checked in, their charges and the desk are untouched.
+
+**Everyone booked is told** with a `drive_rescheduled` Telegram alert.
+- It gives the old and new times and their slot.
+- It says they can release their seat without it counting against them.
+  That was already true: a WITHDRAWN booking never counts in reliability,
+  and a test pins it down.
+- If two reschedules happen before the alert goes out, only the latest is
+  sent, and it names the time the candidate last knew, not an in-between
+  time nobody announced to them.
+
+**History.** Every reschedule is a `drive_reschedules` row and an audit
+entry, and the drive's page lists them with who made each change.
+
+**The edit form no longer changes times.** Editing a draft's or pending
+drive's time through the form used to leave its slots at the old times, a
+bug from before this phase. The form's time fields now point to
+Reschedule, and the API refuses a time change through edit.
+
+#### Everything that keys off a drive's time
+
+| Area | What happens when the time moves |
+| --- | --- |
+| Check-in window | Opens an hour before the new start, closes at the new end |
+| Expiry and no-shows | At the new end |
+| Reliability | Counts CONFIRMED bookings only once the new end has passed |
+| 48-hour discovery alert | Not sent again. Moving a drive earlier into the window lets it alert if it hasn't yet |
+| Morning-of reminder | Sent again for the new day: see below |
+| Applying | "Slot has started" and "drive has ended" use the new times |
+| Search, `/jobs`, My drives, the public page | Use the new times |
+| Lifting a suspension, approving a drive, joining a company | Each checks "not ended" against the new end |
+| Charges, the charge sweep, prices | Unaffected: keyed to each check-in's own time |
+| Analytics | Unaffected: grouped by check-in day |
+
+**The reminder bug this avoids.** The "at most one alert" index allowed one
+morning-of reminder per drive and candidate, ever. A drive moved to another
+day would have had its new day's reminder refused as already sent.
+- `drives.scheduleVersion` now counts reschedules.
+- The reminder and the reschedule notice carry it, and the index includes
+  it, so each version of the time gets its own reminder.
+- An alert written for a version that has since changed is skipped.
+
+#### The offline pass
+
+A candidate with no signal can't be reached, so the pass doesn't pretend
+to be current.
+- **Offline, My drives leads with when it last synced**, day and time, in
+  large type.
+- **A drive that has been rescheduled carries a loud warning** that it may
+  have moved again since that copy was saved.
+- **Check-in's offline pass** shows the same.
+
 ## Rate limits
 
 **An address is not a person in India.** Carrier NAT puts thousands of
