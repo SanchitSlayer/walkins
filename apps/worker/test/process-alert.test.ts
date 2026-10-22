@@ -12,6 +12,7 @@ import {
 } from "@walkins/shared";
 import { processAlert, type ProcessDeps } from "../src/alerts/process-alert";
 import { ChannelResolver } from "../src/channels/channel-resolver";
+import { sweepMessages } from "../src/maintenance/maintenance-jobs";
 
 // Runs against the real database because the claim index is the guarantee
 // under test; the fixtures below are created here and removed afterwards.
@@ -231,6 +232,73 @@ describe("processAlert", () => {
     expect(message.text).toContain("won't count against you");
     expect(message.url).toBe("http://localhost:3000/");
     await prisma.application.delete({ where: { id: application.id } });
+  });
+
+  describe("a message's Telegram copy", () => {
+    let thread: { id: string };
+    let applicationId: string;
+
+    beforeAll(async () => {
+      const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED" } });
+      applicationId = application.id;
+      thread = await prisma.messageThread.create({ data: { applicationId } });
+    });
+
+    afterAll(async () => {
+      await prisma.report.deleteMany({ where: { message: { threadId: thread.id } } });
+      await prisma.notification.deleteMany({ where: { messageId: { not: null }, driveId: ids.drive } });
+      await prisma.message.deleteMany({ where: { threadId: thread.id } });
+      await prisma.messageThread.delete({ where: { id: thread.id } });
+      await prisma.application.delete({ where: { id: applicationId } });
+    });
+
+    async function message(seq: number, body: string, moneyFlag = false) {
+      return prisma.message.create({ data: { threadId: thread.id, seq, side: "COMPANY", senderId: ids.owner, body, moneyFlag } });
+    }
+
+    const copyOf = (messageId: string): AlertJob => ({ driveId: ids.drive, candidateId: ids.candidate, templateKey: "message", messageId });
+
+    it("sends each message once, however often its job runs, without colliding with the next message", async () => {
+      const first = await message(1, "Bring two photos.");
+      const second = await message(2, "And your Aadhaar.");
+
+      await expect(processAlert({ data: copyOf(first.id), attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+      await expect(processAlert({ data: copyOf(first.id), attemptsMade: 1 }, deps)).resolves.toBe("already sent");
+      await expect(processAlert({ data: copyOf(second.id), attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+
+      expect(channel.sent.map((m) => m.text)).toEqual([expect.stringContaining("Bring two photos."), expect.stringContaining("And your Aadhaar.")]);
+      expect(channel.sent[0].text).toContain("Alerts Test Owner at Alerts Test Company");
+      expect(channel.sent[0].text).toContain("Walkins never charges candidates");
+    });
+
+    it("dead-letters a copy whose delivery is uncertain and never sends it again", async () => {
+      const uncertain = await message(3, "See you at 10.");
+      channel.failures.push(new DeliveryOutcomeUnknownError("timed out"));
+
+      await expect(processAlert({ data: copyOf(uncertain.id), attemptsMade: 0 }, deps)).rejects.toBeInstanceOf(UnrecoverableError);
+      await expect(processAlert({ data: copyOf(uncertain.id), attemptsMade: 1 }, deps)).resolves.toBe("already sent");
+      expect(channel.sent).toHaveLength(0);
+    });
+
+    it("puts the warning first on a flagged message", async () => {
+      const flagged = await message(4, "Pay ₹500 registration fee", true);
+      await processAlert({ data: copyOf(flagged.id), attemptsMade: 0 }, deps);
+      expect(channel.sent[0].text.startsWith("Warning: this message seems to ask for money")).toBe(true);
+    });
+
+    it("is swept up if it was never queued, and left alone once attempted", async () => {
+      const lost = await prisma.message.create({
+        data: { threadId: thread.id, seq: 5, side: "COMPANY", senderId: ids.owner, body: "Queued nowhere", createdAt: new Date(Date.now() - 5 * 60_000) },
+      });
+      const queued: string[] = [];
+      const alerts = { deliverMessages: async (jobs: { messageId: string }[]) => void queued.push(...jobs.map((j) => j.messageId)) };
+
+      await expect(sweepMessages(alerts, [thread.id])).resolves.toBe(1);
+      expect(queued).toEqual([lost.id]);
+
+      await processAlert({ data: copyOf(lost.id), attemptsMade: 0 }, deps);
+      await expect(sweepMessages(alerts, [thread.id])).resolves.toBe(0);
+    });
   });
 
   describe("after a reschedule", () => {
