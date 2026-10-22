@@ -279,6 +279,11 @@ export const myApplicationSchema = z.object({
     rescheduledFrom: z.object({ startsAt: z.string(), endsAt: z.string() }).nullable(),
   }),
   checkIn: checkInSchema.nullable(),
+  // For a hire: the joining date, if agreed, and the candidate's own answer
+  // to "did you start?", once it can be asked.
+  outcome: z
+    .object({ joiningDate: z.string().nullable(), candidateStarted: z.boolean().nullable(), canAnswer: z.boolean() })
+    .nullable(),
 });
 
 export const myApplicationsSchema = z.object({

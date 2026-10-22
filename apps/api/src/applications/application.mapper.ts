@@ -1,16 +1,19 @@
-import type { Application, CheckIn as CheckInRow, Company, Drive, DriveReschedule, DriveSlot, Role } from "@walkins/db";
-import type { CheckIn, MyApplication } from "@walkins/shared";
+import type { Application, CheckIn as CheckInRow, Company, Drive, DriveReschedule, DriveSlot, HiringOutcome, Role } from "@walkins/db";
+import { type CheckIn, dayKey, type MyApplication } from "@walkins/shared";
+import { editableUntil } from "./outcomes.service";
 
 export const MY_APPLICATION_INCLUDE = {
   drive: { include: { role: true, company: true, reschedules: { orderBy: { version: "desc" }, take: 1 } } },
   slot: true,
   checkIn: true,
+  outcome: true,
 } as const;
 
 type MyApplicationRow = Application & {
   drive: Drive & { role: Role; company: Company; reschedules: DriveReschedule[] };
   slot: DriveSlot | null;
   checkIn: CheckInRow | null;
+  outcome: HiringOutcome | null;
 };
 
 export function toCheckIn(row: CheckInRow): CheckIn {
@@ -48,5 +51,18 @@ export function toMyApplication(row: MyApplicationRow): MyApplication {
         : null,
     },
     checkIn: row.checkIn ? toCheckIn(row.checkIn) : null,
+    outcome: row.outcome && row.state === "HIRED" ? toMyOutcome(row.outcome) : null,
+  };
+}
+
+// The candidate is asked "did you start?" once the joining date has come
+// (or straight away if none was agreed), until the correction window ends.
+function toMyOutcome(o: HiringOutcome) {
+  const joiningDate = o.joiningDate?.toISOString().slice(0, 10) ?? null;
+  const today = dayKey(new Date());
+  return {
+    joiningDate,
+    candidateStarted: o.candidateStarted,
+    canAnswer: (joiningDate === null || joiningDate <= today) && editableUntil(o) >= today,
   };
 }

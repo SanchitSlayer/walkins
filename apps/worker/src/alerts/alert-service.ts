@@ -47,6 +47,21 @@ export class AlertService {
     return confirmed.length;
   }
 
+  // A day or more after a joining date, the candidate is asked whether they
+  // started, for a week; once is enough, and the claim index sees to it.
+  async askWhetherStarted(today: string): Promise<number> {
+    const due = await prisma.hiringOutcome.findMany({
+      where: {
+        candidateStarted: null,
+        joiningDate: { lt: new Date(today), gte: new Date(new Date(today).getTime() - 7 * 24 * 3600_000) },
+        application: { state: "HIRED" },
+      },
+      select: { application: { select: { driveId: true, candidateId: true } } },
+    });
+    await this.enqueue(due.map(({ application }) => ({ ...application, templateKey: "joining_check" })));
+    return due.length;
+  }
+
   // A message's Telegram copy, for the sweep. The job id is the message's,
   // so one already waiting is not queued twice.
   async deliverMessages(messages: { driveId: string; candidateId: string; messageId: string }[]) {

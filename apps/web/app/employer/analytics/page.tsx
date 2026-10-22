@@ -48,11 +48,15 @@ export default function AnalyticsPage() {
   }
 
   const now = new Date();
-  const scope = driveId === "all" ? data.drives : data.drives.filter((d) => d.driveId === driveId);
+  // Cancelled and suspended drives are listed but count towards nothing:
+  // nobody booked on them could have come.
+  const scope = (driveId === "all" ? data.drives : data.drives.filter((d) => d.driveId === driveId)).filter((d) => d.counted);
   const funnel = STAGES.map((key) => ({ stage: t(`stage.${key}`), people: total(scope, key) }));
   const confirmed = total(scope, "confirmed");
   const showUp = confirmed > 0 ? total(scope, "checkedIn") / confirmed : null;
   const walkIns = total(scope, "walkIns");
+  const awaiting = total(scope, "awaitingConfirmation");
+  const afterAlert = total(scope, "attendedAfterAlert");
   const daily = data.daily.map((d) => ({ ...d, label: dayLabel(new Date(`${d.day}T12:00:00+05:30`), now) }));
 
   return (
@@ -107,6 +111,18 @@ export default function AnalyticsPage() {
             <dd className="type-board-md">{walkIns}</dd>
             <dd className="type-meta text-housing-muted">{t("walkInsExplain")}</dd>
           </div>
+          {awaiting > 0 && (
+            <div>
+              <dt className="type-meta text-housing-muted">{t("awaiting")}</dt>
+              <dd className="type-board-md">{awaiting}</dd>
+              <dd className="type-meta text-housing-muted">{t("awaitingExplain")}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="type-meta text-housing-muted">{t("afterAlert")}</dt>
+            <dd className="type-board-md">{afterAlert}</dd>
+            <dd className="type-meta text-housing-muted">{t("afterAlertExplain")}</dd>
+          </div>
         </dl>
       </section>
 
@@ -147,6 +163,7 @@ export default function AnalyticsPage() {
                     </th>
                   ))}
                   <th className="py-2 pr-4 text-right font-normal">{t("walkIns")}</th>
+                  <th className="py-2 pr-4 text-right font-normal">{t("screenedOut")}</th>
                   <th className="py-2 text-right font-normal">{t("showUp")}</th>
                 </tr>
               </thead>
@@ -166,7 +183,8 @@ export default function AnalyticsPage() {
                       </td>
                     ))}
                     <td className="type-board-md py-2 pr-4 text-right">{d.walkIns}</td>
-                    <td className="type-board-md py-2 text-right">{percent(d.showUpRate)}</td>
+                    <td className="type-board-md py-2 pr-4 text-right">{d.screenedOut}</td>
+                    <td className="type-board-md py-2 text-right">{d.counted ? percent(d.showUpRate) : t("notCounted")}</td>
                   </tr>
                 ))}
               </tbody>

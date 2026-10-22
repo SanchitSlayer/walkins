@@ -21,7 +21,8 @@
     "drive_reinstated": "Back on: {role} at {company}\n\nWalkins has finished checking this drive, and it's going ahead as planned.\n\nWhen: {day}, {time}\nWhere: {where}\n\nYour booking is still held.",
     "drive_rescheduled": "Moved: {role} at {company}\n\nThe employer has changed the time of this walk-in.\n\nWas: {wasDay}, {wasTime}\nNow: {day}, {time}\n{slot, select, none {} other {Your slot: {slot}\n}}Where: {where}\n\nYour booking is still held. If the new time doesn't work for you, release your seat on Walkins; it won't count against you.",
     "message": "Message from {sender} at {company} about {role}:\n\n{body}\n\nReply on Walkins with the link below.",
-    "messageFlagged": "Warning: this message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it from the conversation on Walkins."
+    "messageFlagged": "Warning: this message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it from the conversation on Walkins.",
+    "joining_check": "Did you start? {role} at {company}\n\nYou were due to start on {joining}. You can tell Walkins whether you started, on My drives (link below).\n\n{company} sees your answer next to its own record. It doesn't count towards anything else."
   },
   "errors": {
     "generic": "That didn't go through. Try again in a moment.",
@@ -173,7 +174,8 @@
       "tooLowExclusive": "{field} needs to be more than {minimum}.",
       "tooHighExclusive": "{field} needs to be less than {maximum}.",
       "invitePhone": "Enter the 10-digit mobile number they sign in with, without +91 or spaces.",
-      "gstin": "Enter the 15-character GSTIN as it appears on your GST certificate, for example 29ABCDE1234F1Z5."
+      "gstin": "Enter the 15-character GSTIN as it appears on your GST certificate, for example 29ABCDE1234F1Z5.",
+      "date": "Enter a date."
     },
     "people": {
       "cannot": {
@@ -230,6 +232,14 @@
         "driveSuspended": "This drive is paused while Walkins checks it, so your company can't send messages about it for now. The conversation stays here.",
         "viewOnly": "Your role is view only, so you can read this conversation but not reply. Ask an owner to make you a recruiter."
       }
+    },
+    "outcomes": {
+      "notHired": "This person isn't recorded as hired from this drive, so there's no outcome to record. Reload the page.",
+      "tooLate": "Outcomes can be recorded or corrected until {day}, and that has passed. What was recorded stays as it is.",
+      "joiningBeforeHire": "The joining date can't be before the day they were hired. Check the date.",
+      "notYet": "The joining date hasn't come yet, so whether they started can't be known. Record it on or after that day.",
+      "startedOnOutOfRange": "The start date has to be between the day they were hired and today.",
+      "retainedNotYet": "Whether someone stayed is asked {days} days after they started, and that hasn't passed yet."
     }
   },
   "fields": {
@@ -276,7 +286,11 @@
     "details": "What happened",
     "note": "Note",
     "body": "Message",
-    "seq": "Message"
+    "seq": "Message",
+    "joiningDate": "Joining date",
+    "started": "Started",
+    "startedOn": "Start date",
+    "retained": "Still there"
   },
   "board": {
     "state": {
@@ -456,7 +470,17 @@
     "movedOffline": "This drive has been moved before, and this copy was saved {day} at {time}. It may have moved again since. Check when you have signal before you travel.",
     "messages": "Messages",
     "messagesUnread": "{count, plural, one {# new message} other {# new messages}}",
-    "newMessages": "{count, plural, one {You have # new message from an employer.} other {You have # new messages from employers.}}"
+    "newMessages": "{count, plural, one {You have # new message from an employer.} other {You have # new messages from employers.}}",
+    "started": {
+      "joining": "You're due to start on {day}.",
+      "answered": "You told Walkins: {started, select, yes {you started} other {you didn't start}}.",
+      "question": "Did you start at {company}?",
+      "change": "Change your answer if it was wrong.",
+      "whoSees": "{company} sees your answer next to its own record. It doesn't count towards anything else.",
+      "yes": "Yes, I started",
+      "no": "No, I didn't",
+      "failed": "Your answer didn't save. Check your signal and try again."
+    }
   },
   "login": {
     "sendFailed": "The code couldn't be sent. Check the number and try again.",
@@ -584,7 +608,8 @@
     "people": "People",
     "moderation": "Moderation",
     "messages": "Messages",
-    "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}"
+    "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
+    "outcomes": "Outcomes"
   },
   "employerDrives": {
     "booked": "{booked} of {capacity} booked",
@@ -919,7 +944,7 @@
     "stage": {
       "alerted": "Alerted",
       "interested": "Applied",
-      "confirmed": "Booked",
+      "confirmed": "Held a seat",
       "checkedIn": "Checked in",
       "hired": "Hired"
     },
@@ -932,7 +957,7 @@
     "funnelHeading": "From alert to hire",
     "people": "People",
     "showUpRate": "Show-up rate",
-    "showUpExplain": "of everyone who booked a seat checked in",
+    "showUpExplain": "of everyone who held a seat as the drive happened checked in. Releasing a seat early, or being released by the employer, doesn't count as not coming.",
     "walkIns": "Walk-ins",
     "walkInsExplain": "checked in without booking; not in the funnel",
     "dailyHeading": "Last 30 days, all drives",
@@ -948,7 +973,13 @@
       "EXPIRED": "ended",
       "CANCELLED": "cancelled",
       "SUSPENDED": "paused"
-    }
+    },
+    "awaiting": "Awaiting confirmation",
+    "awaitingExplain": "checked in with a flag the desk hasn't confirmed yet; not counted as absent, not yet as attended",
+    "afterAlert": "Attended after an alert",
+    "afterAlertExplain": "checked in, having been sent the 48-hour alert before applying. After, not because: some would have found the drive anyway.",
+    "screenedOut": "Screened out",
+    "notCounted": "not counted"
   },
   "admin": {
     "drives": {
@@ -1337,5 +1368,40 @@
       "reviewed": "Mark reviewed",
       "loadFailed": "Flagged messages couldn't be loaded. Reload the page to try again."
     }
+  },
+  "outcomes": {
+    "heading": "Outcomes",
+    "intro": "What happened to the people you hired: when they start, whether they did, and whether they were still there 30 days later. Leave anything you don't know: unknown is an honest answer, and it is counted as unknown, never as a no.",
+    "loading": "Loading outcomes",
+    "loadFailed": "Outcomes couldn't be loaded. Reload the page to try again.",
+    "failed": "That didn't save. Reload the page and try again.",
+    "none": "Nobody has been hired recently. Outcomes appear here when you mark someone hired on a drive's desk.",
+    "section": {
+      "due": "Waiting for an answer ({count})",
+      "upcoming": "Starting soon ({count})",
+      "recorded": "Recorded ({count})"
+    },
+    "hiredFor": "{role}, drive on {day}",
+    "message": "Message",
+    "joining": "Joining date",
+    "started": "Started",
+    "retained": "Still there after 30 days",
+    "unknown": "not known",
+    "by": "recorded by <name></name>",
+    "startedOn": "yes, on {day}",
+    "didNotStart": "did not start",
+    "stayed": "yes",
+    "left": "left",
+    "candidateSays": "The candidate says: {started, select, yes {they started} other {they didn't start}}. Shown for you to see; it doesn't change your record.",
+    "joiningDate": "Joining date",
+    "saveDate": "Save date",
+    "markStarted": "Started",
+    "markDidNotStart": "Didn't start",
+    "markStayed": "Still there",
+    "markLeft": "Has left",
+    "editableUntil": "Can be recorded or corrected until {day}.",
+    "joiningOn": "Joining on {day}",
+    "whenStarting": "When do they start? (optional)",
+    "prompt": "{count, plural, one {# person you hired is} other {# people you hired are}} waiting for an outcome: when they start, or whether they did. <link>Record outcomes</link>"
   }
 }

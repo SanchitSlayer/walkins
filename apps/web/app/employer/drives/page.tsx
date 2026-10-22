@@ -11,6 +11,7 @@ import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { PersonName } from "@/components/person-name";
+import { OutcomesPrompt } from "@/components/outcomes-prompt";
 
 function Seats({ capacity, booked }: { capacity: number; booked: number }) {
   const t = useTranslations("employerDrives");
@@ -67,6 +68,7 @@ export default function EmployerDrivesPage() {
         )}
       </div>
       {!can("runDrives") && <p className="type-meta text-housing-muted">{t("viewOnly", { company: membership.company.name })}</p>}
+      <OutcomesPrompt />
 
       {error && (
         <p role="alert" className="type-meta text-closing-lamp">

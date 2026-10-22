@@ -109,5 +109,5 @@ export function formatFor(locale: Locale): Format {
 // The API and worker don't yet know a reader's language, so they format for
 // the default locale. The web app never imports these: it formats through
 // useFormat(), which follows the page's locale (test/i18n.test.ts checks).
-export const { formatTime, dayLabel, formatWhen, formatSalary, formatPaise, formatExperience, formatDistance, formatSeats } =
+export const { formatTime, dayLabel, formatDate, formatWhen, formatSalary, formatPaise, formatExperience, formatDistance, formatSeats } =
   formatFor(DEFAULT_LOCALE);

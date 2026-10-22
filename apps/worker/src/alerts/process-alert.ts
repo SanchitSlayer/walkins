@@ -30,17 +30,18 @@ export type ProcessDeps = {
 
 type Loaded = { skip: string } | { recipient: Recipient; message: TemplatedMessage };
 
-// The status a drive must still be in for each alert to be true when it
+// The statuses a drive must still be in for each alert to be true when it
 // arrives: a suspension notice for a drive already put back on, or a "back
 // on" for one suspended again, is skipped rather than sent.
-const DRIVE_STATUS_FOR: Record<Exclude<TemplateKey, "message">, DriveStatus> = {
-  drive_48h: "LIVE",
-  drive_morning_of: "LIVE",
-  application_rejected: "LIVE",
-  drive_cancelled: "CANCELLED",
-  drive_suspended: "SUSPENDED",
-  drive_reinstated: "LIVE",
-  drive_rescheduled: "LIVE",
+const DRIVE_STATUS_FOR: Record<Exclude<TemplateKey, "message">, DriveStatus[]> = {
+  drive_48h: ["LIVE"],
+  drive_morning_of: ["LIVE"],
+  application_rejected: ["LIVE"],
+  drive_cancelled: ["CANCELLED"],
+  drive_suspended: ["SUSPENDED"],
+  drive_reinstated: ["LIVE"],
+  drive_rescheduled: ["LIVE"],
+  joining_check: ["LIVE", "EXPIRED"],
 };
 
 // Sent to everyone holding a seat, so each is skipped for anyone who has
@@ -102,12 +103,14 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
     prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true } } } }),
   ]);
   if (!drive || !candidate) return null;
-  if (drive.status !== DRIVE_STATUS_FOR[templateKey]) return { skip: `drive is ${drive.status.toLowerCase()}` };
-  if (drive.endsAt <= now) return { skip: "drive has ended" };
+  if (!DRIVE_STATUS_FOR[templateKey].includes(drive.status)) return { skip: `drive is ${drive.status.toLowerCase()}` };
+  // Every other alert is about the drive day; this one comes after it.
+  if (templateKey !== "joining_check" && drive.endsAt <= now) return { skip: "drive has ended" };
   if (scheduleVersion !== undefined && scheduleVersion !== drive.scheduleVersion) return { skip: "the drive has been rescheduled since" };
 
   let slotStartsAt: string | null = null;
   let previous: { startsAt: string; endsAt: string } | null = null;
+  let joiningDate: string | null = null;
   if (templateKey === "drive_48h") {
     // Targeting leaves applicants out, but only at the moment of fanout; a
     // job queued before they applied is still waiting. Any application,
@@ -125,6 +128,11 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
       previous = await lastKnownTime(driveId, candidateId, application.stateChangedAt);
       if (!previous) return { skip: "candidate already knows this time" };
     }
+  } else if (templateKey === "joining_check") {
+    const outcome = await prisma.hiringOutcome.findFirst({ where: { application: { driveId, candidateId, state: "HIRED" } } });
+    if (!outcome?.joiningDate) return { skip: "no joining date to ask about" };
+    if (outcome.candidateStarted !== null) return { skip: "candidate has already answered" };
+    joiningDate = outcome.joiningDate.toISOString().slice(0, 10);
   } else if (templateKey === "application_rejected") {
     const rejected = await prisma.application.count({ where: { driveId, candidateId, state: "REJECTED" } });
     if (rejected === 0) return { skip: "application is no longer rejected" };
@@ -147,9 +155,15 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
       endsAt: drive.endsAt.toISOString(),
       slotStartsAt,
       previous,
+      joiningDate,
       // A rejection or a cancellation points to other drives rather than the
       // one that is no longer for them.
-      driveUrl: templateKey === "application_rejected" || templateKey === "drive_cancelled" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
+      driveUrl:
+        templateKey === "joining_check"
+          ? `${webUrl}/my-drives`
+          : templateKey === "application_rejected" || templateKey === "drive_cancelled"
+            ? `${webUrl}/`
+            : `${webUrl}/drives/${driveId}`,
       reportUrl: `${webUrl}/drives/${driveId}#report`,
   };
   return { recipient: { candidateId, phone: candidate.user.phone, telegramChatId: candidate.telegramChatId }, message: renderAlert(templateKey, context, now) };

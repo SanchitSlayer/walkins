@@ -8,6 +8,7 @@ import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput, boardButtonClass } from "@/components/board/field";
 import { DriveFields, type DriveFieldValues, EMPTY_DRIVE_FIELDS, FieldGroup, parseDriveFields } from "../drive-fields";
 import { type KnockoutDraft, KnockoutEditor, knockoutQuestions, useDriveIssue } from "../knockout-editor";
+import { OutcomesPrompt } from "@/components/outcomes-prompt";
 import { useTranslations } from "next-intl";
 import { useErrorText } from "@/lib/use-error-text";
 
@@ -75,6 +76,7 @@ export default function NewDrivePage() {
         <h1 className="type-h2 mt-1">{t("heading")}</h1>
         <p className="type-meta mt-1 text-housing-muted">{t("intro")}</p>
       </div>
+      <OutcomesPrompt />
 
       <form className="grid gap-6" onSubmit={handleSubmit} noValidate>
         <DriveFields values={fields} onChange={(key, value) => setFields((f) => ({ ...f, [key]: value }))} />

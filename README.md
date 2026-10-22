@@ -639,17 +639,57 @@ phone, and the login page sends admins to `/admin`. The panel has five pages:
 `/employer/analytics` reads two materialised views. The worker refreshes them
 every 15 minutes from the existing maintenance schedule, using `CONCURRENTLY`
 so they stay readable while refreshing. A busy dashboard never queries the
-live tables check-in depends on. Per drive:
+live tables check-in depends on. Per drive (as corrected in Phase 12; see
+below):
 
 - **Alerted:** candidates sent the 48-hour alert.
-- **Applied:** applied in any way other than walking in.
-- **Booked:** ever booked a seat, taken from the audit log. A hired or absent
-  candidate did book; their current state has forgotten it, and the
-  append-only audit log has not.
-- **Checked in:** booked candidates with a verified check-in. Walk-ins are
-  counted apart, outside the funnel.
-- **Hired.**
-- **Show-up rate:** checked in divided by booked.
+- **Applied:** applied in any way other than walking in, screened-out
+  applicants left out.
+- **Screened out:** counted on their own.
+- **Held a seat:** had a seat as the drive happened, by the same rule the
+  arrivals board counts by. Someone who released their seat, before the drive
+  or after a reschedule, or whom the employer turned away before they
+  arrived, did not hold one.
+- **Checked in:** those who held a seat and have a verified check-in.
+  Walk-ins are counted apart, outside the funnel.
+- **Awaiting confirmation:** checked in, but flagged, and not yet confirmed
+  by the desk. Counted on its own, not as absent and not yet as attended.
+- **Attended after an alert:** checked in, having been sent the 48-hour
+  alert before applying. **After, not because.** Some would have found the
+  drive in search anyway, and the data can't tell which. This is the same
+  discipline as the transcript (a guess, labelled as one) and the money-request
+  tripwire (a trigger, not a screen): the page says only what the data
+  supports.
+- **Hired:** in the HIRED state, which is final. What happens after a hire
+  is a separate record (see "Hiring outcomes").
+- **Show-up rate:** checked in divided by held a seat. Cancelled and
+  suspended drives are listed but left out of every rate and total, because
+  nobody booked on them could have come.
+
+#### Bugs Phase 12 fixed in the funnel
+
+Read again with more data behind them, six things in the funnel were wrong:
+
+1. **Releasing a seat counted as not turning up.** "Booked" meant "ever
+   confirmed", from the audit log. A candidate who released their seat,
+   penalty-free, still counted as booked and absent, so the drive's show-up
+   rate fell whenever someone was sensible. That included everyone who
+   released after the employer rescheduled: the employer's own change
+   lowered their own show-up rate, and the candidate's choice was recorded
+   as a failure to come. This is the Phase 10 reliability bug, where a
+   cancelled drive counted against the candidate, appearing in the
+   employer's numbers instead.
+2. **Cancelled and suspended drives counted.** A cancelled drive showed 0%
+   show-up: people told not to come, counted as absent.
+3. **"Hired" would have dropped people** once anything came after HIRED.
+   Outcomes are now a separate record, so HIRED stays final and the count
+   stays true.
+4. **"Applied" included the screened-out**, making the step to booking look
+   worse than it was.
+5. **A flagged check-in counted as absent** until someone confirmed it.
+6. **Alerts were never linked to who came**, so "which alerts produced
+   attendance" couldn't be answered. Now it can, as "attended after an
+   alert".
 
 A second view counts verified check-ins and hires per day, by India's
 calendar day, for the 30-day chart. The charts use two colours of their own,
@@ -679,7 +719,11 @@ Still scaffolding after this phase:
 - **`ApplicationState.INTERESTED`.** No transition leads into it, so no
   application can be in it. The transitions out of it, and the screens that
   handle it, are waiting for a "save for later" feature.
-- **`Candidate.reliability`** is recomputed every night and shown nowhere.
+- **`Candidate.reliability` is computed every night and read by nothing.**
+  No page shows it, no ranking uses it, no rule consults it. A number that
+  nothing uses rots quietly: nobody notices when it is wrong, as it was for
+  cancelled drives until Phase 10. Either something should use it, with the
+  candidate seeing it first, or it should go.
 - **`Notification.deliveredAt`** is never written: Telegram doesn't report
   delivery, and WhatsApp, which would, is not implemented.
 - **Refunds and disputes.** Webhook events are stored, nothing more.
@@ -1248,6 +1292,62 @@ to file a report against the candidate.
   Each opening is an audit entry.
 - **Rate limits:** 60 messages an hour per person and 300 per company on
   the company side, and 30 an hour per candidate.
+
+### Hiring outcomes
+
+The system used to stop at the door: its last fact about a candidate was a
+QR scan. Whether they were hired, started and stayed was invisible.
+
+**The application's states stop at HIRED**, a fact of the drive day.
+Everything after is a separate `hiring_outcomes` record, created with the
+hire:
+- the joining date;
+- whether they started, and on which day;
+- whether they were still there 30 days after starting;
+- the candidate's own answer to "did you start?".
+
+States were the wrong shape for this:
+- "not known" would have had to be worked out from a state plus a date, and
+  it is the most common case;
+- two sources disagreeing can't be one state;
+- corrections are awkward in a linear chain.
+
+So each fact is nullable. **Unknown is the normal case, counted as unknown,
+never as a no.** Each fact records who said it and when, and every change is
+an audit entry.
+
+**The candidate's own answer sits beside the employer's record.** It is
+counted separately, never overrides it, and the employer sees that it
+exists.
+
+**Getting it recorded.** It happens days or weeks after the drive, when the
+employer has no reason to open Walkins, so nothing assumes they will:
+- **On the desk, at the moment of hiring.** Marking someone hired asks,
+  optionally, when they start. That is the one moment the employer certainly
+  has the answer and the screen open.
+- **An Outcomes page** with a count in the nav, like Messages. It lists who
+  starts soon and who is waiting for an answer, each a single tap: started,
+  didn't start, still there, has left. "Not sure yet" means leaving it.
+- **When they come back for their next drive.** The drive list, the new-drive
+  page and a draft's submit button all show how many outcomes are waiting.
+  This asks and never blocks; a gate would only send them elsewhere.
+- **The candidate is asked too.** A `joining_check` Telegram message goes
+  out the day after the joining date, asking "did you start?", answered on
+  My drives. It says the employer sees the answer, and that it counts
+  towards nothing else.
+
+Employers have no channel outside the app: no email, no SMS. Until they do,
+most outcomes will go unrecorded, and every figure built on them will say
+how few it rests on.
+
+**The rules:**
+- whether someone started can be recorded only on or after the joining date;
+- whether they stayed, only 30 days after they started;
+- correcting "started" to "didn't start" clears whether they stayed;
+- either side can record or correct up to 60 days after the joining date
+  (or after the hire, if no date was agreed). After that the record is
+  fixed;
+- people who run drives record; viewers read.
 
 ## Rate limits
 

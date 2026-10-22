@@ -31,7 +31,7 @@ const ALLOWED = new Set(["Walkins"]);
 // Callers whose string arguments a person reads.
 const USER_CALLS = new Set(["setError", "setNotice", "confirm", "alert", "prompt"]);
 // Formatting must follow the page's locale; these bypass it.
-const BARE_FORMATTERS = new Set(["formatTime", "dayLabel", "formatWhen", "formatSalary", "formatPaise", "formatExperience", "formatDistance", "formatSeats"]);
+const BARE_FORMATTERS = new Set(["formatTime", "dayLabel", "formatDate", "formatWhen", "formatSalary", "formatPaise", "formatExperience", "formatDistance", "formatSeats"]);
 // Namespaces the API and worker use; the web app need not reference them.
 const SERVER_NAMESPACES = new Set(["alerts", "bot", "errors", "fields", "format"]);
 const SERVER_SOURCES = ["../api/src", "../worker/src"];

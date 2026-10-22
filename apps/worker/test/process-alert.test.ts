@@ -234,6 +234,27 @@ describe("processAlert", () => {
     await prisma.application.delete({ where: { id: application.id } });
   });
 
+  it("asks a hired candidate whether they started, after the joining date, and not once they've answered", async () => {
+    await prisma.drive.update({ where: { id: ids.drive }, data: { status: "EXPIRED" } });
+    const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "HIRED" } });
+    const outcome = await prisma.hiringOutcome.create({
+      data: { applicationId: application.id, hiredAt: new Date(), joiningDate: new Date(Date.now() - 24 * 3600_000) },
+    });
+    const ask: AlertJob = { ...job, templateKey: "joining_check" };
+
+    await expect(processAlert({ data: ask, attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+    expect(channel.sent[0].text).toContain("Did you start?");
+    expect(channel.sent[0].text).toContain("doesn't count towards anything else");
+    expect(channel.sent[0].url).toBe("http://localhost:3000/my-drives");
+
+    await prisma.notification.deleteMany({ where: { driveId: ids.drive } });
+    await prisma.hiringOutcome.update({ where: { id: outcome.id }, data: { candidateStarted: true } });
+    await expect(processAlert({ data: ask, attemptsMade: 0 }, deps)).resolves.toBe("skipped: candidate has already answered");
+
+    await prisma.hiringOutcome.delete({ where: { id: outcome.id } });
+    await prisma.application.delete({ where: { id: application.id } });
+  });
+
   describe("a message's Telegram copy", () => {
     let thread: { id: string };
     let applicationId: string;

@@ -12,6 +12,9 @@ export type TemplateKey =
   | "drive_suspended"
   | "drive_reinstated"
   | "drive_rescheduled"
+  // After a hire: asks the candidate whether they started, beside what the
+  // employer records.
+  | "joining_check"
   // The Telegram copy of a message from the company; claimed per message.
   | "message";
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   type AccessTokenPayload,
   type ApplicantsAction,
@@ -6,8 +6,12 @@ import {
   applicantsQuerySchema,
   type ApplyInput,
   applySchema,
+  type CandidateAnswer,
+  candidateAnswerSchema,
   type EmployerApplicationUpdate,
   employerApplicationUpdateSchema,
+  type RecordOutcome,
+  recordOutcomeSchema,
 } from "@walkins/shared";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
@@ -17,6 +21,7 @@ import { RolesGuard } from "../common/roles.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { ApplicantsService } from "./applicants.service";
 import { ApplicationsService } from "./applications.service";
+import { OutcomesService } from "./outcomes.service";
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,7 +29,36 @@ export class ApplicationsController {
   constructor(
     private readonly applications: ApplicationsService,
     private readonly applicants: ApplicantsService,
+    private readonly outcomes: OutcomesService,
   ) {}
+
+  @Get("companies/me/outcomes")
+  @Roles("EMPLOYER")
+  listOutcomes(@CurrentUser() user: AccessTokenPayload, @Query("driveId") driveId?: string) {
+    return this.outcomes.list(user.userId, driveId || undefined);
+  }
+
+  @Patch("applications/:id/outcome")
+  @RateLimit(LIMITS.driveEdit)
+  @Roles("EMPLOYER")
+  recordOutcome(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(recordOutcomeSchema)) body: RecordOutcome,
+  ) {
+    return this.outcomes.record(user.userId, id, body);
+  }
+
+  @Post("applications/:id/started")
+  @HttpCode(204)
+  @Roles("CANDIDATE")
+  answerStarted(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(candidateAnswerSchema)) body: CandidateAnswer,
+  ) {
+    return this.outcomes.candidateAnswer(user.userId, id, body.started);
+  }
 
   @Get("drives/:id/applicants")
   @Roles("EMPLOYER")

@@ -12,6 +12,9 @@ import type {
   FlaggedMessage,
   MessageReport,
   Moderate,
+  OutcomeRow,
+  Outcomes,
+  RecordOutcome,
   ModerationQueue,
   SubmitVerification,
   Thread,
@@ -501,6 +504,18 @@ export const apiClient = {
 
   async adminModerate(input: Moderate): Promise<ModerationQueue> {
     return parseOrThrow(await request("/admin/moderation", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async companyOutcomes(driveId?: string): Promise<Outcomes> {
+    return parseOrThrow(await request(`/companies/me/outcomes${driveId ? `?driveId=${encodeURIComponent(driveId)}` : ""}`));
+  },
+
+  async recordOutcome(applicationId: string, input: RecordOutcome): Promise<OutcomeRow> {
+    return parseOrThrow(await request(`/applications/${applicationId}/outcome`, { method: "PATCH", body: JSON.stringify(input) }));
+  },
+
+  async answerStarted(applicationId: string, started: boolean): Promise<void> {
+    return parseOrThrow(await request(`/applications/${applicationId}/started`, { method: "POST", body: JSON.stringify({ started }) }));
   },
 
   async companyThreads(driveId?: string): Promise<ThreadList> {

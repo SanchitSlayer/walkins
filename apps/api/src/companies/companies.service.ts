@@ -24,6 +24,9 @@ type FunnelRow = {
   checkedIn: number;
   walkIns: number;
   hired: number;
+  screenedOut: number;
+  awaitingConfirmation: number;
+  attendedAfterAlert: number;
 };
 
 @Injectable()
@@ -52,7 +55,8 @@ export class CompaniesService {
     const [drives, daily, refreshedAt] = await Promise.all([
       prisma.$queryRaw<FunnelRow[]>`
         SELECT f."driveId", r.title AS "roleTitle", d."startsAt", d.status,
-               f.alerted, f.interested, f.confirmed, f."checkedIn", f."walkIns", f.hired
+               f.alerted, f.interested, f.confirmed, f."checkedIn", f."walkIns", f.hired,
+               f."screenedOut", f."awaitingConfirmation", f."attendedAfterAlert"
         FROM drive_funnel f
         JOIN drives d ON d.id = f."driveId"
         JOIN roles r ON r.id = d."roleId"
@@ -72,11 +76,17 @@ export class CompaniesService {
     const days = Array.from({ length: ANALYTICS_DAYS }, (_, i) => dayKey(new Date(since.getTime() + i * 24 * 3600_000)));
     return analyticsSchema.parse({
       refreshedAt,
-      drives: drives.map((d) => ({
-        ...d,
-        startsAt: d.startsAt.toISOString(),
-        showUpRate: d.confirmed > 0 ? d.checkedIn / d.confirmed : null,
-      })),
+      drives: drives.map((d) => {
+        // Nobody booked on a cancelled or suspended drive could have come,
+        // so it is listed and left out of every rate.
+        const counted = d.status !== "CANCELLED" && d.status !== "SUSPENDED";
+        return {
+          ...d,
+          startsAt: d.startsAt.toISOString(),
+          counted,
+          showUpRate: counted && d.confirmed > 0 ? d.checkedIn / d.confirmed : null,
+        };
+      }),
       daily: days.map((day) => ({ day, checkIns: byDay.get(day)?.checkIns ?? 0, hires: byDay.get(day)?.hires ?? 0 })),
     });
   }

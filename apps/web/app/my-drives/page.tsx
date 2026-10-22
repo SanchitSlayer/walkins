@@ -20,6 +20,58 @@ function useOutcome() {
   return (application: MyApplication) => (application.checkIn && !application.checkIn.isValid ? t("awaitingConfirmation") : t(application.state));
 }
 
+// After a hire: when they are due to start, and once that day has come, the
+// candidate's own answer. It sits beside what the employer records and never
+// changes it, and it counts towards nothing else; the question says so.
+function StartedAnswer({ application, onAnswered }: { application: MyApplication; onAnswered: () => Promise<void> }) {
+  const t = useTranslations("myDrives.started");
+  const errorText = useErrorText();
+  const { formatDate } = useFormat();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const outcome = application.outcome;
+  if (!outcome) return null;
+
+  async function answer(started: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiClient.answerStarted(application.id, started);
+      await onAnswered();
+    } catch (err) {
+      setError(errorText(err, "myDrives.started.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-2 sm:col-span-2">
+      {outcome.joiningDate && <p className="type-meta">{t("joining", { day: formatDate(new Date(`${outcome.joiningDate}T12:00:00+05:30`)) })}</p>}
+      {outcome.candidateStarted !== null && <p className="type-meta">{t("answered", { started: outcome.candidateStarted ? "yes" : "no" })}</p>}
+      {outcome.canAnswer && (
+        <div className="grid gap-2 border-l-4 border-filling-lamp pl-3">
+          <p className="type-body">{outcome.candidateStarted === null ? t("question", { company: application.drive.companyName }) : t("change")}</p>
+          <p className="type-meta text-housing-muted">{t("whoSees", { company: application.drive.companyName })}</p>
+          <div className="flex flex-wrap gap-2">
+            <BoardButton className="min-h-9 px-3" disabled={busy || outcome.candidateStarted === true} onClick={() => answer(true)}>
+              {t("yes")}
+            </BoardButton>
+            <BoardButton variant="quiet" className="min-h-9 px-3" disabled={busy || outcome.candidateStarted === false} onClick={() => answer(false)}>
+              {t("no")}
+            </BoardButton>
+          </div>
+          {error && (
+            <p role="alert" className="type-meta text-closing-lamp">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UpcomingPass({
   application,
   now,
@@ -252,6 +304,7 @@ export default function MyDrivesPage() {
                     <span className="type-board-sm text-housing-muted">
                       {when.day} · {outcome(application)}
                     </span>
+                    <StartedAnswer application={application} onAnswered={load} />
                     {/* A past drive can still be written about until its thread closes, or read once it has. */}
                     {(threads?.threads.some((c) => c.applicationId === application.id) ||
                       new Date(application.drive.endsAt).getTime() + THREAD_CLOSES_AFTER_DAYS * 86_400_000 > now.getTime()) && (

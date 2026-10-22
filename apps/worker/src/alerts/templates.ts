@@ -12,6 +12,8 @@ export type AlertContext = {
   slotStartsAt: string | null;
   // For a reschedule notice: the time the candidate knew before.
   previous: { startsAt: string; endsAt: string } | null;
+  // For a joining check: the day they were due to start.
+  joiningDate: string | null;
   driveUrl: string;
   reportUrl: string;
 };
@@ -56,6 +58,7 @@ export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Da
     where: translate(locale, "alerts.where", { venue: ctx.venueAddress, distance: format.formatDistance(ctx.distanceKm) }),
     pay: format.formatSalary(ctx.salaryMin, ctx.salaryMax),
     ...(was ? { wasDay: was.day, wasTime: was.time } : {}),
+    ...(ctx.joiningDate ? { joining: format.formatDate(new Date(`${ctx.joiningDate}T12:00:00+05:30`)) } : {}),
   };
   const text = `${translate(locale, `alerts.${templateKey}`, values)}\n\n${translate(locale, "alerts.neverPay", { link: ctx.reportUrl })}`;
   return { templateKey, text, url: ctx.driveUrl };

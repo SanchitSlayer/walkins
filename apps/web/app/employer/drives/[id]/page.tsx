@@ -17,6 +17,7 @@ import { useFormat } from "@/lib/format";
 import { useErrorText, useIssueText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { PersonName } from "@/components/person-name";
+import { OutcomesPrompt } from "@/components/outcomes-prompt";
 
 // Why a drive is quiet, said up front: an unverified company's alerts go
 // only to the nearest few, and the employer should know it and why.
@@ -371,6 +372,7 @@ export default function EditDrivePage() {
                 })}
               </p>
             )}
+            {runs && drive.status === "DRAFT" && <OutcomesPrompt />}
             {runs && drive.status === "DRAFT" && (
               <BoardButton disabled={loading} onClick={() => run(() => apiClient.submitDrive(drive.id), "editDrive.submitFailed")}>
                 {t("submit")}

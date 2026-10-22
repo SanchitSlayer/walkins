@@ -12,6 +12,7 @@ export * from "./admin";
 export * from "./people";
 export * from "./trust";
 export * from "./messages-thread";
+export * from "./outcomes";
 export * from "./analytics";
 export * from "./i18n";
 export * from "./validation";

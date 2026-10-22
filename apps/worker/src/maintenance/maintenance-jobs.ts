@@ -31,6 +31,7 @@ const SCHEDULES = [
   { name: "recompute-reliability", pattern: "0 1 * * *" },
   { name: "sweep-charges", pattern: "*/15 * * * *" },
   { name: "sweep-messages", pattern: "*/15 * * * *" },
+  { name: "joining-checks", pattern: "0 11 * * *" },
   { name: "refresh-analytics", pattern: "*/15 * * * *" },
 ];
 
@@ -284,6 +285,8 @@ export function runMaintenance(name: string, deps: MaintenanceDeps): Promise<str
       return recomputeReliability();
     case "sweep-charges":
       return sweepCharges(deps.charge).then((n) => `${n} uncharged check-ins queued`);
+    case "joining-checks":
+      return deps.alerts.askWhetherStarted(dayKey(new Date())).then((n) => `${n} candidates asked whether they started`);
     case "sweep-messages":
       return sweepMessages(deps.alerts).then((n) => `${n} message copies queued`);
     case "refresh-analytics":

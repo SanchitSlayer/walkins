@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
-import type { ApplicationState } from "@walkins/shared";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type { ApplicationState, Outcomes } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useLiveFeed } from "@/lib/use-live-feed";
-import { BoardButton, boardButtonClass } from "@/components/board/field";
+import { BoardButton, boardButtonClass, BoardInput } from "@/components/board/field";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
@@ -19,6 +19,47 @@ const NEXT: Partial<Record<ApplicationState, ("INTERVIEWED" | "HIRED" | "REJECTE
   CHECKED_IN: ["INTERVIEWED", "REJECTED"],
   INTERVIEWED: ["HIRED", "REJECTED"],
 };
+
+// Asked on the desk, at the moment of hiring, because it is the one moment
+// the employer certainly has the answer and the screen open. Optional:
+// "not agreed yet" is a real answer, and the Outcomes page asks again.
+function JoiningDate({ applicationId, outcomes, onSaved }: { applicationId: string; outcomes: Outcomes | null; onSaved: () => void }) {
+  const t = useTranslations("outcomes");
+  const errorText = useErrorText();
+  const { formatDate } = useFormat();
+  const row = outcomes?.rows.find((r) => r.applicationId === applicationId);
+  const [day, setDay] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!row) return null;
+  if (row.joiningDate) return <p className="type-meta text-housing-muted">{t("joiningOn", { day: formatDate(new Date(`${row.joiningDate}T12:00:00+05:30`)) })}</p>;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiClient.recordOutcome(applicationId, { joiningDate: day });
+      onSaved();
+    } catch (err) {
+      setError(errorText(err, "outcomes.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="grid gap-1">
+        <span className="type-meta text-housing-muted">{t("whenStarting")}</span>
+        <BoardInput type="date" value={day} onChange={(e) => setDay(e.target.value)} className="w-auto" />
+      </label>
+      <BoardButton variant="quiet" className="min-h-9 px-3" disabled={busy || !day} onClick={save}>
+        {t("saveDate")}
+      </BoardButton>
+      {error && <span className="type-meta text-closing-lamp">{error}</span>}
+    </div>
+  );
+}
 
 function Row({ children }: { children: ReactNode }) {
   return (
@@ -37,6 +78,11 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
   const runs = useMembership().can("runDrives");
   const personName = usePersonName();
   const threads = useDriveThreads(driveId);
+  const [outcomes, setOutcomes] = useState<Outcomes | null>(null);
+  const loadOutcomes = useCallback(() => apiClient.companyOutcomes(driveId).then(setOutcomes, () => {}), [driveId]);
+  useEffect(() => {
+    loadOutcomes();
+  }, [loadOutcomes]);
   const { data: desk, refresh } = useLiveFeed(driveId, "desk", () => apiClient.getLiveDesk(driveId));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +94,8 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
     try {
       await action();
       await refresh();
+      // A hire opens an outcome record, so the joining-date question appears.
+      await loadOutcomes();
     } catch (err) {
       setError(errorText(err, "errors.generic"));
     } finally {
@@ -161,6 +209,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                       .join(" · ")}
                   </p>
                   <MessageLink driveId={driveId} applicationId={a.applicationId} threads={threads} />
+                  {runs && a.state === "HIRED" && <JoiningDate applicationId={a.applicationId} outcomes={outcomes} onSaved={loadOutcomes} />}
                   <ReportCandidate applicationId={a.applicationId} name={a.name} />
                 </div>
                 <div className="flex flex-wrap gap-2">

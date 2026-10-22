@@ -104,6 +104,9 @@ model User {
   messagesSent         Message[]                @relation("MessageSender")
   threadsRead          MessageThread[]          @relation("CompanyReader")
   flagsReviewed        Message[]                @relation("FlagReviewer")
+  joiningDatesSet      HiringOutcome[]          @relation("JoiningDateBy")
+  startsRecorded       HiringOutcome[]          @relation("StartedBy")
+  retentionsRecorded   HiringOutcome[]          @relation("RetainedBy")
 
   @@index([companyId])
   @@map("users")
@@ -299,6 +302,7 @@ model Application {
   shortlistedBy User?          @relation("ShortlistedBy", fields: [shortlistedById], references: [id])
   checkIn       CheckIn?
   thread        MessageThread?
+  outcome       HiringOutcome?
 
   // One application per candidate per drive, enforced here rather than by a
   // check-then-insert, so two concurrent applies cannot both land. A release
@@ -828,4 +832,41 @@ model Message {
   @@unique([threadId, seq])
   @@index([createdAt])
   @@map("messages")
+}
+
+// What happened after a hire, as far as anyone has said. The application's
+// states stop at HIRED, a fact of the drive day; everything later arrives
+// days or weeks after, from either side, may be corrected, and is most often
+// never said at all. So each fact is nullable ("not known" is the normal
+// case) and carries who said it and when. The employer's record and the
+// candidate's own answer sit side by side, and neither overwrites the other.
+// Created with the hire.
+model HiringOutcome {
+  id                    String    @id @default(cuid())
+  applicationId         String    @unique
+  hiredAt               DateTime
+  // Calendar days in India, as the employer and candidate agreed them.
+  joiningDate           DateTime? @db.Date
+  joiningDateById       String?
+  joiningDateRecordedAt DateTime?
+  started               Boolean?
+  startedOn             DateTime? @db.Date
+  startedById           String?
+  startedRecordedAt     DateTime?
+  // Still there 30 days after starting; only asked once that has passed.
+  retained              Boolean?
+  retainedById          String?
+  retainedRecordedAt    DateTime?
+  // The candidate's own answer to "did you start?". Shown beside the
+  // employer's, counted apart, never used to change it.
+  candidateStarted      Boolean?
+  candidateAnsweredAt   DateTime?
+
+  application   Application @relation(fields: [applicationId], references: [id])
+  joiningDateBy User?       @relation("JoiningDateBy", fields: [joiningDateById], references: [id])
+  startedBy     User?       @relation("StartedBy", fields: [startedById], references: [id])
+  retainedBy    User?       @relation("RetainedBy", fields: [retainedById], references: [id])
+
+  @@index([joiningDate])
+  @@map("hiring_outcomes")
 }

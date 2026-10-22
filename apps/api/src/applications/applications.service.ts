@@ -105,9 +105,13 @@ export class ApplicationsService {
     const application = await prisma.application.findFirst({ where: { id: applicationId, drive: { companyId } }, include: { drive: { select: { status: true } } } });
     if (!application) throw new NotFoundException(apiError("errors.application.notFound"));
     requireNotSuspended(application.drive);
-    const updated = await prisma.$transaction((tx) =>
-      transitionApplication(tx, { applicationId, to, actor: { kind: "employer", userId } }),
-    );
+    // A hire opens its outcome record in the same step, every fact unknown,
+    // so what happens after has somewhere to be written.
+    const updated = await prisma.$transaction(async (tx) => {
+      const moved = await transitionApplication(tx, { applicationId, to, actor: { kind: "employer", userId } });
+      if (to === "HIRED") await tx.hiringOutcome.create({ data: { applicationId, hiredAt: new Date() } });
+      return moved;
+    });
     await this.live.publish(application.driveId);
     return { id: updated.id, state: updated.state };
   }
