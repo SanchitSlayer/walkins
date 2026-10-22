@@ -101,33 +101,29 @@ export async function addPerson(fixture: Fixture, label: string, role: "OWNER" |
 }
 
 export async function removeFixture(fixture: Fixture) {
-  const driveId = fixture.drive.id;
-  const applications = await prisma.application.findMany({ where: { driveId }, select: { id: true } });
-  const checkIns = await prisma.checkIn.findMany({ where: { application: { driveId } }, select: { id: true } });
   const companyIds = [fixture.company.id, ...fixture.extraCompanyIds];
-  const otherDrives = await prisma.drive.findMany({ where: { companyId: { in: companyIds }, NOT: { id: driveId } }, select: { id: true } });
+  const allDriveIds = (await prisma.drive.findMany({ where: { companyId: { in: companyIds } }, select: { id: true } })).map((d) => d.id);
+  const applications = await prisma.application.findMany({ where: { driveId: { in: allDriveIds } }, select: { id: true } });
+  const checkIns = await prisma.checkIn.findMany({ where: { application: { driveId: { in: allDriveIds } } }, select: { id: true } });
   await prisma.auditLog.deleteMany({
-    where: {
-      entityId: { in: [driveId, ...companyIds, ...otherDrives.map((d) => d.id), ...applications.map((a) => a.id), ...checkIns.map((c) => c.id)] },
-    },
+    where: { entityId: { in: [...allDriveIds, ...companyIds, ...applications.map((a) => a.id), ...checkIns.map((c) => c.id)] } },
   });
   await prisma.companyInvitation.deleteMany({ where: { companyId: { in: companyIds } } });
   const candidateIds = fixture.candidates.map((c) => c.candidateId);
-  const allDriveIds = [driveId, ...otherDrives.map((d) => d.id)];
   await prisma.warning.deleteMany({ where: { OR: [{ companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] } });
   await prisma.report.deleteMany({ where: { OR: [{ driveId: { in: allDriveIds } }, { candidateId: { in: candidateIds } }] } });
   await prisma.moderationAction.deleteMany({
     where: { OR: [{ driveId: { in: allDriveIds } }, { companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] },
   });
   await prisma.verificationSubmission.deleteMany({ where: { companyId: { in: companyIds } } });
+  await prisma.driveReschedule.deleteMany({ where: { driveId: { in: allDriveIds } } });
   await prisma.auditLog.deleteMany({ where: { entityId: { in: candidateIds } } });
   // Ledger rows are append-only and stay behind, which is why tests run
   // against their own database (test/setup.ts). Payment orders are not.
   await prisma.paymentOrder.deleteMany({ where: { companyId: fixture.company.id } });
-  await prisma.checkIn.deleteMany({ where: { application: { driveId } } });
-  await prisma.application.deleteMany({ where: { driveId } });
-  await prisma.driveSlot.deleteMany({ where: { driveId } });
-  await prisma.driveSlot.deleteMany({ where: { driveId: { in: otherDrives.map((d) => d.id) } } });
+  await prisma.checkIn.deleteMany({ where: { application: { driveId: { in: allDriveIds } } } });
+  await prisma.application.deleteMany({ where: { driveId: { in: allDriveIds } } });
+  await prisma.driveSlot.deleteMany({ where: { driveId: { in: allDriveIds } } });
   await prisma.drive.deleteMany({ where: { companyId: { in: companyIds } } });
   await prisma.candidate.deleteMany({ where: { id: { in: fixture.candidates.map((c) => c.candidateId) } } });
   await prisma.user.deleteMany({
