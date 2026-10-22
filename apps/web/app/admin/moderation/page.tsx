@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Moderate, ModerationQueue, ModerationTarget } from "@walkins/shared";
+import type { Moderate, ModerationQueue, ModerationTarget, Thread } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardInput } from "@/components/board/field";
 import { useTranslations } from "next-intl";
@@ -15,8 +15,47 @@ function Reporter({ reporter }: { reporter: ModerationTarget["reports"][number][
   const record = { total: reporter.total, dismissed: reporter.dismissed, actioned: reporter.actioned };
   return (
     <span className={reporter.total > 1 && reporter.dismissed * 2 >= reporter.total ? "text-closing-lamp" : "text-housing-muted"}>
-      {reporter.kind === "account" ? t("account", { name: reporter.name ?? "", ...record }) : t("network", record)}
+      {reporter.kind === "account" ? t("account", { name: reporter.name ?? "", ...record }) : reporter.kind === "system" ? t("system") : t("network", record)}
     </span>
+  );
+}
+
+// The whole conversation behind a reported message. Opening it is audited on
+// the server, every time, so it is fetched only when asked for.
+function Conversation({ threadId }: { threadId: string }) {
+  const t = useTranslations("admin.moderation.conversation");
+  const errorText = useErrorText();
+  const { formatDate, formatTime } = useFormat();
+  const [thread, setThread] = useState<Thread | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!thread) {
+    return (
+      <div className="grid gap-1">
+        <button
+          type="button"
+          className="type-meta justify-self-start underline underline-offset-4"
+          onClick={() => apiClient.adminThread(threadId).then(setThread, (err) => setError(errorText(err, "errors.generic")))}
+        >
+          {t("open")}
+        </button>
+        {error && <span className="type-meta text-closing-lamp">{error}</span>}
+      </div>
+    );
+  }
+  return (
+    <ol className="grid gap-2 border-l-2 border-housing-line pl-3">
+      <li className="type-meta text-housing-muted">{t("audited")}</li>
+      {thread.messages.map((m) => (
+        <li key={m.id} className="grid gap-0.5">
+          <span className="type-meta text-housing-muted">
+            {t("line", { side: m.side, sender: m.sender?.name ?? thread.candidateName, day: formatDate(new Date(m.createdAt)), time: formatTime(m.createdAt) })}
+            {m.moneyFlag && ` · ${t("flagged")}`}
+          </span>
+          <span className="type-meta whitespace-pre-wrap break-words">{m.body}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -25,7 +64,8 @@ function Target({ target, act, busy }: { target: ModerationTarget; act: Act; bus
   const reasons = useTranslations("report.reason");
   const { formatDate, formatTime } = useFormat();
   const [note, setNote] = useState("");
-  const drive = target.targetType === "DRIVE";
+  // A thread's actions reach the drive and company it belongs to.
+  const drive = target.targetType === "DRIVE" || target.targetType === "THREAD";
   const base = { targetType: target.targetType, targetId: target.targetId, note: note.trim() || undefined } as const;
 
   return (
@@ -52,12 +92,19 @@ function Target({ target, act, busy }: { target: ModerationTarget; act: Act; bus
         </p>
       </div>
 
+      {target.targetType === "THREAD" && <Conversation threadId={target.targetId} />}
+
       <ul className="grid gap-2 border-t border-housing-line pt-2">
         {target.reports.map((r) => (
           <li key={r.id} className="type-meta grid gap-0.5">
             <span>
               {reasons(r.reason)} · {formatDate(new Date(r.createdAt))} {formatTime(r.createdAt)} · <Reporter reporter={r.reporter} />
             </span>
+            {r.message && (
+              <span className="whitespace-pre-wrap break-words border-l-2 border-closing-lamp pl-2">
+                {t("message", { side: r.message.side, sender: r.message.sender, body: r.message.body })}
+              </span>
+            )}
             {r.details && <span className="whitespace-pre-wrap text-housing-muted">{t("said", { details: r.details })}</span>}
           </li>
         ))}
@@ -78,7 +125,7 @@ function Target({ target, act, busy }: { target: ModerationTarget; act: Act; bus
             </BoardButton>
           )}
           {drive && !target.companySuspended && (
-            <BoardButton className="min-h-9 px-3" disabled={busy} onClick={() => act({ ...base, kind: "SUSPEND_COMPANY" }, t("suspendCompanyConfirm", { company: target.subtitle }))}>
+            <BoardButton className="min-h-9 px-3" disabled={busy} onClick={() => act({ ...base, kind: "SUSPEND_COMPANY" }, t("suspendCompanyConfirm", { company: target.companyName ?? "" }))}>
               {t("suspendCompany")}
             </BoardButton>
           )}

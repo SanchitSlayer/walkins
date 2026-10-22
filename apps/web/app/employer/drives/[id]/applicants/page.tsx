@@ -14,6 +14,7 @@ import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { usePersonName } from "@/components/person-name";
 import { ReportCandidate } from "@/components/report-candidate";
+import { MessageLink, useDriveThreads } from "@/components/message-link";
 
 const percent = (n: number) => Math.round(n * 100);
 
@@ -117,6 +118,7 @@ export default function ApplicantsPage() {
   const runs = useMembership().can("runDrives");
   const personName = usePersonName();
   const { id } = useParams<{ id: string }>();
+  const threads = useDriveThreads(id);
   const [weight, setWeight] = useState(0.5);
   const [data, setData] = useState<Applicants | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -302,6 +304,7 @@ export default function ApplicantsPage() {
                           {a.shortlistedBy ? t("shortlistedBy", { name: personName(a.shortlistedBy) }) : t("shortlisted")}
                         </span>
                       )}
+                      <MessageLink driveId={id} applicationId={a.applicationId} threads={threads} />
                       <ReportCandidate applicationId={a.applicationId} name={a.candidateName} />
                       {runs && a.state === "SCREENED_OUT" && (
                         <BoardButton

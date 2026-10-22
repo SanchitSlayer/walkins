@@ -133,6 +133,7 @@ export class MessagesService {
     return rows.map((m) => ({
       messageId: m.id,
       applicationId: m.thread.applicationId,
+      driveId: m.thread.application.driveId,
       roleTitle: m.thread.application.drive.role.title,
       candidateName: m.thread.application.candidate.user.name,
       sender: personRef(m.sender, companyId),

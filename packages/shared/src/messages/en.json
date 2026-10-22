@@ -453,7 +453,10 @@
     "paused": "This drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now; you'll be told if it goes ahead, and this booking won't count against you.",
     "cancelled": "The employer cancelled this drive, so please don't travel to it. This won't count against you.",
     "moved": "The employer moved this drive. It was {day}, {time}.",
-    "movedOffline": "This drive has been moved before, and this copy was saved {day} at {time}. It may have moved again since. Check when you have signal before you travel."
+    "movedOffline": "This drive has been moved before, and this copy was saved {day} at {time}. It may have moved again since. Check when you have signal before you travel.",
+    "messages": "Messages",
+    "messagesUnread": "{count, plural, one {# new message} other {# new messages}}",
+    "newMessages": "{count, plural, one {You have # new message from an employer.} other {You have # new messages from employers.}}"
   },
   "login": {
     "sendFailed": "The code couldn't be sent. Check the number and try again.",
@@ -579,7 +582,9 @@
     "failedJobs": "Failed jobs",
     "ledger": "Ledger",
     "people": "People",
-    "moderation": "Moderation"
+    "moderation": "Moderation",
+    "messages": "Messages",
+    "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}"
   },
   "employerDrives": {
     "booked": "{booked} of {capacity} booked",
@@ -1049,14 +1054,14 @@
       "loadFailed": "Reports couldn't be loaded. Reload the page to try again.",
       "open": "Open reports ({count})",
       "nothingOpen": "No open reports.",
-      "summary": "{kind, select, DRIVE {Drive} other {Candidate}}{status, select, other { · {status}}}{verification, select, other { · company {verification}}}{companySuspended, select, yes { · company suspended} other {}}",
+      "summary": "{kind, select, DRIVE {Drive} THREAD {Conversation} other {Candidate}}{status, select, other { · {status}}}{verification, select, other { · company {verification}}}{companySuspended, select, yes { · company suspended} other {}}",
       "counts": "{accounts, plural, one {# signed-in reporter} other {# signed-in reporters}} · {network, plural, one {# logged-out report} other {# logged-out reports}}{overflow, plural, =0 {} other { (+# past today's cap, counted not kept)}}",
       "reasonCount": "{reason}: {count}",
       "said": "“{details}”",
       "note": "Note (shown to the company or candidate with a warning)",
       "dismiss": "Dismiss",
       "warn": "Warn",
-      "warnConfirm": "Send a warning to the {kind, select, DRIVE {company} other {candidate}}? They see it until they acknowledge it.",
+      "warnConfirm": "Send a warning to the {kind, select, DRIVE {company} THREAD {side that wrote what was reported} other {candidate}}? They see it until they acknowledge it.",
       "suspendDrive": "Suspend drive",
       "suspendDriveConfirm": "Suspend “{title}”? It leaves search, stops alerting and refuses check-ins, and everyone booked is told it's paused.",
       "suspendCompany": "Suspend company",
@@ -1069,7 +1074,15 @@
       "recentRow": "{kind, select, DISMISS {Dismissed} WARN {Warned} SUSPEND_DRIVE {Suspended drive} SUSPEND_COMPANY {Suspended company} LIFT_DRIVE {Lifted drive} other {Lifted company}}: {target}, by {admin}, {day} {time}",
       "reporter": {
         "account": "{name}: {total, plural, one {# report} other {# reports}} so far, {dismissed} dismissed, {actioned} acted on",
-        "network": "logged out, this network: {total, plural, one {# report} other {# reports}}, {dismissed} dismissed, {actioned} acted on"
+        "network": "logged out, this network: {total, plural, one {# report} other {# reports}}, {dismissed} dismissed, {actioned} acted on",
+        "system": "filed automatically: the message tripped the money-request check"
+      },
+      "message": "{side, select, COMPANY {{sender} (company)} other {{sender} (candidate)}}: “{body}”",
+      "conversation": {
+        "open": "Read the whole conversation (this is recorded)",
+        "audited": "Your opening this conversation has been recorded.",
+        "line": "{side, select, COMPANY {Company} other {Candidate}}: {sender}, {day} {time}",
+        "flagged": "flagged"
       }
     }
   },
@@ -1221,7 +1234,9 @@
     "rejected": "{company}'s verification wasn't accepted, so new drives can't go live. Your verification page says why and lets you send documents again.",
     "unsubmitted": "{company} hasn't sent documents for verification, so its drives can't go live yet. Once you send them, drives can go live while you wait, at limited reach.",
     "verifyNow": "Send verification documents",
-    "seeVerification": "See verification"
+    "seeVerification": "See verification",
+    "flaggedMessages": "{count, plural, one {A message from someone at your company was flagged as a possible request for money.} other {# messages from people at your company were flagged as possible requests for money.}}",
+    "reviewFlagged": "Review flagged messages"
   },
   "verification": {
     "loading": "Loading verification",
@@ -1268,6 +1283,59 @@
       "failed": "Your documents couldn't be sent. Try again.",
       "send": "Send for review",
       "sending": "Sending"
+    }
+  },
+  "thread": {
+    "you": "You",
+    "fromCompany": "{name}, {company}",
+    "emptyCandidate": "No messages yet. You can write to the employer about this drive.",
+    "emptyCompany": "No messages yet. You can write to {name} about this drive.",
+    "flaggedCandidate": "This message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it below.",
+    "flaggedCompany": "Flagged as a possible request for money. The candidate sees a warning with it, Walkins has been told, and your company's owners can see it.",
+    "delivery": {
+      "telegram": "sent on Telegram",
+      "pending": "waiting to send on Telegram",
+      "failed": "Telegram failed, in the app only",
+      "inAppOnly": "in the app only"
+    },
+    "write": "Write a message",
+    "count": "{count} / {max}",
+    "send": "Send",
+    "sending": "Sending",
+    "sendFailed": "Your message didn't send. Check your signal and try again.",
+    "loadFailed": "This conversation couldn't be loaded. Reload the page to try again.",
+    "backToDrives": "Back to my drives",
+    "backToApplicants": "Back to applicants",
+    "withCompany": "Messages with {company}",
+    "about": "About {role}",
+    "closesOn": "Closes {day}",
+    "telegramLinked": "Telegram linked: your messages reach their phone.",
+    "telegramNotLinked": "{name} hasn't linked Telegram, so they'll see your messages only when they next open Walkins. Nothing reaches their phone before then.",
+    "lastRead": "Read {day} {time} by <name></name>",
+    "report": {
+      "open": "Report",
+      "reason": "Reason",
+      "send": "Report",
+      "cancel": "Cancel",
+      "sent": "Reported to Walkins.",
+      "failed": "The report didn't go through. Try again."
+    }
+  },
+  "messagesDesk": {
+    "heading": "Messages",
+    "intro": "Every conversation your company has with a candidate. Everyone here reads them all; whoever reads one reads it for the whole desk.",
+    "none": "No conversations yet. Start one from a drive's applicants or the arrivals desk.",
+    "unread": "{count} new",
+    "row": "Message",
+    "rowUnread": "{count, plural, one {Message (# new)} other {Messages (# new)}}",
+    "loadFailed": "Your conversations couldn't be loaded. Reload the page to try again.",
+    "flagged": {
+      "heading": "{count, plural, one {# message flagged as a possible request for money} other {# messages flagged as possible requests for money}}",
+      "explain": "Sent by people at your company. The check that flags them only catches common wording, so this list isn't proof that other messages are fine. Look at each one, and mark it reviewed once you have.",
+      "line": "<name></name> to {candidate} about {role}, {day} {time}",
+      "open": "Open the conversation",
+      "reviewed": "Mark reviewed",
+      "loadFailed": "Flagged messages couldn't be loaded. Reload the page to try again."
     }
   }
 }

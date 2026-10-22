@@ -102,6 +102,7 @@ export class ModerationService {
           title: drive ? drive.role.title : report.candidate!.user.name,
           subtitle: thread ? `${drive!.company.name} · ${thread.application.candidate.user.name}` : drive ? drive.company.name : report.candidate!.user.phone,
           companyId: drive?.company.id ?? null,
+          companyName: drive?.company.name ?? null,
           driveStatus: drive?.status ?? null,
           companySuspended: drive ? drive.company.suspendedAt !== null : false,
           verificationStatus: drive?.company.verificationStatus ?? null,

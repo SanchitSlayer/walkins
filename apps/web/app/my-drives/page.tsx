@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { CHECK_IN_OPENS_BEFORE_START_MS, type MyApplication, type MyApplications } from "@walkins/shared";
+import { CHECK_IN_OPENS_BEFORE_START_MS, type MyApplication, type MyApplications, THREAD_CLOSES_AFTER_DAYS, type ThreadList } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { isNetworkError, loadPass, savePass } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
@@ -26,12 +26,14 @@ function UpcomingPass({
   onRelease,
   releasing,
   savedAt,
+  unread,
 }: {
   application: MyApplication;
   now: Date;
   onRelease: () => void;
   releasing: boolean;
   savedAt: string | null;
+  unread: number;
 }) {
   const t = useTranslations("myDrives");
   const outcome = useOutcome();
@@ -94,6 +96,9 @@ function UpcomingPass({
         <p className="type-meta text-ink-muted">{t("noSeatHeld")}</p>
       )}
       <div className="flex flex-wrap gap-3">
+        <Link href={`/my-drives/messages/${application.id}`} className={boardButtonClass("stock", unread > 0 ? "primary" : "quiet")}>
+          {unread > 0 ? t("messagesUnread", { count: unread }) : t("messages")}
+        </Link>
         {booked && checkInOpen && drive.status === "LIVE" && (
           <Link href="/checkin" className={boardButtonClass("stock")}>
             {t("checkIn")}
@@ -122,15 +127,17 @@ export default function MyDrivesPage() {
   const [releasingId, setReleasingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [threads, setThreads] = useState<ThreadList | null>(null);
   const [now, setNow] = useState(() => new Date());
 
   // This page is the candidate's pass: each successful load is kept on the
   // phone, and with no signal the kept copy is shown instead.
   const load = useCallback(async () => {
     try {
-      const fresh = await apiClient.listMyApplications();
+      const [fresh, conversations] = await Promise.all([apiClient.listMyApplications(), apiClient.myThreads()]);
       savePass(fresh);
       setApplications(fresh);
+      setThreads(conversations);
       setSavedAt(null);
     } catch (err) {
       const pass = isNetworkError(err) ? loadPass() : null;
@@ -149,6 +156,8 @@ export default function MyDrivesPage() {
     const tick = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(tick);
   }, [ready, load]);
+
+  const unreadFor = (applicationId: string) => threads?.threads.find((c) => c.applicationId === applicationId)?.unread ?? 0;
 
   async function release(id: string) {
     if (!confirm(t("releaseConfirm"))) return;
@@ -174,6 +183,12 @@ export default function MyDrivesPage() {
         <h1 className="type-h1">{t("heading")}</h1>
 
         <NeverPay />
+
+        {threads && threads.unread > 0 && (
+          <p role="status" className="type-h3 border-l-4 border-filling-lamp bg-housing-raised p-4">
+            {t("newMessages", { count: threads.unread })}
+          </p>
+        )}
 
         {savedAt && (
           <p role="status" className="type-h3 border-l-4 border-pending-lamp bg-housing-raised p-4">
@@ -212,6 +227,7 @@ export default function MyDrivesPage() {
                       onRelease={() => release(application.id)}
                       releasing={releasingId === application.id}
                       savedAt={savedAt}
+                      unread={unreadFor(application.id)}
                     />
                   </li>
                 ))}
@@ -236,6 +252,13 @@ export default function MyDrivesPage() {
                     <span className="type-board-sm text-housing-muted">
                       {when.day} · {outcome(application)}
                     </span>
+                    {/* A past drive can still be written about until its thread closes, or read once it has. */}
+                    {(threads?.threads.some((c) => c.applicationId === application.id) ||
+                      new Date(application.drive.endsAt).getTime() + THREAD_CLOSES_AFTER_DAYS * 86_400_000 > now.getTime()) && (
+                      <Link href={`/my-drives/messages/${application.id}`} className="type-meta underline underline-offset-4 sm:col-span-2">
+                        {unreadFor(application.id) > 0 ? t("messagesUnread", { count: unreadFor(application.id) }) : t("messages")}
+                      </Link>
+                    )}
                   </li>
                 );
               })}

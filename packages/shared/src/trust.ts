@@ -166,6 +166,7 @@ export const moderationTargetSchema = z.object({
   title: z.string(),
   subtitle: z.string(),
   companyId: z.string().nullable(),
+  companyName: z.string().nullable(),
   driveStatus: z.string().nullable(),
   companySuspended: z.boolean(),
   verificationStatus: verificationStatusSchema.nullable(),

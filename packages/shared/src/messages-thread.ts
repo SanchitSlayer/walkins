@@ -68,6 +68,7 @@ export const threadListSchema = z.object({
 export const flaggedMessageSchema = z.object({
   messageId: z.string(),
   applicationId: z.string(),
+  driveId: z.string(),
   roleTitle: z.string(),
   candidateName: z.string(),
   sender: personRefSchema,

@@ -12,6 +12,7 @@ import { useErrorText } from "@/lib/use-error-text";
 import { useMembership } from "@/lib/membership";
 import { usePersonName } from "@/components/person-name";
 import { ReportCandidate } from "@/components/report-candidate";
+import { MessageLink, useDriveThreads } from "@/components/message-link";
 
 // The moves the transition table allows an employer from each state.
 const NEXT: Partial<Record<ApplicationState, ("INTERVIEWED" | "HIRED" | "REJECTED")[]>> = {
@@ -35,6 +36,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
   const { formatTime } = useFormat();
   const runs = useMembership().can("runDrives");
   const personName = usePersonName();
+  const threads = useDriveThreads(driveId);
   const { data: desk, refresh } = useLiveFeed(driveId, "desk", () => apiClient.getLiveDesk(driveId));
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                   <p className="type-meta text-housing-muted">
                     {a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : t("noSlot")} · {state(a.state)}
                   </p>
+                  <MessageLink driveId={driveId} applicationId={a.applicationId} threads={threads} />
                 </div>
                 {runs && (
                   <BoardButton
@@ -157,6 +160,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  <MessageLink driveId={driveId} applicationId={a.applicationId} threads={threads} />
                   <ReportCandidate applicationId={a.applicationId} name={a.name} />
                 </div>
                 <div className="flex flex-wrap gap-2">

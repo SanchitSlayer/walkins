@@ -22,7 +22,8 @@ export function DeskShell({
 }: {
   role: "EMPLOYER" | "ADMIN";
   label: DeskKey;
-  nav: readonly { href: string; label: DeskKey }[];
+  // count: a number to show beside the label, such as unread messages.
+  nav: readonly { href: string; label: DeskKey; count?: number }[];
   children: ReactNode;
 }) {
   const t = useTranslations("desk");
@@ -54,6 +55,11 @@ export function DeskShell({
                       )}
                     >
                       {t(item.label)}
+                      {item.count ? (
+                        <span className="type-board-sm ml-1.5 bg-filling-lamp px-1.5 text-ink" aria-label={t("unreadCount", { count: item.count })}>
+                          {item.count}
+                        </span>
+                      ) : null}
                     </Link>
                   </li>
                 );

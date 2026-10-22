@@ -9,9 +9,13 @@ import type {
   DocumentUpload,
   DriveReach,
   DriveReport,
+  FlaggedMessage,
+  MessageReport,
   Moderate,
   ModerationQueue,
   SubmitVerification,
+  Thread,
+  ThreadList,
   Warning,
   Analytics,
   Applicants,
@@ -497,6 +501,55 @@ export const apiClient = {
 
   async adminModerate(input: Moderate): Promise<ModerationQueue> {
     return parseOrThrow(await request("/admin/moderation", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async companyThreads(driveId?: string): Promise<ThreadList> {
+    return parseOrThrow(await request(`/companies/me/threads${driveId ? `?driveId=${encodeURIComponent(driveId)}` : ""}`));
+  },
+
+  async companyThread(applicationId: string): Promise<Thread> {
+    return parseOrThrow(await request(`/companies/me/threads/${applicationId}`));
+  },
+
+  async companySend(applicationId: string, body: string): Promise<Thread> {
+    return parseOrThrow(await request(`/companies/me/threads/${applicationId}/messages`, { method: "POST", body: JSON.stringify({ body }) }));
+  },
+
+  async companyRead(applicationId: string, seq: number): Promise<void> {
+    return parseOrThrow(await request(`/companies/me/threads/${applicationId}/read`, { method: "POST", body: JSON.stringify({ seq }) }));
+  },
+
+  async flaggedMessages(): Promise<FlaggedMessage[]> {
+    return parseOrThrow(await request("/companies/me/flagged-messages"));
+  },
+
+  async reviewFlaggedMessage(messageId: string): Promise<void> {
+    return parseOrThrow(await request(`/companies/me/flagged-messages/${messageId}/reviewed`, { method: "POST" }));
+  },
+
+  async myThreads(): Promise<ThreadList> {
+    return parseOrThrow(await request("/me/threads"));
+  },
+
+  async myThread(applicationId: string): Promise<Thread> {
+    return parseOrThrow(await request(`/me/threads/${applicationId}`));
+  },
+
+  async mySend(applicationId: string, body: string): Promise<Thread> {
+    return parseOrThrow(await request(`/me/threads/${applicationId}/messages`, { method: "POST", body: JSON.stringify({ body }) }));
+  },
+
+  async myRead(applicationId: string, seq: number): Promise<void> {
+    return parseOrThrow(await request(`/me/threads/${applicationId}/read`, { method: "POST", body: JSON.stringify({ seq }) }));
+  },
+
+  async reportMessage(messageId: string, input: MessageReport): Promise<{ received: true }> {
+    return parseOrThrow(await request(`/messages/${messageId}/report`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  // Audited on the server each time it is opened.
+  async adminThread(threadId: string): Promise<Thread> {
+    return parseOrThrow(await request(`/admin/threads/${threadId}`));
   },
 
   async getPublicDrive(id: string): Promise<PublicDriveDetail> {

@@ -43,6 +43,14 @@ export function StandingNotices({ children }: { children: ReactNode }) {
             </section>
           )}
           <WarningNotices warnings={standing.warnings} audience="company" onAcknowledged={reload} />
+          {can("managePeople") && standing.flaggedMessages > 0 && (
+            <section className="grid gap-1 border-l-4 border-closing-lamp bg-housing-raised p-4">
+              <p className="type-body">{t("flaggedMessages", { count: standing.flaggedMessages })}</p>
+              <Link href="/employer/messages#flagged" className="type-meta underline underline-offset-4">
+                {t("reviewFlagged")}
+              </Link>
+            </section>
+          )}
           {!standing.suspended && status !== "VERIFIED" && (
             <section className="grid gap-1 border-l-4 border-pending-lamp bg-housing-raised p-4">
               <p className="type-body">
