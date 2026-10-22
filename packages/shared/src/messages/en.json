@@ -18,7 +18,8 @@
     "neverPay": "Walkins never charges candidates, and no employer should ask you for money. If anyone does, report it here: {link}",
     "drive_cancelled": "Cancelled: {role} at {company}\n\n{company} has cancelled this walk-in on {day}, so please don't travel to it. This won't count against you in any way.\n\nOther walk-ins near you are on the link below.",
     "drive_suspended": "Paused: {role} at {company}\n\nThis drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now. We'll message you here if it goes ahead, and holding this booking won't count against you.",
-    "drive_reinstated": "Back on: {role} at {company}\n\nWalkins has finished checking this drive, and it's going ahead as planned.\n\nWhen: {day}, {time}\nWhere: {where}\n\nYour booking is still held."
+    "drive_reinstated": "Back on: {role} at {company}\n\nWalkins has finished checking this drive, and it's going ahead as planned.\n\nWhen: {day}, {time}\nWhere: {where}\n\nYour booking is still held.",
+    "drive_rescheduled": "Moved: {role} at {company}\n\nThe employer has changed the time of this walk-in.\n\nWas: {wasDay}, {wasTime}\nNow: {day}, {time}\n{slot, select, none {} other {Your slot: {slot}\n}}Where: {where}\n\nYour booking is still held. If the new time doesn't work for you, release your seat on Walkins; it won't count against you."
   },
   "errors": {
     "generic": "That didn't go through. Try again in a moment.",
@@ -94,7 +95,13 @@
       "searchNeedsPlace": "Choose a city, or sign in with a saved home location, to search.",
       "slotsUneven": "The time between doors open and close doesn't divide into {minutes}-minute slots. Change the times or the slot length.",
       "suspendedDesk": "This drive is paused while Walkins checks it, so its check-ins and applicants can't be changed for now. Everything stays as it was until the check ends.",
-      "notCancellable": "Only a draft, a drive waiting for review or a live drive can be cancelled, and this one has already ended or been cancelled."
+      "notCancellable": "Only a draft, a drive waiting for review or a live drive can be cancelled, and this one has already ended or been cancelled.",
+      "useReschedule": "A drive's date and time change only with Reschedule, which moves its slots and tells everyone booked. Save your other changes with the original time, then use Reschedule.",
+      "notReschedulable": "Only a draft, a drive waiting for review or a live drive that hasn't ended can be rescheduled.",
+      "startLocked": "Check-in for this drive has already opened, so people may be at the venue. Its start stays at {time}; you can still move the end time.",
+      "rescheduleIntoPast": "The new time has to be in the future. Choose a later start and end.",
+      "rescheduleStrands": "{count, plural, one {# person is} other {# people are}} booked into slots the new time drops, and no remaining slot that hasn't started has room for {count, plural, one {them} other {them}}: {names}. Nothing has changed. Keep a longer window so everyone booked has a slot. If the drive can't run at all, cancel it instead: everyone booked is told not to come, and it won't count against them.",
+      "slotsDontTile": "This drive's slots don't line up with its opening and closing times, so Walkins can't work out safely where everyone booked would go. Nothing has changed. The drive can still run at its current time; if it can't, cancel it, which tells everyone booked not to come."
     },
     "application": {
       "notFound": "This application no longer exists. Reload the page.",
@@ -423,12 +430,14 @@
     "releaseConfirm": "Release your seat? Someone else can then book it.",
     "releaseFailed": "Your seat couldn't be released. Try again.",
     "heading": "Your drives",
-    "offline": "You're offline. Showing your drives as saved at {time}; booking changes need signal.",
+    "offline": "You're offline. Last synced {day} at {time}: the times below are as they were then, and booking changes need signal.",
     "comingUp": "Coming up",
     "nothingBooked": "Nothing booked yet. <link>Find walk-ins near you</link>.",
     "past": "Past",
     "paused": "This drive is paused while Walkins checks it. You haven't done anything wrong. Please don't travel to it for now; you'll be told if it goes ahead, and this booking won't count against you.",
-    "cancelled": "The employer cancelled this drive, so please don't travel to it. This won't count against you."
+    "cancelled": "The employer cancelled this drive, so please don't travel to it. This won't count against you.",
+    "moved": "The employer moved this drive. It was {day}, {time}.",
+    "movedOffline": "This drive has been moved before, and this copy was saved {day} at {time}. It may have moved again since. Check when you have signal before you travel."
   },
   "login": {
     "sendFailed": "The code couldn't be sent. Check the number and try again.",
@@ -541,7 +550,8 @@
     "cancel": "Cancel",
     "offline": "You're offline. Scanning still works; your check-in is sent when the signal is back.",
     "next": "{role} at {company}",
-    "nextWithSlot": "{role} at {company} · slot {time}"
+    "nextWithSlot": "{role} at {company} · slot {time}",
+    "synced": "Last synced {day} at {time}."
   },
   "desk": {
     "employerDesk": "Operations desk",
@@ -593,7 +603,8 @@
     "outsideCity": {
       "heading": "Venue is outside {city}",
       "body": "The venue location is {km} km from the centre of {city}, where this drive is listed. Alerts won't reach anyone, the {city} map will show it far away, and check-ins at the real venue will be refused. Set the venue again from a device at the venue."
-    }
+    },
+    "timesLocked": "To change the time, use Reschedule: it moves the slots and tells everyone booked."
   },
   "knockouts": {
     "issue": "Screening question {n}: {problem}",
@@ -674,6 +685,17 @@
     "suspended": "Walkins has paused this drive while it checks reports about it. Everyone booked has been told it's paused, not why. Check-ins and applicant changes are closed until the check ends.",
     "reach": {
       "limited": "{capped, select, yes {This drive's alerts go to the nearest {limit} of the {matching} candidates who match, because {company} isn't verified yet.} other {All {matching} candidates who match will be alerted. Because {company} isn't verified yet, alerts would stop at the nearest {limit}.}} <link>Verification lifts the limit.</link>"
+    },
+    "reschedule": {
+      "heading": "Reschedule",
+      "explain": "Slots move with the drive. A shorter window drops slots from the end and moves anyone booked into them to the nearest slot left with room. Everyone booked is told the old and new times. Once check-in has opened, only the end can move.",
+      "startsAt": "New doors open",
+      "endsAt": "New doors close",
+      "move": "Move drive",
+      "moving": "Moving",
+      "confirm": "Move this drive? {count, plural, one {The # person booked is} other {All # people booked are}} told the old and new times, and can release their seat without it counting against them.",
+      "failed": "The drive couldn't be moved. Reload the page and try again.",
+      "history": "Moved from {fromDay}, {fromTime} to {toDay}, {toTime}{reseated, plural, =0 {} one {; # booking moved to another slot} other {; # bookings moved to another slot}}. By <name></name>."
     }
   },
   "deskState": {
