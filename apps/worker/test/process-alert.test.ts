@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@walkins/db";
 import {
   type AlertJob,
+  formatWhen,
   DeliveryOutcomeUnknownError,
   type NotificationChannel,
   RecipientUnreachableError,
@@ -230,5 +231,67 @@ describe("processAlert", () => {
     expect(message.text).toContain("won't count against you");
     expect(message.url).toBe("http://localhost:3000/");
     await prisma.application.delete({ where: { id: application.id } });
+  });
+
+  describe("after a reschedule", () => {
+    const DAY = 24 * 3600_000;
+    let original: { startsAt: Date; endsAt: Date };
+
+    // Two changes in quick succession, both after the candidate booked.
+    async function rescheduleTwice() {
+      const drive = await prisma.drive.findUniqueOrThrow({ where: { id: ids.drive } });
+      original = { startsAt: drive.startsAt, endsAt: drive.endsAt };
+      const shift = (n: number) => ({ startsAt: new Date(drive.startsAt.getTime() + n * DAY), endsAt: new Date(drive.endsAt.getTime() + n * DAY) });
+      await prisma.driveReschedule.createMany({
+        data: [
+          { driveId: ids.drive, version: 1, fromStartsAt: original.startsAt, fromEndsAt: original.endsAt, toStartsAt: shift(1).startsAt, toEndsAt: shift(1).endsAt, byId: ids.owner },
+          { driveId: ids.drive, version: 2, fromStartsAt: shift(1).startsAt, fromEndsAt: shift(1).endsAt, toStartsAt: shift(2).startsAt, toEndsAt: shift(2).endsAt, byId: ids.owner },
+        ],
+      });
+      await prisma.drive.update({ where: { id: ids.drive }, data: { ...shift(2), scheduleVersion: 2 } });
+    }
+
+    afterAll(async () => {
+      await prisma.driveReschedule.deleteMany({ where: { driveId: ids.drive } });
+      await prisma.drive.update({ where: { id: ids.drive }, data: { ...original, scheduleVersion: 0 } });
+    });
+
+    it("skips a notice about a superseded time, and says the time the candidate last knew in the latest", async () => {
+      const application = await prisma.application.create({
+        data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED", stateChangedAt: new Date(Date.now() - 60_000) },
+      });
+      await rescheduleTwice();
+
+      await expect(processAlert({ data: { ...job, templateKey: "drive_rescheduled", scheduleVersion: 1 }, attemptsMade: 0 }, deps)).resolves.toBe(
+        "skipped: the drive has been rescheduled since",
+      );
+      await expect(processAlert({ data: { ...job, templateKey: "drive_rescheduled", scheduleVersion: 2 }, attemptsMade: 0 }, deps)).resolves.toBe(
+        "sent via recording",
+      );
+
+      const [message] = channel.sent;
+      const when = (startsAt: Date, endsAt: Date) => {
+        const w = formatWhen(startsAt.toISOString(), endsAt.toISOString(), new Date());
+        return `${w.day}, ${w.time}`;
+      };
+      const drive = await prisma.drive.findUniqueOrThrow({ where: { id: ids.drive } });
+      // "Was" is the original time, never the in-between one they weren't told.
+      expect(message.text).toContain(`Was: ${when(original.startsAt, original.endsAt)}`);
+      expect(message.text).toContain(`Now: ${when(drive.startsAt, drive.endsAt)}`);
+      expect(message.text).toContain("won't count against you");
+      await prisma.application.delete({ where: { id: application.id } });
+    });
+
+    it("sends the morning reminder for the new day even though one went out for the old day", async () => {
+      const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED" } });
+      await prisma.notification.create({
+        data: { driveId: ids.drive, candidateId: ids.candidate, templateKey: "drive_morning_of", status: "SENT", channel: "recording", attempt: 1, jobId: "old-day" },
+      });
+
+      const reminder: AlertJob = { ...job, templateKey: "drive_morning_of", scheduleVersion: 2 };
+      await expect(processAlert({ data: reminder, attemptsMade: 0 }, deps)).resolves.toBe("sent via recording");
+      await expect(processAlert({ data: reminder, attemptsMade: 1 }, deps)).resolves.toBe("already sent");
+      await prisma.application.delete({ where: { id: application.id } });
+    });
   });
 });

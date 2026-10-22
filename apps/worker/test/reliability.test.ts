@@ -43,7 +43,7 @@ beforeAll(async () => {
   const [ran, cancelled, suspended] = await Promise.all([drive("EXPIRED"), drive("CANCELLED"), drive("SUSPENDED")]);
   ids.drives.push(ran.id, cancelled.id, suspended.id);
 
-  for (const name of ["attended", "only-cancelled"]) {
+  for (const name of ["attended", "only-cancelled", "released"]) {
     const user = await prisma.user.create({ data: { phone: randomPhone(), name: `Reliability ${name}`, role: "CANDIDATE" } });
     const candidate = await prisma.candidate.create({
       // A damaged score from before the fix, which the recompute must repair.
@@ -52,13 +52,15 @@ beforeAll(async () => {
     ids.users.push(user.id);
     ids.candidates.push(candidate.id);
   }
-  const [attended, onlyCancelled] = ids.candidates;
+  const [attended, onlyCancelled, released] = ids.candidates;
   await prisma.application.createMany({
     data: [
       { driveId: ran.id, candidateId: attended, state: "CHECKED_IN" },
       { driveId: cancelled.id, candidateId: attended, state: "CONFIRMED" },
       { driveId: suspended.id, candidateId: attended, state: "CONFIRMED" },
       { driveId: cancelled.id, candidateId: onlyCancelled, state: "CONFIRMED" },
+      // Released their seat, as someone may after a reschedule.
+      { driveId: ran.id, candidateId: released, state: "WITHDRAWN" },
     ],
   });
 });
@@ -80,5 +82,11 @@ describe("reliability", () => {
     expect(attended.reliability).toBe(1);
     // Nothing they booked ever ran, so there is nothing to score.
     expect(onlyCancelled.reliability).toBeNull();
+  });
+
+  it("doesn't count a released booking, so releasing after a reschedule costs nothing", async () => {
+    await recomputeReliability(ids.candidates);
+    const released = await prisma.candidate.findUniqueOrThrow({ where: { id: ids.candidates[2] } });
+    expect(released.reliability).toBeNull();
   });
 });
