@@ -23,6 +23,25 @@ export type AlertContext = {
 // content and go in exactly as entered. Every alert ends with the same
 // warning: fake recruiters charge "registration fees", and the alert is
 // where a candidate is reading about the job.
+// A message's Telegram copy: who wrote it, what they said exactly as
+// written, where to reply, and the same never-pay line as every alert. If the
+// tripwire caught a money request, the warning comes first. Telegram's own
+// apps make any link in the text clickable; Walkins can't stop that, which is
+// one more reason the warning is there.
+export function renderMessage(
+  m: { sender: string; company: string; role: string; body: string; flagged: boolean; threadUrl: string },
+  locale: Locale = DEFAULT_LOCALE,
+): TemplatedMessage {
+  const text = [
+    m.flagged ? translate(locale, "alerts.messageFlagged") : null,
+    translate(locale, "alerts.message", { sender: m.sender, company: m.company, role: m.role, body: m.body }),
+    translate(locale, "alerts.neverPay", { link: m.threadUrl }),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { templateKey: "message", text, url: m.threadUrl };
+}
+
 export function renderAlert(templateKey: TemplateKey, ctx: AlertContext, now: Date, locale: Locale = DEFAULT_LOCALE): TemplatedMessage {
   const format = formatFor(locale);
   const when = format.formatWhen(ctx.startsAt, ctx.endsAt, now);

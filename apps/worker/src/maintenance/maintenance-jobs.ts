@@ -30,6 +30,7 @@ const SCHEDULES = [
   { name: "expire-drives", pattern: "30 0 * * *" },
   { name: "recompute-reliability", pattern: "0 1 * * *" },
   { name: "sweep-charges", pattern: "*/15 * * * *" },
+  { name: "sweep-messages", pattern: "*/15 * * * *" },
   { name: "refresh-analytics", pattern: "*/15 * * * *" },
 ];
 
@@ -219,6 +220,32 @@ export async function recomputeReliability(candidateIds?: string[]): Promise<str
 // `driveIds` narrows a run, as `scope` does for purgeVoiceIntros.
 const SWEEP_BATCH = 1000;
 
+// The company's messages from the last day whose Telegram copy was never
+// attempted: the API commits the message, then queues the copy without
+// waiting, so a crash or a Redis outage between the two leaves one behind.
+// Any delivery row at all, even SKIPPED or FAILED, means it was attempted
+// and the queue's own retries own it; this only catches the never-queued.
+// The minute's grace keeps it from racing a copy queued a moment ago.
+// `threadIds` narrows a run, as `driveIds` does for sweepCharges.
+export async function sweepMessages(alerts: Pick<AlertService, "deliverMessages">, threadIds?: string[]): Promise<number> {
+  const scope = threadIds ? Prisma.sql`AND m."threadId" IN (${Prisma.join(threadIds)})` : Prisma.empty;
+  const unsent = await prisma.$queryRaw<{ messageId: string; driveId: string; candidateId: string }[]>`
+    SELECT m.id AS "messageId", a."driveId", a."candidateId"
+    FROM messages m
+    JOIN message_threads t ON t.id = m."threadId"
+    JOIN applications a ON a.id = t."applicationId"
+    WHERE m.side = 'COMPANY'
+      AND m."createdAt" > (now() AT TIME ZONE 'UTC') - interval '24 hours'
+      AND m."createdAt" < (now() AT TIME ZONE 'UTC') - interval '1 minute'
+      AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n."messageId" = m.id)
+      ${scope}
+    ORDER BY m."createdAt"
+    LIMIT ${SWEEP_BATCH}
+  `;
+  await alerts.deliverMessages(unsent);
+  return unsent.length;
+}
+
 export async function sweepCharges(charge: MaintenanceDeps["charge"], driveIds?: string[]): Promise<number> {
   const scope = driveIds ? Prisma.sql`AND a."driveId" IN (${Prisma.join(driveIds)})` : Prisma.empty;
   const uncharged = await prisma.$queryRaw<{ id: string }[]>`
@@ -257,6 +284,8 @@ export function runMaintenance(name: string, deps: MaintenanceDeps): Promise<str
       return recomputeReliability();
     case "sweep-charges":
       return sweepCharges(deps.charge).then((n) => `${n} uncharged check-ins queued`);
+    case "sweep-messages":
+      return sweepMessages(deps.alerts).then((n) => `${n} message copies queued`);
     case "refresh-analytics":
       return refreshAnalytics(deps.markAnalyticsRefreshed);
     default:

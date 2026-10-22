@@ -9,10 +9,11 @@ import {
   type DriveStatus,
   type Recipient,
   RecipientUnreachableError,
+  type TemplatedMessage,
   type TemplateKey,
 } from "@walkins/shared";
 import type { ChannelResolver } from "../channels/channel-resolver";
-import { type AlertContext, renderAlert } from "./templates";
+import { type AlertContext, renderAlert, renderMessage } from "./templates";
 
 export type AlertAttempt = {
   data: AlertJob;
@@ -27,12 +28,12 @@ export type ProcessDeps = {
   onRateLimited: (retryAfterMs: number) => Promise<Error>;
 };
 
-type Loaded = { skip: string } | { recipient: Recipient; context: AlertContext };
+type Loaded = { skip: string } | { recipient: Recipient; message: TemplatedMessage };
 
 // The status a drive must still be in for each alert to be true when it
 // arrives: a suspension notice for a drive already put back on, or a "back
 // on" for one suspended again, is skipped rather than sent.
-const DRIVE_STATUS_FOR: Record<TemplateKey, DriveStatus> = {
+const DRIVE_STATUS_FOR: Record<Exclude<TemplateKey, "message">, DriveStatus> = {
   drive_48h: "LIVE",
   drive_morning_of: "LIVE",
   application_rejected: "LIVE",
@@ -66,7 +67,36 @@ async function lastKnownTime(driveId: string, candidateId: string, bookedAt: Dat
   return next ? { startsAt: next.fromStartsAt.toISOString(), endsAt: next.fromEndsAt.toISOString() } : null;
 }
 
+// A message's Telegram copy. Nothing can make it untrue once sent, so it is
+// never skipped for the drive or the thread changing: only for a candidate
+// with no channel, recorded so the sweep doesn't queue it again.
+async function loadMessage(messageId: string, webUrl: string): Promise<Loaded | null> {
+  const message = await prisma.message.findUnique({
+    where: { id: messageId },
+    include: {
+      sender: { select: { name: true } },
+      thread: { include: { application: { include: { drive: { include: { role: true, company: true } }, candidate: { include: { user: { select: { phone: true } } } } } } } },
+    },
+  });
+  if (!message) return null;
+  const { application } = message.thread;
+  return {
+    recipient: { candidateId: application.candidateId, phone: application.candidate.user.phone, telegramChatId: application.candidate.telegramChatId },
+    message: renderMessage(
+      {
+        sender: message.sender.name,
+        company: application.drive.company.name,
+        role: application.drive.role.title,
+        body: message.body,
+        flagged: message.moneyFlag,
+        threadUrl: `${webUrl}/my-drives/messages/${application.id}`,
+      },
+    ),
+  };
+}
+
 async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }: AlertJob, now: Date, webUrl: string): Promise<Loaded | null> {
+  if (templateKey === "message") return null;
   const [drive, candidate] = await Promise.all([
     prisma.drive.findUnique({ where: { id: driveId }, include: { role: true, company: true } }),
     prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true } } } }),
@@ -106,9 +136,7 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
     WHERE c.id = ${candidateId} AND d.id = ${driveId}
   `;
 
-  return {
-    recipient: { candidateId, phone: candidate.user.phone, telegramChatId: candidate.telegramChatId },
-    context: {
+  const context: AlertContext = {
       roleTitle: drive.role.title,
       companyName: drive.company.name,
       salaryMin: drive.salaryMin,
@@ -123,27 +151,29 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
       // one that is no longer for them.
       driveUrl: templateKey === "application_rejected" || templateKey === "drive_cancelled" ? `${webUrl}/` : `${webUrl}/drives/${driveId}`,
       reportUrl: `${webUrl}/drives/${driveId}#report`,
-    },
   };
+  return { recipient: { candidateId, phone: candidate.user.phone, telegramChatId: candidate.telegramChatId }, message: renderAlert(templateKey, context, now) };
 }
 
 // Every attempt leaves a notifications row. The PENDING row inserted before
-// the provider call is the claim: the partial unique index lets only one
-// PENDING or SENT row exist per alert, so a retry, a redelivered stalled job
-// or a duplicate job cannot get past it once a send has started.
+// the provider call is the claim: a partial unique index lets only one
+// PENDING or SENT row exist per alert (per drive, candidate, template and
+// schedule version) or per message, so a retry, a redelivered stalled job or
+// a duplicate job cannot get past it once a send has started.
 export async function processAlert({ data, attemptsMade }: AlertAttempt, deps: ProcessDeps): Promise<string> {
   const { driveId, candidateId, templateKey } = data;
   const now = new Date();
   const version = data.scheduleVersion ?? 0;
-  const row = { driveId, candidateId, templateKey, scheduleVersion: version, attempt: attemptsMade + 1, jobId: alertJobId(data) };
+  const messageId = data.messageId ?? null;
+  const row = { driveId, candidateId, templateKey, scheduleVersion: version, messageId, attempt: attemptsMade + 1, jobId: alertJobId(data) };
 
   const claimed = await prisma.notification.findFirst({
-    where: { driveId, candidateId, templateKey, scheduleVersion: version, status: { in: ["PENDING", "SENT"] } },
+    where: { ...(messageId ? { messageId } : { driveId, candidateId, templateKey, scheduleVersion: version, messageId: null }), status: { in: ["PENDING", "SENT"] } },
     select: { id: true },
   });
   if (claimed) return "already sent";
 
-  const loaded = await loadAlert(data, now, deps.webUrl);
+  const loaded = messageId ? await loadMessage(messageId, deps.webUrl) : await loadAlert(data, now, deps.webUrl);
   if (!loaded) return "drive or candidate no longer exists";
   if ("skip" in loaded) {
     await prisma.notification.create({ data: { ...row, channel: "none", status: "SKIPPED", error: loaded.skip } });
@@ -170,7 +200,7 @@ export async function processAlert({ data, attemptsMade }: AlertAttempt, deps: P
   }
 
   try {
-    const result = await channel.send(loaded.recipient, renderAlert(templateKey, loaded.context, now));
+    const result = await channel.send(loaded.recipient, loaded.message);
     await prisma.notification.update({
       where: { id: claimId },
       data: { status: "SENT", sentAt: new Date(), providerMessageId: result.providerMessageId },

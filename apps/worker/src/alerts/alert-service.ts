@@ -47,6 +47,12 @@ export class AlertService {
     return confirmed.length;
   }
 
+  // A message's Telegram copy, for the sweep. The job id is the message's,
+  // so one already waiting is not queued twice.
+  async deliverMessages(messages: { driveId: string; candidateId: string; messageId: string }[]) {
+    await this.enqueue(messages.map((m) => ({ ...m, templateKey: "message" })));
+  }
+
   private async enqueue(jobs: AlertJob[]) {
     if (jobs.length === 0) return;
     await this.queue.addBulk(jobs.map((data) => ({ name: data.templateKey, data, opts: { jobId: alertJobId(data) } })));
