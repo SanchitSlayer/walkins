@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { MyApplication, MyApplications } from "@walkins/shared";
+import { CHECK_IN_OPENS_BEFORE_START_MS, type MyApplication, type MyApplications } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { isNetworkError, loadPass, savePass } from "@/lib/offline";
 import { useRequireRole } from "@/lib/use-require-role";
@@ -14,7 +14,6 @@ import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 
-const CHECK_IN_OPENS_MS = 60 * 60_000;
 
 function useOutcome() {
   const t = useTranslations("myDrives.outcome");
@@ -26,18 +25,21 @@ function UpcomingPass({
   now,
   onRelease,
   releasing,
+  savedAt,
 }: {
   application: MyApplication;
   now: Date;
   onRelease: () => void;
   releasing: boolean;
+  savedAt: string | null;
 }) {
   const t = useTranslations("myDrives");
   const outcome = useOutcome();
-  const { formatTime, formatWhen } = useFormat();
+  const { dayLabel, formatTime, formatWhen } = useFormat();
   const { drive } = application;
   const when = formatWhen(drive.startsAt, drive.endsAt, now);
-  const checkInOpen = now.getTime() >= new Date(drive.startsAt).getTime() - CHECK_IN_OPENS_MS;
+  const was = drive.rescheduledFrom ? formatWhen(drive.rescheduledFrom.startsAt, drive.rescheduledFrom.endsAt, now) : null;
+  const checkInOpen = now.getTime() >= new Date(drive.startsAt).getTime() - CHECK_IN_OPENS_BEFORE_START_MS;
   const booked = application.state === "CONFIRMED";
   const paused = drive.status === "SUSPENDED";
   const cancelled = drive.status === "CANCELLED";
@@ -48,6 +50,17 @@ function UpcomingPass({
         <h3 className="type-h3">{t("roleAt", { role: drive.roleTitle, company: drive.companyName })}</h3>
         <p className="type-meta text-ink-muted">{drive.venueAddress}</p>
       </div>
+      {was && (
+        <p className="type-meta border-l-4 border-filling-lamp pl-3">{t("moved", { day: was.day, time: was.time })}</p>
+      )}
+      {/* A saved copy can't know about a change made since. A drive that
+          has moved once is the one most likely to move again, so its time
+          is shown with that said loudly rather than with false confidence. */}
+      {savedAt && was && (
+        <p role="alert" className="type-body border-l-4 border-closing-ink pl-3">
+          {t("movedOffline", { day: dayLabel(new Date(savedAt), now), time: formatTime(savedAt) })}
+        </p>
+      )}
       {(paused || cancelled) && (
         <p role="status" className="type-body border-l-4 border-closing-ink pl-3">
           {paused ? t("paused") : t("cancelled")}
@@ -103,7 +116,7 @@ export default function MyDrivesPage() {
   const t = useTranslations("myDrives");
   const errorText = useErrorText();
   const outcome = useOutcome();
-  const { formatTime, formatWhen } = useFormat();
+  const { dayLabel, formatTime, formatWhen } = useFormat();
   const ready = useRequireRole("CANDIDATE");
   const [applications, setApplications] = useState<MyApplications | null>(null);
   const [releasingId, setReleasingId] = useState<string | null>(null);
@@ -163,8 +176,8 @@ export default function MyDrivesPage() {
         <NeverPay />
 
         {savedAt && (
-          <p className="type-meta border-l-4 border-pending-lamp bg-housing-raised p-4">
-            {t("offline", { time: formatTime(savedAt) })}
+          <p role="status" className="type-h3 border-l-4 border-pending-lamp bg-housing-raised p-4">
+            {t("offline", { day: dayLabel(new Date(savedAt), now), time: formatTime(savedAt) })}
           </p>
         )}
 
@@ -198,6 +211,7 @@ export default function MyDrivesPage() {
                       now={now}
                       onRelease={() => release(application.id)}
                       releasing={releasingId === application.id}
+                      savedAt={savedAt}
                     />
                   </li>
                 ))}

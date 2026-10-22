@@ -303,6 +303,10 @@ export const apiClient = {
     return parseOrThrow(await request(`/companies/me/members/${userId}/remove`, { method: "POST", body: JSON.stringify({ successorId }) }));
   },
 
+  async rescheduleDrive(driveId: string, input: { startsAt: Date; endsAt: Date }): Promise<DriveDetail> {
+    return parseOrThrow(await request(`/drives/${driveId}/reschedule`, { method: "POST", body: JSON.stringify(input) }));
+  },
+
   async reassignDrive(driveId: string, ownerId: string): Promise<DriveDetail> {
     return parseOrThrow(await request(`/drives/${driveId}/owner`, { method: "POST", body: JSON.stringify({ ownerId }) }));
   },

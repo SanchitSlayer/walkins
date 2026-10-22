@@ -318,12 +318,20 @@ export default function CheckInPage() {
 // this phone, so they can still see where and when.
 function OfflinePass() {
   const t = useTranslations("checkin");
-  const { formatTime } = useFormat();
+  const moved = useTranslations("myDrives");
+  const { dayLabel, formatTime } = useFormat();
   const [pass] = useState(() => loadPass());
+  const [now] = useState(() => new Date());
   const next = pass?.applications.upcoming.find((a) => a.state === "CONFIRMED");
   return (
     <div className="grid gap-1 border-l-4 border-pending-lamp bg-housing-raised p-4">
       <p className="type-meta">{t("offline")}</p>
+      {pass && <p className="type-body">{t("synced", { day: dayLabel(new Date(pass.savedAt), now), time: formatTime(pass.savedAt) })}</p>}
+      {pass && next?.drive.rescheduledFrom && (
+        <p role="alert" className="type-body text-closing-lamp">
+          {moved("movedOffline", { day: dayLabel(new Date(pass.savedAt), now), time: formatTime(pass.savedAt) })}
+        </p>
+      )}
       {next && (
         <p className="type-board-md">
           {next.slotStartsAt
