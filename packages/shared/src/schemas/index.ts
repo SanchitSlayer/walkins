@@ -73,6 +73,22 @@ export const createDriveSchema = z
 
 export const updateDriveSchema = z.object(driveCoreShape).partial();
 
+// A drive's time changes only through a reschedule, which moves its slots
+// and tells everyone booked; the edit form can't change it.
+export const rescheduleDriveSchema = z
+  .object({ startsAt: z.coerce.date(), endsAt: z.coerce.date() })
+  .refine((d) => d.endsAt > d.startsAt, { message: "errors.validation.timeOrder", path: ["endsAt"] });
+
+export const driveRescheduleSchema = z.object({
+  fromStartsAt: z.string(),
+  fromEndsAt: z.string(),
+  toStartsAt: z.string(),
+  toEndsAt: z.string(),
+  reseated: z.number().int(),
+  by: personRefSchema,
+  createdAt: z.string(),
+});
+
 // Single source of truth for the maximum allowed travel radius. Kept to a
 // realistic walk-in-interview commute distance (not an arbitrary large
 // number) so the targeting query's GiST-indexable bounding prefilter
@@ -146,6 +162,7 @@ export const driveDetailSchema = driveSummarySchema.extend({
   knockoutQuestions: knockoutQuestionsSchema,
   city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),
   owner: personRefSchema,
+  reschedules: z.array(driveRescheduleSchema),
 });
 
 export const employerDriveRowSchema = driveSummarySchema.extend({
@@ -257,6 +274,9 @@ export const myApplicationSchema = z.object({
     startsAt: z.string(),
     endsAt: z.string(),
     status: driveStatusSchema,
+    // The time before the latest reschedule, so the pass can say the drive
+    // moved rather than show a time with false confidence.
+    rescheduledFrom: z.object({ startsAt: z.string(), endsAt: z.string() }).nullable(),
   }),
   checkIn: checkInSchema.nullable(),
 });
@@ -428,6 +448,8 @@ export type PublicDriveDetail = z.infer<typeof publicDriveDetailSchema>;
 export type OtpRequestInput = z.infer<typeof otpRequestSchema>;
 export type OtpVerifyInput = z.infer<typeof otpVerifySchema>;
 export type CreateDriveInput = z.infer<typeof createDriveSchema>;
+export type RescheduleDriveInput = z.infer<typeof rescheduleDriveSchema>;
+export type DriveReschedule = z.infer<typeof driveRescheduleSchema>;
 export type UpdateDriveInput = z.infer<typeof updateDriveSchema>;
 export type UpdateCandidateProfileInput = z.infer<typeof updateCandidateProfileSchema>;
 export type DriveSearchQuery = z.infer<typeof driveSearchQuerySchema>;

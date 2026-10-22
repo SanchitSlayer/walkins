@@ -26,3 +26,8 @@ export function normalizeCheckInCode(input: string): string | null {
 export function formatCheckInCode(code: string): string {
   return `${code.slice(0, 4)} ${code.slice(4)}`;
 }
+
+// Check-in opens an hour before a drive starts, so early arrivals aren't
+// turned away. Once it is open, the drive has begun as far as anyone booked
+// is concerned, which is why a reschedule can no longer move its start.
+export const CHECK_IN_OPENS_BEFORE_START_MS = 60 * 60_000;

@@ -8,10 +8,14 @@ export const MAINTENANCE_QUEUE = "maintenance";
 export const VOICE_QUEUE = "voice";
 export const EMBED_QUEUE = "embed";
 
+// scheduleVersion is set on alerts that state the drive's time (the
+// morning-of reminder and the reschedule notice): each version of the time
+// is its own alert, and one about a superseded version is skipped.
 export type AlertJob = {
   driveId: string;
   candidateId: string;
   templateKey: TemplateKey;
+  scheduleVersion?: number;
 };
 
 // BullMQ drops an add whose id already exists, which stops a re-run fanout
@@ -19,8 +23,8 @@ export type AlertJob = {
 // the id is forgotten once the job is removed, and the notifications claim
 // index is what actually rules out a second send. Dots, because BullMQ
 // rejects custom ids with more than two colons.
-export function alertJobId({ driveId, candidateId, templateKey }: AlertJob): string {
-  return `alert.${driveId}.${candidateId}.${templateKey}`;
+export function alertJobId({ driveId, candidateId, templateKey, scheduleVersion }: AlertJob): string {
+  return `alert.${driveId}.${candidateId}.${templateKey}${scheduleVersion ? `.v${scheduleVersion}` : ""}`;
 }
 
 // Completed jobs are kept for a week so their ids keep deduplicating across

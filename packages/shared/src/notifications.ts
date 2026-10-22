@@ -3,14 +3,15 @@ import { z } from "zod";
 // Discovery (a drive near you), commitment (you said you'd come today) and
 // release (the employer isn't going ahead with you, so don't travel) are
 // different messages to different people, so they are different keys. The
-// last three go to everyone holding a seat when the drive itself changes.
+// last four go to everyone holding a seat when the drive itself changes.
 export type TemplateKey =
   | "drive_48h"
   | "drive_morning_of"
   | "application_rejected"
   | "drive_cancelled"
   | "drive_suspended"
-  | "drive_reinstated";
+  | "drive_reinstated"
+  | "drive_rescheduled";
 
 export type Recipient = {
   candidateId: string;
