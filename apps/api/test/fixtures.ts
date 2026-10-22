@@ -111,7 +111,13 @@ export async function removeFixture(fixture: Fixture) {
   await prisma.companyInvitation.deleteMany({ where: { companyId: { in: companyIds } } });
   const candidateIds = fixture.candidates.map((c) => c.candidateId);
   await prisma.warning.deleteMany({ where: { OR: [{ companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] } });
-  await prisma.report.deleteMany({ where: { OR: [{ driveId: { in: allDriveIds } }, { candidateId: { in: candidateIds } }] } });
+  const threadScope = { thread: { application: { driveId: { in: allDriveIds } } } };
+  await prisma.report.deleteMany({ where: { OR: [{ driveId: { in: allDriveIds } }, { candidateId: { in: candidateIds } }, { message: threadScope }] } });
+  await prisma.notification.deleteMany({ where: { driveId: { in: allDriveIds } } });
+  const threadIds = (await prisma.messageThread.findMany({ where: { application: { driveId: { in: allDriveIds } } }, select: { id: true } })).map((t) => t.id);
+  await prisma.auditLog.deleteMany({ where: { entityId: { in: threadIds } } });
+  await prisma.message.deleteMany({ where: threadScope });
+  await prisma.messageThread.deleteMany({ where: { application: { driveId: { in: allDriveIds } } } });
   await prisma.moderationAction.deleteMany({
     where: { OR: [{ driveId: { in: allDriveIds } }, { companyId: { in: companyIds } }, { candidateId: { in: candidateIds } }] },
   });
