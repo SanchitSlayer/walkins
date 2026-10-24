@@ -72,7 +72,7 @@ Fake recruiters charging fees are the biggest risk in this market, so trust is b
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     WEB["Next.js web app<br/>candidate, employer, admin"] --> API["NestJS API"]
     WEB -- "voice upload" --> S3[("MinIO<br/>recordings")]
     API --> PG[("PostgreSQL<br/>PostGIS + pgvector")]
