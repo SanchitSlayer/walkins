@@ -35,12 +35,10 @@ Walkins is a full-stack platform built around the one moment that matters to bot
 
 ```mermaid
 flowchart LR
-    A["Employer creates<br/>a walk-in drive"] --> B["Platform finds<br/>candidates in range"]
-    B --> C["Alert on Telegram<br/>48 hours before"]
-    C --> D["Candidate answers<br/>screening, books a slot"]
-    D --> E["Reminder on<br/>the morning"]
-    E --> F["QR + GPS check-in<br/>at the venue"]
-    F --> G["Employer is charged<br/>for the verified show-up"]
+    A["Employer posts<br/>a walk-in drive"] --> B["Nearby candidates<br/>alerted on Telegram"]
+    B --> C["Candidate passes<br/>screening, books a slot"]
+    C --> D["QR + GPS check-in<br/>at the venue"]
+    D --> E["Employer pays for<br/>the verified show-up"]
 ```
 
 | For candidates | For employers |
@@ -74,36 +72,17 @@ Fake recruiters charging fees are the biggest risk in this market, so trust is b
 ## Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Client
-        WEB["Next.js 15 web app<br/>candidate, employer and admin consoles<br/>offline check-in via service worker"]
-    end
-
-    subgraph Services
-        API["NestJS API<br/>auth, drives, bookings,<br/>check-in, billing, messages"]
-        WORKER["Worker<br/>BullMQ queues, cron jobs,<br/>Telegram bot"]
-        ML["FastAPI ML sidecar<br/>Whisper speech-to-text,<br/>multilingual embeddings"]
-    end
-
-    subgraph Data
-        PG[("PostgreSQL<br/>PostGIS + pgvector")]
-        REDIS[("Redis")]
-        S3[("MinIO<br/>voice recordings")]
-    end
-
-    TG["Telegram"]
-    PAY["Razorpay or mock gateway"]
-
-    WEB --> API
-    WEB -- "direct upload" --> S3
-    API --> PG
-    API -- "queue jobs" --> REDIS
-    REDIS --> WORKER
+flowchart LR
+    WEB["Next.js web app<br/>candidate, employer, admin"] --> API["NestJS API"]
+    WEB -- "voice upload" --> S3[("MinIO<br/>recordings")]
+    API --> PG[("PostgreSQL<br/>PostGIS + pgvector")]
+    API -- "jobs" --> REDIS[("Redis<br/>BullMQ")]
+    API --> PAY["Razorpay or<br/>mock gateway"]
+    REDIS --> WORKER["Worker<br/>alerts, charges, cron"]
+    WORKER --> ML["FastAPI ML sidecar<br/>Whisper + embeddings"]
+    WORKER --> TG["Telegram bot"]
     WORKER --> PG
-    WORKER --> ML
-    WORKER --> TG
     ML --> S3
-    API --> PAY
 ```
 
 | Part | Role |
