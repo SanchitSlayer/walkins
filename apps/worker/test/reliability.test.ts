@@ -4,8 +4,8 @@ import { recomputeReliability } from "../src/maintenance/maintenance-jobs";
 
 // Real rows, because the bug was in the SQL: a booking on a drive the
 // employer cancelled was scored as a missed interview. Each run is scoped to
-// this file's candidates (see "Scope every maintenance function" in the
-// README).
+// this file's candidates (see "Scope every maintenance function" under
+// "Development" in docs/TECHNICAL.md).
 const ids = { company: "", owner: "", users: [] as string[], candidates: [] as string[], drives: [] as string[] };
 
 function randomPhone() {

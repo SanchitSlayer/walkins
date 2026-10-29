@@ -14,7 +14,8 @@ async function bootstrap() {
   // address is always the proxy's. Trusting X-Forwarded-For from loopback
   // only makes request.ip the visitor's address, which per-address limits
   // need. Next's dev server passes on a client-supplied X-Forwarded-For, so in
-  // production a reverse proxy in front must overwrite it (see README).
+  // production a reverse proxy in front must overwrite it (see docs/TECHNICAL.md,
+  // "Production needs a proxy that overwrites X-Forwarded-For").
   app.set("trust proxy", "loopback");
   app.use(cookieParser());
   app.enableCors({ origin: WEB_ORIGINS, credentials: true });

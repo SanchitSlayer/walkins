@@ -48,6 +48,7 @@ flowchart LR
 | A 45-second **voice intro** in any language instead of a CV | Voice intros transcribed automatically, with the recording always one click away |
 | Check-in that works even without mobile signal | A live arrivals board for the venue and a show-up funnel in analytics |
 | A "never pay anyone" warning on every conversation | Team roles (owner, recruiter, viewer) and one shared inbox per company |
+| **Their own record** of every drive, showing what was marked and why | Hiring outcomes and retention, always shown with how many they rest on |
 
 ## Business model: pay per verified show-up
 
@@ -66,6 +67,8 @@ Fake recruiters charging fees are the biggest risk in this market, so trust is b
 - **Money-request tripwire.** Messages that look like a fee demand (UPI handles, bank details, fee wording in English, Hinglish and Hindi) are delivered with a visible warning, and every message can be reported.
 - **Moderation.** Admins handle reports, warnings and suspensions. Notices tell affected candidates what is happening and what to do, without blaming them.
 - **Privacy by default.** Voice recordings are deleted after 180 days or when replaced. The arrivals board facing the queue shows only first name and last initial.
+- **Nothing hidden from candidates.** Your record shows every drive they applied to and what was recorded, including an absence that isn't held against them because a reschedule notice never reached them. It never shows reporters, employer notes, match scores or anyone else's data.
+- **Outcomes never score people.** Whether someone started a job is only the employer's word, and not starting is often the right call, so hiring outcomes feed figures about jobs, never a candidate's reliability.
 
 ---
 
@@ -99,6 +102,7 @@ flowchart TB
 - **Geospatial targeting.** Each candidate sets their own travel radius, so the query for "who should hear about this drive" respects per-person distance, using PostGIS with a bounding-box prefilter.
 - **AI matching across languages.** Candidates and drives are embedded with a multilingual model in pgvector, so a Hindi voice intro can match an English job post. Employers blend match score and distance with a slider.
 - **Honest AI.** Whisper's Hindi error rate was measured on real voices (about 39% on one read script) and the interface was designed around that: every transcript is labelled as automatic, low-confidence text is folded behind the recording, and transcripts in a script the employer's team cannot read are not shown.
+- **Honest numbers.** Analytics read a materialised fact view, never the live tables. Outcome figures carry their coverage ("from 10 of 14"), count "not recorded" apart rather than as left, and appear only once 10 are recorded. Alert attendance reads "attended after an alert", never "because of". Six errors in the original show-up funnel were found and fixed, among them releasing a seat after a reschedule being counted as not turning up.
 - **Exactly-once alerts and charges.** Database claims and unique indexes stop duplicate sends and double charges, even when jobs retry; failed jobs land in a dead-letter view admins can retry safely.
 - **Built for real venues.** Check-in codes are short enough to type when a camera fails, scans made without signal are saved on the phone and sent later, and rescheduling a drive moves every booking with it.
 - **Tested.** About 200 automated tests across the API, worker and web app.
@@ -124,4 +128,4 @@ The first start downloads about 590 MB of speech and embedding models. Alerts pr
 
 ## Documentation
 
-The [technical reference](docs/TECHNICAL.md) covers every feature in depth: notification guarantees, check-in rules, the transcription measurements, the ledger, team permissions, rate limits, and setup details.
+The [technical reference](docs/TECHNICAL.md) covers every feature in depth: notification guarantees, check-in rules, the transcription measurements, the ledger, team permissions, rescheduling, messaging, analytics and hiring outcomes, the candidate's record, rate limits, and setup details.

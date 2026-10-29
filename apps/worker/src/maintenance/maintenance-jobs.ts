@@ -189,8 +189,8 @@ async function expireDrives(deps: MaintenanceDeps): Promise<string> {
 // is an absence from a drive that was moved without the candidate being told
 // where it landed (absenceExcusedByReschedule). Hiring outcomes don't count
 // at all: whether someone started is the employer's word, not a scan, and
-// not starting is often the right call (README, "Why outcomes don't feed reliability"). The
-// filter is inside the counts, not a WHERE, so a candidate whose only
+// not starting is often the right call (docs/TECHNICAL.md, "Why outcomes
+// don't feed reliability"). The filter is inside the counts, not a WHERE, so a candidate whose only
 // bookings were on such drives is rescored too, back to no score.
 // `candidateIds` narrows a run, as `scope` does for markNoShows.
 export async function recomputeReliability(candidateIds?: string[]): Promise<string> {

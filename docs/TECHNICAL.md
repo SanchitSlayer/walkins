@@ -109,7 +109,12 @@ Scheduled jobs, in India time:
   booked. (The web app still derives Expired on its own between runs.)
 - 01:00: candidate reliability is recomputed as attended over confirmed.
   REJECTED counts toward neither, since it can happen before or after an
-  interview.
+  interview. An absence from a drive moved without the notice reaching the
+  candidate counts toward neither either (see "Rescheduling a drive"), and
+  hiring outcomes never count (see "Hiring outcomes"). Nothing reads the
+  score.
+- 11:00: candidates whose joining date was in the last week are asked once,
+  on Telegram, whether they started (see "Hiring outcomes")
 
 Scheduled jobs only run while the worker is running. If it is stopped over
 00:30, ended drives stay LIVE until the next night's run: the missed run is
@@ -615,7 +620,7 @@ pnpm admin:create <10-digit phone> <name>
 It is a script rather than a seed flag so it runs once against any database
 without reseeding. It changes nothing if the phone is already an admin, and
 refuses a phone that belongs to a candidate or employer. Sign in with that
-phone, and the login page sends admins to `/admin`. The panel has five pages:
+phone, and the login page sends admins to `/admin`. The panel has six pages:
 
 - **Verification.** Companies' submissions, which an admin approves or
   rejects with a reason (see "Trust and safety").
@@ -633,28 +638,87 @@ phone, and the login page sends admins to `/admin`. The panel has five pages:
   transaction, a line saying whether every transaction balances, and the price
   history with a form for a new price. A new price takes effect from now or
   later, never earlier.
+- **Retention.** Thirty-day retention by employer across the platform,
+  counted from `application_facts` with the same coverage rules employers
+  see for their own roles (see "Employer analytics").
 
 #### Employer analytics
 
-`/employer/analytics` reads two materialised views. The worker refreshes them
+`/employer/analytics` reads materialised views. The worker refreshes them
 every 15 minutes from the existing maintenance schedule, using `CONCURRENTLY`
-so they stay readable while refreshing. A busy dashboard never queries the
-live tables check-in depends on. Per drive:
+so they stay readable while refreshing, and the page says when they were
+last refreshed. A busy dashboard never queries the live tables check-in
+depends on. Per drive (`drive_funnel`):
 
 - **Alerted:** candidates sent the 48-hour alert.
-- **Applied:** applied in any way other than walking in.
-- **Booked:** ever booked a seat, taken from the audit log. A hired or absent
-  candidate did book; their current state has forgotten it, and the
-  append-only audit log has not.
-- **Checked in:** booked candidates with a verified check-in. Walk-ins are
-  counted apart, outside the funnel.
-- **Hired.**
-- **Show-up rate:** checked in divided by booked.
+- **Applied:** applied in any way other than walking in. **Screened out**
+  is counted beside it, not in it.
+- **Held a seat:** the arrivals board's rule. A booking that was released,
+  or rejected before anyone scanned it, never held a seat.
+- **Came:** held a seat and has a verified check-in.
+- **Awaiting confirmation:** checked in, but the check-in is flagged and
+  the employer hasn't confirmed it. Counted on its own, never as absent.
+- **Walk-ins:** counted apart, outside the funnel.
+- **Attended after an alert:** came, having been sent the 48-hour alert
+  before applying. *After*, not *because*: nothing here can show the alert
+  is why they came, and the page never says it is.
+- **Hired:** the application is HIRED, which is final (see "Hiring
+  outcomes").
+- **Show-up rate:** came divided by held a seat.
+
+**Cancelled and suspended drives are listed but left out of every rate and
+total.** Nobody booked on them could have come.
 
 A second view counts verified check-ins and hires per day, by India's
 calendar day, for the 30-day chart. The charts use two colours of their own,
 `--chart-1` and `--chart-2`, validated for colour-blind separation and
 contrast on the desk's dark surface. The state lamps stay reserved for state.
+
+**Errors in the funnel this phase fixed.** Each made employers' numbers
+worse than the truth, or better:
+
+1. **Releasing a seat counted as not turning up**, including a release after
+   the drive was rescheduled, which the candidate had every right to make.
+   This is the Phase 10 reliability bug (see "A bug this phase fixed" under
+   "Trust and safety") on the employer's side: a no-show counted against
+   someone for something that wasn't a failure to turn up.
+2. **Cancelled and suspended drives were counted**, so a drive nobody could
+   attend dragged show-up down.
+3. **Hired would have dropped people** as soon as any state came after
+   HIRED. Nothing does now: what happens after a hire is a separate record,
+   not more states.
+4. **Applied included screened-out applicants**, who never held a seat.
+5. **A flagged check-in counted as absent**, though the person was at the
+   venue and only the employer's confirmation was missing.
+6. **Alerts were never linked to who came.** Alerted and checked in were
+   two unrelated counts.
+
+**Slices and outcomes.** A third view, `application_facts`, holds one row
+per application on a drive that left draft: role, city, the candidate's
+distance from the venue in bands, the hour their slot started, whether they
+held a seat and came, whether an alert reached them before they applied,
+and what is known after a hire. From it the page shows:
+
+- show-up by role, city, distance and slot hour, counting only who held a
+  seat;
+- time to join: drive day to first day at work, from starts the employer
+  recorded, with how many the candidate confirmed;
+- thirty-day retention by role.
+
+**Coverage rules for every figure that comes from outcomes.** Outcomes are
+recorded by employers, and most are never recorded:
+
+1. **Every figure carries its coverage**: "from 10 of 14", never a bare
+   rate.
+2. **Not recorded is its own column**, never counted as left. Retention is
+   stayed divided by recorded.
+3. **No rate or median below 10 recorded** (`OUTCOME_MIN_RECORDED`). The
+   counts are still shown, with "shown at 10".
+4. **Nothing is extrapolated.** Unrecorded hires aren't assumed to look
+   like recorded ones.
+
+Show-up and alert attendance come from Walkins' own records (scans and
+sends), not anyone's word, so they need no minimum.
 
 #### What is live and what is scaffolding
 
@@ -679,7 +743,9 @@ Still scaffolding after this phase:
 - **`ApplicationState.INTERESTED`.** No transition leads into it, so no
   application can be in it. The transitions out of it, and the screens that
   handle it, are waiting for a "save for later" feature.
-- **`Candidate.reliability`** is recomputed every night and shown nowhere.
+- **`Candidate.reliability`** is recomputed every night and read by
+  nothing. If it is ever shown to anyone, the candidate sees it first, on
+  Your record.
 - **`Notification.deliveredAt`** is never written: Telegram doesn't report
   delivery, and WhatsApp, which would, is not implemented.
 - **Refunds and disputes.** Webhook events are stored, nothing more.
@@ -1112,7 +1178,7 @@ Reschedule, and the API refuses a time change through edit.
 | --- | --- |
 | Check-in window | Opens an hour before the new start, closes at the new end |
 | Expiry and no-shows | At the new end |
-| Reliability | Counts CONFIRMED bookings only once the new end has passed |
+| Reliability | Counts CONFIRMED bookings only once the new end has passed, and not at all if the notice of the new time never reached them: see below |
 | 48-hour discovery alert | Not sent again. Moving a drive earlier into the window lets it alert if it hasn't yet |
 | Morning-of reminder | Sent again for the new day: see below |
 | Applying | "Slot has started" and "drive has ended" use the new times |
@@ -1128,6 +1194,22 @@ day would have had its new day's reminder refused as already sent.
 - The reminder and the reschedule notice carry it, and the index includes
   it, so each version of the time gets its own reminder.
 - An alert written for a version that has since changed is skipped.
+
+#### A reschedule the candidate never heard about
+
+A candidate without Telegram, or whose notice failed, may never learn a
+drive moved. If they then miss it, they didn't fail to turn up to anything
+they knew about, yet they were marked NO_SHOW and it counted in their
+reliability.
+
+Now an absence isn't held against them when the drive was moved after they
+booked and the `drive_rescheduled` notice for its **final**
+`scheduleVersion` was never SENT to them. Knowing about an earlier move
+isn't knowing where the drive landed. The rule is one SQL fragment,
+`absenceExcusedByReschedule` in `packages/db/src/reliability.ts`, used by
+both the nightly reliability score and Your record, so the two can't
+disagree. The absence stays recorded: Your record shows it as "marked as
+not attending, but not held against you" and says why.
 
 #### The offline pass
 
@@ -1248,6 +1330,101 @@ to file a report against the candidate.
   Each opening is an audit entry.
 - **Rate limits:** 60 messages an hour per person and 300 per company on
   the company side, and 30 an hour per candidate.
+
+### Hiring outcomes
+
+What happens after a hire is a separate `hiring_outcomes` record, one per
+HIRED application, not more application states. HIRED stays final, so
+nothing counted as hired can fall out of the count by moving on. The record
+holds three facts, each nullable, because unknown is the usual answer and a
+real one:
+- **joining date**;
+- **started**, with the day;
+- **still there 30 days after starting.**
+
+Each fact keeps who recorded it and when, and every change is an audit
+entry. The candidate's own answer to "did you start?" sits beside the
+employer's, never in its place.
+
+**Recording is asked for where the employer already is**, never as a gate:
+- on the desk, as they hire, a joining date field appears beside the hire;
+- the Outcomes page (`/employer/outcomes`), with a count in the nav of
+  what is due;
+- a prompt on the drives list, the new-drive page and a draft's page: the
+  one moment an employer is certainly back weeks after a hire;
+- the candidate is sent a `joining_check` on Telegram at 11:00, once, in
+  the week after their joining date, and answers on My drives.
+
+**Rules:**
+- whether someone started can be recorded only on or after the joining
+  date;
+- whether they stayed can be recorded only 30 days after they started;
+- either side may record or correct until 60 days after the joining date
+  (or the hire, when no date was agreed). After that the record stays as
+  it is;
+- viewers read outcomes and record nothing.
+
+#### Why outcomes don't feed reliability
+
+It would be easy to count "didn't start" against a candidate. It isn't
+counted, for these reasons:
+- **The evidence is unequal.** A check-in is a scan at the venue. An
+  outcome is the employer's word, and nothing checks it.
+- **Not starting is often the right call.** The offer was withdrawn, the
+  terms changed, or the "joining fee" turned out to be the scam the
+  never-pay band warns about.
+- **Scoring would depend on the employer.** Candidates hired by employers
+  who record outcomes would be scored, and the rest wouldn't.
+- **It would give employers a way to damage someone** that nobody could
+  verify or answer.
+- **Outcomes describe jobs, not people.** They belong in figures about
+  roles and employers, which is where they are used.
+
+### Your record
+
+A candidate's profile has Your record (`GET /candidates/me/record`):
+everything Walkins has recorded about the drives they applied to. It is its
+own schema, `candidateRecordSchema`, so nothing else can travel in it.
+
+**It shows** every drive applied to, with its state:
+- came;
+- checked in, awaiting the employer's confirmation;
+- marked as not attending, with the day it was recorded, and whether it is
+  held against them (see "A reschedule the candidate never heard about");
+- released their seat;
+- screened out;
+- not taken forward;
+- drive cancelled;
+- drive paused.
+
+After a hire it shows each fact the employer recorded, marked "from
+{company}", next to the candidate's own answer.
+
+**It never shows:**
+- who reported them, or any report;
+- employer notes or shortlists;
+- match scores;
+- anything about anyone else;
+- a reliability number. Nothing uses one. If one is ever shown to anyone,
+  the candidate sees it here first.
+
+`apps/api/test/outcome-analytics.test.ts` checks the record's JSON for each
+of these.
+
+### Claims the data can't support
+
+Some features could easily say more than Walkins knows. Each says only what
+it can support, and a change that would make one claim more should have to
+argue for it:
+- **A transcript is a guess**, and is labelled as one (see "Transcripts
+  are a guess, and the interface says so").
+- **The money-request detector is a tripwire, not a guard** (see
+  "Messaging"). Messages aren't screened, and the interface never implies
+  they are.
+- **"Attended after an alert", never "because of"** (see "Employer
+  analytics"). The data shows order, not cause.
+- **Outcomes are the employer's word.** They are shown with their
+  coverage and who recorded them, and never score a person.
 
 ## Rate limits
 

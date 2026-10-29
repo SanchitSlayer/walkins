@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { driveStatusSchema } from "./schemas";
 
-// Definitions (see README, "Employer analytics"): alerted were sent the
+// Definitions (see docs/TECHNICAL.md, "Employer analytics"): alerted were sent the
 // 48-hour alert; interested applied other than by walking in, screened-out
 // left out; confirmed held a seat as the drive happened, the arrivals
 // board's rule; checkedIn are those with a verified check-in, and

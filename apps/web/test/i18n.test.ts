@@ -13,7 +13,8 @@ import { MESSAGES } from "@walkins/shared";
 // The web app is checked thoroughly: any text a page renders. The API and
 // worker are checked at the places they speak to a person directly (see
 // serverPhrases); words they store to show later are not something syntax
-// can tell from internal text, and the README lists those.
+// can tell from internal text, and docs/TECHNICAL.md lists those
+// ("Languages", "The check").
 //
 // Escape hatches, both deliberate and visible in review:
 // - data-i18n-ignore on a JSX element exempts its subtree (content that is

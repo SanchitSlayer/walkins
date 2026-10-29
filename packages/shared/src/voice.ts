@@ -42,8 +42,8 @@ export function transcriptAudioClear(signals: Omit<TranscriptSignals, "languageP
 // counts here but not for the embedding: on short Hindi clips, mixed with
 // English or not, Whisper often can't settle between Hindi and Urdu, which
 // decides the script, not whether the audio was clear. A reader can be handed
-// a script they can't read; the embedding model reads both (see README,
-// "Transcripts are a guess").
+// a script they can't read; the embedding model reads both (see
+// docs/TECHNICAL.md, "Transcripts are a guess, and the interface says so").
 export function transcriptConfidence(signals: TranscriptSignals): "high" | "low" {
   if (!transcriptAudioClear(signals)) return "low";
   if (signals.languageProbability !== null && signals.languageProbability < 0.6) return "low";
