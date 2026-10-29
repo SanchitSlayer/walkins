@@ -43,7 +43,7 @@ beforeAll(async () => {
   const [ran, cancelled, suspended] = await Promise.all([drive("EXPIRED"), drive("CANCELLED"), drive("SUSPENDED")]);
   ids.drives.push(ran.id, cancelled.id, suspended.id);
 
-  for (const name of ["attended", "only-cancelled", "released"]) {
+  for (const name of ["attended", "only-cancelled", "released", "never-told", "told"]) {
     const user = await prisma.user.create({ data: { phone: randomPhone(), name: `Reliability ${name}`, role: "CANDIDATE" } });
     const candidate = await prisma.candidate.create({
       // A damaged score from before the fix, which the recompute must repair.
@@ -52,7 +52,7 @@ beforeAll(async () => {
     ids.users.push(user.id);
     ids.candidates.push(candidate.id);
   }
-  const [attended, onlyCancelled, released] = ids.candidates;
+  const [attended, onlyCancelled, released, neverTold, told] = ids.candidates;
   await prisma.application.createMany({
     data: [
       { driveId: ran.id, candidateId: attended, state: "CHECKED_IN" },
@@ -63,9 +63,28 @@ beforeAll(async () => {
       { driveId: ran.id, candidateId: released, state: "WITHDRAWN" },
     ],
   });
+
+  // Two people booked, then the drive was moved; one was told where it
+  // landed, one never was, and neither came.
+  const bookedAt = new Date(ended.getTime() - 10 * 24 * 3600_000);
+  for (const candidateId of [neverTold, told]) {
+    const application = await prisma.application.create({ data: { driveId: ran.id, candidateId, state: "NO_SHOW" } });
+    await prisma.auditLog.create({ data: { entityType: "application", entityId: application.id, action: "NONE->CONFIRMED", createdAt: bookedAt } });
+  }
+  await prisma.driveReschedule.create({
+    data: { driveId: ran.id, version: 1, fromStartsAt: ran.startsAt, fromEndsAt: ran.endsAt, toStartsAt: ran.startsAt, toEndsAt: ran.endsAt, byId: owner.id, createdAt: new Date(bookedAt.getTime() + 3600_000) },
+  });
+  await prisma.drive.update({ where: { id: ran.id }, data: { scheduleVersion: 1 } });
+  await prisma.notification.create({
+    data: { driveId: ran.id, candidateId: told, templateKey: "drive_rescheduled", scheduleVersion: 1, status: "SENT", channel: "test", attempt: 1, jobId: "t" },
+  });
 });
 
 afterAll(async () => {
+  const apps = await prisma.application.findMany({ where: { driveId: { in: ids.drives } }, select: { id: true } });
+  await prisma.auditLog.deleteMany({ where: { entityId: { in: apps.map((a) => a.id) } } });
+  await prisma.notification.deleteMany({ where: { driveId: { in: ids.drives } } });
+  await prisma.driveReschedule.deleteMany({ where: { driveId: { in: ids.drives } } });
   await prisma.application.deleteMany({ where: { driveId: { in: ids.drives } } });
   await prisma.drive.deleteMany({ where: { id: { in: ids.drives } } });
   await prisma.candidate.deleteMany({ where: { id: { in: ids.candidates } } });
@@ -82,6 +101,13 @@ describe("reliability", () => {
     expect(attended.reliability).toBe(1);
     // Nothing they booked ever ran, so there is nothing to score.
     expect(onlyCancelled.reliability).toBeNull();
+  });
+
+  it("doesn't hold an absence against someone whose drive moved without the notice reaching them", async () => {
+    await recomputeReliability(ids.candidates);
+    const [neverTold, told] = await Promise.all(ids.candidates.slice(3).map((id) => prisma.candidate.findUniqueOrThrow({ where: { id } })));
+    expect(neverTold.reliability).toBeNull();
+    expect(told.reliability).toBe(0);
   });
 
   it("doesn't count a released booking, so releasing after a reschedule costs nothing", async () => {

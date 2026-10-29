@@ -2,6 +2,8 @@
 
 import type {
   AdminDrive,
+  AdminRetention,
+  CandidateRecord,
   AdminSubmission,
   CandidateReport,
   CompanyStanding,
@@ -504,6 +506,14 @@ export const apiClient = {
 
   async adminModerate(input: Moderate): Promise<ModerationQueue> {
     return parseOrThrow(await request("/admin/moderation", { method: "POST", body: JSON.stringify(input) }));
+  },
+
+  async getMyRecord(): Promise<CandidateRecord> {
+    return parseOrThrow(await request("/candidates/me/record"));
+  },
+
+  async adminRetention(): Promise<AdminRetention> {
+    return parseOrThrow(await request("/admin/retention"));
   },
 
   async companyOutcomes(driveId?: string): Promise<Outcomes> {

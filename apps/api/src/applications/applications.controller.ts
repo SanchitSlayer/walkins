@@ -99,6 +99,12 @@ export class ApplicationsController {
     return this.applications.apply(user.userId, driveId, body.slotId, body.answers);
   }
 
+  @Get("candidates/me/record")
+  @Roles("CANDIDATE")
+  myRecord(@CurrentUser() user: AccessTokenPayload) {
+    return this.applications.myRecord(user.userId);
+  }
+
   @Get("applications/mine")
   @Roles("CANDIDATE")
   listMine(@CurrentUser() user: AccessTokenPayload) {

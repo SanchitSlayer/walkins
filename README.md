@@ -1349,6 +1349,119 @@ how few it rests on.
   fixed;
 - people who run drives record; viewers read.
 
+### Outcome analytics
+
+**The data.** A third materialised view, `application_facts`, has one row per
+application on any drive that left draft, with everything the figures slice
+by:
+- role and city;
+- the candidate's distance from the venue, in bands: under 3 km, 3 to 8,
+  8 to 15, over 15;
+- the hour their slot started, in India;
+- whether they held a seat and came;
+- whether a 48-hour alert reached them before they applied;
+- what is known after a hire.
+
+It is refreshed with the other views every 15 minutes.
+
+**What an employer sees on Analytics:**
+- **show-up by role, by city, by distance and by slot time.** Each rate
+  carries its count ("3 of 4"), because a high rate from three people is
+  three people;
+- **attended after an alert**, per drive ("2 of 40"). A drive whose alerts
+  produced nothing shows that plainly;
+- **time from drive day to first day at work**, as a median in days;
+- **30-day retention by role.**
+
+**Admins** see 30-day retention by employer, under Retention.
+
+#### Coverage rules
+
+Show-up and alert attendance come from records the system makes itself:
+bookings, scans and sent alerts. Time to joining and retention come from
+outcomes someone has to choose to record, and most won't be. Those
+outcome-derived figures follow four rules:
+
+1. **Every figure carries its coverage.** Retention shows "from 10 of 14";
+   time to joining says how many hires have a start recorded and how many
+   of those the candidate also confirmed.
+2. **"Not recorded" is its own column and never counted as "left".**
+   Retention is stayed divided by recorded, never by everyone who started.
+3. **Nothing is shown below 10 recorded outcomes** (`OUTCOME_MIN_RECORDED`).
+   Below that, a figure says more about who bothered to record than about
+   what happened, and it would point at too few people. The counts are
+   still shown, with "shown at 10".
+4. **Nothing is extrapolated.** There is no "estimated" retention for the
+   unrecorded.
+
+The figures that matter most will often say "not enough recorded yet". That
+is the honest answer, not a gap to fill.
+
+#### Why outcomes don't feed reliability
+
+Reliability is "did you turn up when you said you would", and stays that:
+- **Turning up is a strongly evidenced act.** It is the candidate's own,
+  recorded by a QR scan or by the desk marking them present. "Didn't start"
+  and "left within 30 days" are the employer's word, with nothing behind
+  them.
+- **Not starting is often the right decision.** An offer withdrawn, terms
+  changed, pay not as advertised, or the fee scam Phase 10 defends against.
+  Counting it against the candidate punishes the person who walked away from
+  a bad job.
+- **It would score people unequally.** Only candidates whose employers
+  record outcomes would be scored, so two people who did the same thing
+  would get different numbers.
+- **It would give an employer an unverifiable way to damage someone**, at
+  no cost to themselves.
+
+Outcomes belong in figures about jobs: retention by role and by employer
+describes the work, not the worker.
+
+**One more fairness fix.** An absence isn't held against someone whose
+drive was moved after they booked, unless the notice of where it finally
+landed actually reached them (`absenceExcusedByReschedule` in
+`packages/db`). Someone with no Telegram who came at the old time didn't
+fail to turn up to anything they knew about. Their record says "marked as
+not attending, but not held against you", and why.
+
+#### Claims the data can't support
+
+Three places where the product deliberately says less than it could:
+- **A transcript is a guess, and is labelled as one.** It is never shown as
+  what the candidate said (see "Transcripts are a guess").
+- **The money-request detector is a tripwire, not a guard.** It decides
+  when to shout, and doesn't screen messages (see "Messaging").
+- **"Attended after an alert", never "because of".** The data shows
+  someone was alerted, then applied, then came. It can't show the alert
+  caused it, since some would have found the drive in search anyway.
+
+Each one resists a claim the data can't carry. A future change that would
+make one of them claim more should have to argue for it.
+
+#### What a candidate sees: Your record
+
+The profile page lists every drive the candidate applied to and what was
+recorded:
+- came;
+- checked in but not yet confirmed;
+- marked as not attending, with the date, and whether it's held against
+  them;
+- released their seat;
+- screened out;
+- not taken forward;
+- the drive was cancelled or paused.
+
+After a hire, it shows each fact the employer recorded and says it came
+from that company, with the candidate's own answer beside it.
+
+What it doesn't show, and has no room in its shape to carry:
+- who reported them;
+- employer notes or shortlists;
+- match scores;
+- anything about anyone else;
+- a reliability number. Nothing uses one yet. If anything ever shows one to
+  anyone, the candidate sees it here first.
+
 ## Rate limits
 
 **An address is not a person in India.** Carrier NAT puts thousands of

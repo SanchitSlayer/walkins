@@ -609,7 +609,8 @@
     "moderation": "Moderation",
     "messages": "Messages",
     "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
-    "outcomes": "Outcomes"
+    "outcomes": "Outcomes",
+    "retention": "Retention"
   },
   "employerDrives": {
     "booked": "{booked} of {capacity} booked",
@@ -979,7 +980,42 @@
     "afterAlert": "Attended after an alert",
     "afterAlertExplain": "checked in, having been sent the 48-hour alert before applying. After, not because: some would have found the drive anyway.",
     "screenedOut": "Screened out",
-    "notCounted": "not counted"
+    "notCounted": "not counted",
+    "afterAlertShort": "Came after an alert",
+    "ofAlerted": "{attended} of {alerted}",
+    "figures": {
+      "showUpHeading": "Show-up, sliced",
+      "showUpIntro": "Of everyone who held a seat, how many came. Each rate has its count beside it: a high rate from three people is three people.",
+      "byRole": "By role",
+      "byCity": "By city",
+      "byDistance": "By distance from home",
+      "byHour": "By slot time",
+      "band": {
+        "under3": "Under 3 km",
+        "from3to8": "3–8 km",
+        "from8to15": "8–15 km",
+        "over15": "Over 15 km"
+      },
+      "hour": "{hour}:00",
+      "rate": "{n}%",
+      "ofHeld": "{attended} of {held}",
+      "noneYet": "Nothing to show yet.",
+      "joiningHeading": "From drive day to first day at work",
+      "joiningMedian": "Typically {days, plural, one {# day} other {# days}}",
+      "joiningTooFew": "Not enough recorded yet: {started, plural, one {# start} other {# starts}} recorded, and this appears at {min}.",
+      "joiningCoverage": "From {hires, plural, one {# hire} other {# hires}}: whether they started is recorded for {recorded}, and {started} started. The candidate confirmed {confirmed} of those themselves.",
+      "retentionHeading": "Still there after 30 days, by role",
+      "retentionIntro": "Of the people who started at least 30 days ago. \"Not recorded\" means nobody has said, and is never counted as having left. A rate appears once {min} are recorded, and always with how many it rests on.",
+      "role": "Role",
+      "startedLongAgo": "Started 30+ days ago",
+      "stayed": "Stayed",
+      "left": "Left",
+      "notRecorded": "Not recorded",
+      "retention": "Retention",
+      "tooFew": "{recorded} recorded; shown at {min}",
+      "coverage": "from {recorded} of {eligible}",
+      "noRetentionYet": "Nobody hired has started at least 30 days ago yet."
+    }
   },
   "admin": {
     "drives": {
@@ -1115,6 +1151,13 @@
         "line": "{side, select, COMPANY {Company} other {Candidate}}: {sender}, {day} {time}",
         "flagged": "flagged"
       }
+    },
+    "retention": {
+      "heading": "Retention by employer",
+      "intro": "Of the people each employer hired who started at least 30 days ago: stayed, left, or not recorded. \"Not recorded\" is never counted as left, and a rate appears only once {min} are recorded. Employers who record nothing show nothing.",
+      "refreshed": "Updated every 15 minutes; last at {time}.",
+      "employer": "Employer",
+      "loadFailed": "Retention couldn't be loaded. Reload the page to try again."
     }
   },
   "people": {
@@ -1403,5 +1446,37 @@
     "joiningOn": "Joining on {day}",
     "whenStarting": "When do they start? (optional)",
     "prompt": "{count, plural, one {# person you hired is} other {# people you hired are}} waiting for an outcome: when they start, or whether they did. <link>Record outcomes</link>"
+  },
+  "yourRecord": {
+    "heading": "Your record",
+    "intro": "Everything Walkins has recorded about the drives you applied to. An employer sees only what's about its own drives, and nobody sees a score: Walkins doesn't show or use one.",
+    "empty": "Nothing yet. Drives you apply to will show here.",
+    "roleAt": "{role} at {company}",
+    "state": {
+      "booked": "booked",
+      "attended": "you came",
+      "awaitingConfirmation": "you checked in; the employer hasn't confirmed it yet",
+      "notAttended": "marked as not attending",
+      "notAttendedExcused": "marked as not attending, but not held against you",
+      "withdrawn": "you released your seat",
+      "screenedOut": "the screening questions didn't match",
+      "turnedAway": "the employer didn't take it forward",
+      "driveCancelled": "the employer cancelled the drive",
+      "drivePaused": "the drive is paused"
+    },
+    "markedOn": "recorded {day}",
+    "excused": "The drive was moved after you booked, and the message saying when it moved to didn't reach you, so this isn't counted against you.",
+    "joining": "Joining date (from {company}):",
+    "started": "Started (from {company}):",
+    "retained": "Still there after 30 days (from {company}):",
+    "yourAnswer": "What you said:",
+    "notRecorded": "not recorded",
+    "startedOn": "yes, on {day}",
+    "yes": "yes",
+    "didNotStart": "didn't start",
+    "stayed": "yes",
+    "left": "left",
+    "youStarted": "you started",
+    "youDidNotStart": "you didn't start"
   }
 }

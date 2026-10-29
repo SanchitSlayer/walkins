@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { type Actor, createApplication, prisma, transitionApplication } from "@walkins/db";
+import { absenceExcusedByReschedule, type Actor, type ApplicationState, createApplication, prisma, transitionApplication } from "@walkins/db";
 import {
+  type CandidateRecord,
+  candidateRecordSchema,
   type EmployerApplicationUpdate,
   evaluateKnockouts,
   type KnockoutAnswers,
@@ -8,12 +10,27 @@ import {
   type MyApplication,
   type MyApplications,
   myApplicationsSchema,
+  type RecordEntryState,
 } from "@walkins/shared";
 import { isUniqueViolation } from "../common/prisma-errors";
 import { LiveGateway } from "../live/live.gateway";
 import { MY_APPLICATION_INCLUDE, toMyApplication } from "./application.mapper";
 import { apiError } from "../common/api-error";
 import { requireCompanyAccess, requireNotSuspended } from "../common/require-company";
+
+// What the record says happened, from what was scanned first: someone who
+// came, came, whatever was decided after.
+function recordState(r: { state: string; driveStatus: string; validCheckIn: boolean | null; excused: boolean }): RecordEntryState {
+  if (r.validCheckIn === true) return "attended";
+  if (r.validCheckIn === false) return "awaitingConfirmation";
+  if (r.state === "NO_SHOW") return r.excused ? "notAttendedExcused" : "notAttended";
+  if (r.state === "WITHDRAWN") return "withdrawn";
+  if (r.state === "SCREENED_OUT") return "screenedOut";
+  if (r.state === "REJECTED") return "turnedAway";
+  if (r.driveStatus === "CANCELLED") return "driveCancelled";
+  if (r.driveStatus === "SUSPENDED") return "drivePaused";
+  return "booked";
+}
 
 @Injectable()
 export class ApplicationsService {
@@ -95,6 +112,64 @@ export class ApplicationsService {
         .filter((row) => row.drive.endsAt <= now)
         .reverse()
         .map(toMyApplication),
+    });
+  }
+
+  // The candidate's own record: what they applied to and what was recorded,
+  // built field by field into a shape that has room for nothing else.
+  async myRecord(userId: string): Promise<CandidateRecord> {
+    const candidate = await this.requireCandidate(userId);
+    const rows = await prisma.$queryRaw<
+      {
+        applicationId: string;
+        state: ApplicationState;
+        roleTitle: string;
+        companyName: string;
+        driveStartsAt: Date;
+        driveStatus: string;
+        validCheckIn: boolean | null;
+        markedAbsentAt: Date | null;
+        excused: boolean;
+      }[]
+    >`
+      SELECT a.id AS "applicationId", a.state, r.title AS "roleTitle", co.name AS "companyName",
+        d."startsAt" AS "driveStartsAt", d.status AS "driveStatus", ci."isValid" AS "validCheckIn",
+        (SELECT max(al."createdAt") FROM audit_logs al WHERE al."entityType" = 'application' AND al."entityId" = a.id AND al.action LIKE '%->NO_SHOW') AS "markedAbsentAt",
+        (a.state = 'NO_SHOW' AND ${absenceExcusedByReschedule}) AS excused
+      FROM applications a
+      JOIN drives d ON d.id = a."driveId"
+      JOIN roles r ON r.id = d."roleId"
+      JOIN companies co ON co.id = d."companyId"
+      LEFT JOIN check_ins ci ON ci."applicationId" = a.id
+      WHERE a."candidateId" = ${candidate.id} AND a.state <> 'INTERESTED'
+      ORDER BY d."startsAt" DESC
+    `;
+    const outcomes = await prisma.hiringOutcome.findMany({ where: { applicationId: { in: rows.map((r) => r.applicationId) } } });
+    const byApplication = new Map(outcomes.map((o) => [o.applicationId, o]));
+    const day = (d: Date | null) => d?.toISOString().slice(0, 10) ?? null;
+
+    return candidateRecordSchema.parse({
+      entries: rows.map((r) => {
+        const outcome = byApplication.get(r.applicationId);
+        return {
+          applicationId: r.applicationId,
+          roleTitle: r.roleTitle,
+          companyName: r.companyName,
+          driveStartsAt: r.driveStartsAt.toISOString(),
+          state: recordState(r),
+          markedAbsentAt: r.state === "NO_SHOW" ? (r.markedAbsentAt?.toISOString() ?? null) : null,
+          hired: r.state === "HIRED",
+          after: outcome
+            ? {
+                joiningDate: day(outcome.joiningDate),
+                started: outcome.started,
+                startedOn: day(outcome.startedOn),
+                retained: outcome.retained,
+                yourAnswer: outcome.candidateStarted,
+              }
+            : null,
+        };
+      }),
     });
   }
 

@@ -34,6 +34,11 @@ export class AdminController {
     return this.admin.moderateDrive(user.userId, driveId, body);
   }
 
+  @Get("retention")
+  retention() {
+    return this.admin.retention();
+  }
+
   @Get("jobs/failed")
   failedJobs() {
     return this.admin.failedJobs();

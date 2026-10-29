@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { Analytics, DriveFunnel } from "@walkins/shared";
+import { type Analytics, type DriveFunnel, OUTCOME_MIN_RECORDED } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardSelect } from "@/components/board/field";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { RetentionTable, ShowUpTable } from "@/components/outcome-figures";
 
 const AXIS = { stroke: "var(--housing-rule)", tick: { fill: "var(--housing-muted)", fontSize: 12 }, tickLine: false };
 const TOOLTIP = {
@@ -145,6 +146,50 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
+      <section aria-labelledby="showup-heading" className="grid gap-3">
+        <div>
+          <h2 id="showup-heading" className="type-h3">
+            {t("figures.showUpHeading")}
+          </h2>
+          <p className="type-meta text-housing-muted">{t("figures.showUpIntro")}</p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          <ShowUpTable heading={t("figures.byRole")} buckets={data.showUp.byRole} label={(key) => key} />
+          <ShowUpTable heading={t("figures.byCity")} buckets={data.showUp.byCity} label={(key) => key} />
+          <ShowUpTable heading={t("figures.byDistance")} buckets={data.showUp.byDistance} label={(key) => t(`figures.band.${key as "under3"}`)} />
+          <ShowUpTable heading={t("figures.byHour")} buckets={data.showUp.byHour} label={(key) => t("figures.hour", { hour: Number(key) })} />
+        </div>
+      </section>
+
+      <section aria-labelledby="joining-heading" className="grid gap-2">
+        <h2 id="joining-heading" className="type-h3">
+          {t("figures.joiningHeading")}
+        </h2>
+        <p className="type-board-md">
+          {data.timeToJoin.medianDays === null
+            ? t("figures.joiningTooFew", { started: data.timeToJoin.started, min: OUTCOME_MIN_RECORDED })
+            : t("figures.joiningMedian", { days: data.timeToJoin.medianDays })}
+        </p>
+        <p className="type-meta text-housing-muted">
+          {t("figures.joiningCoverage", {
+            hires: data.timeToJoin.hires,
+            recorded: data.timeToJoin.startRecorded,
+            started: data.timeToJoin.started,
+            confirmed: data.timeToJoin.confirmedByCandidate,
+          })}
+        </p>
+      </section>
+
+      <section aria-labelledby="retention-heading" className="grid gap-2">
+        <div>
+          <h2 id="retention-heading" className="type-h3">
+            {t("figures.retentionHeading")}
+          </h2>
+          <p className="type-meta max-w-3xl text-housing-muted">{t("figures.retentionIntro", { min: OUTCOME_MIN_RECORDED })}</p>
+        </div>
+        <RetentionTable rows={data.retentionByRole} keyHeading={t("figures.role")} />
+      </section>
+
       <section aria-labelledby="drives-heading" className="grid gap-2">
         <h2 id="drives-heading" className="type-h3">
           {t("byDrive")}
@@ -164,6 +209,7 @@ export default function AnalyticsPage() {
                   ))}
                   <th className="py-2 pr-4 text-right font-normal">{t("walkIns")}</th>
                   <th className="py-2 pr-4 text-right font-normal">{t("screenedOut")}</th>
+                  <th className="py-2 pr-4 text-right font-normal">{t("afterAlertShort")}</th>
                   <th className="py-2 text-right font-normal">{t("showUp")}</th>
                 </tr>
               </thead>
@@ -184,6 +230,7 @@ export default function AnalyticsPage() {
                     ))}
                     <td className="type-board-md py-2 pr-4 text-right">{d.walkIns}</td>
                     <td className="type-board-md py-2 pr-4 text-right">{d.screenedOut}</td>
+                    <td className="type-board-md py-2 pr-4 text-right">{t("ofAlerted", { attended: d.attendedAfterAlert, alerted: d.alerted })}</td>
                     <td className="type-board-md py-2 text-right">{d.counted ? percent(d.showUpRate) : t("notCounted")}</td>
                   </tr>
                 ))}

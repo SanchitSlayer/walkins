@@ -1,5 +1,5 @@
 import type { Queue } from "bullmq";
-import { CHECK_IN_PRICE_EVENT, Prisma, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
+import { absenceExcusedByReschedule, CHECK_IN_PRICE_EVENT, Prisma, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import { type ChargeJob, dayKey, type EmbedJob } from "@walkins/shared";
 import type { AlertService } from "../alerts/alert-service";
 
@@ -185,7 +185,11 @@ async function expireDrives(deps: MaintenanceDeps): Promise<string> {
 // interview, so it can't be read as attended or not, and a smaller sample
 // beats a score that means two things. Only drives that ran count: a booking
 // on a drive the employer cancelled, or Walkins suspended, was never a
-// chance to attend, and until Phase 10 it was counted as a missed one. The
+// chance to attend, and until Phase 10 it was counted as a missed one. Nor
+// is an absence from a drive that was moved without the candidate being told
+// where it landed (absenceExcusedByReschedule). Hiring outcomes don't count
+// at all: whether someone started is the employer's word, not a scan, and
+// not starting is often the right call (README, "Why outcomes don't feed reliability"). The
 // filter is inside the counts, not a WHERE, so a candidate whose only
 // bookings were on such drives is rescored too, back to no score.
 // `candidateIds` narrows a run, as `scope` does for markNoShows.
@@ -197,8 +201,8 @@ export async function recomputeReliability(candidateIds?: string[]): Promise<str
         count(*) FILTER (WHERE d.status IN ('LIVE', 'EXPIRED') AND a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED')) AS attended,
         count(*) FILTER (
           WHERE d.status IN ('LIVE', 'EXPIRED')
-            AND (a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED', 'NO_SHOW')
-              OR (a.state = 'CONFIRMED' AND d."endsAt" <= (now() AT TIME ZONE 'UTC')))
+            AND (a.state IN ('CHECKED_IN', 'INTERVIEWED', 'HIRED')
+              OR ((a.state = 'NO_SHOW' OR (a.state = 'CONFIRMED' AND d."endsAt" <= (now() AT TIME ZONE 'UTC'))) AND NOT ${absenceExcusedByReschedule}))
         ) AS confirmed
       FROM applications a
       JOIN drives d ON d.id = a."driveId"
@@ -269,6 +273,7 @@ export async function sweepCharges(charge: MaintenanceDeps["charge"], driveIds?:
 async function refreshAnalytics(markRefreshed: MaintenanceDeps["markAnalyticsRefreshed"]): Promise<string> {
   await prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY drive_funnel`;
   await prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY company_daily`;
+  await prisma.$executeRaw`REFRESH MATERIALIZED VIEW CONCURRENTLY application_facts`;
   await markRefreshed(new Date());
   return "analytics refreshed";
 }

@@ -2,6 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { CHECK_IN_PRICE_EVENT, companyBalance, priceAt, prisma, toPaise } from "@walkins/db";
 import {
   type AdminDrive,
+  type AdminRetention,
+  adminRetentionSchema,
+  ANALYTICS_REFRESHED_KEY,
   adminDriveSchema,
   type CreatePricingRule,
   type FailedJob,
@@ -17,6 +20,8 @@ import {
   translate,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
+import { redis } from "../common/redis";
+import { retentionByEmployer } from "../companies/outcome-figures";
 import { apiError } from "../common/api-error";
 
 const FAILED_JOBS_PER_QUEUE = 100;
@@ -68,6 +73,14 @@ export class AdminService {
     });
     const after = await prisma.drive.findUniqueOrThrow({ where: { id: driveId }, include: { company: true, role: true, city: true } });
     return adminDriveSchema.parse(await this.toAdminDrive(after));
+  }
+
+  // Thirty-day retention by employer, with the same coverage rules as the
+  // employers' own: not recorded is its own bucket, and no rate below the
+  // minimum.
+  async retention(): Promise<AdminRetention> {
+    const [byEmployer, refreshedAt] = await Promise.all([retentionByEmployer(), redis.get(ANALYTICS_REFRESHED_KEY)]);
+    return adminRetentionSchema.parse({ byEmployer, refreshedAt });
   }
 
   async failedJobs(): Promise<FailedJob[]> {

@@ -13,6 +13,7 @@ import { Slab } from "@/components/board/slab";
 import { TelegramPanel } from "./telegram-panel";
 import { VoicePanel } from "./voice-panel";
 import { WarningNotices } from "@/components/warning-notices";
+import { YourRecord } from "./your-record";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
@@ -212,6 +213,7 @@ export default function ProfilePage() {
             </Slab>
 
             <VoicePanel hasProfile={telegramConnected !== null} />
+            <YourRecord />
             <TelegramPanel connected={telegramConnected} />
           </div>
 

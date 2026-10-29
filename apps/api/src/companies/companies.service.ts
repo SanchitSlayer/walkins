@@ -12,6 +12,7 @@ import {
 } from "@walkins/shared";
 import { redis } from "../common/redis";
 import { requireCompanyAccess } from "../common/require-company";
+import { retentionByRole, showUpBy, timeToJoin } from "./outcome-figures";
 
 type FunnelRow = {
   driveId: string;
@@ -52,7 +53,7 @@ export class CompaniesService {
   async analytics(userId: string): Promise<Analytics> {
     const { companyId } = await requireCompanyAccess(userId, "read");
     const since = new Date(Date.now() - (ANALYTICS_DAYS - 1) * 24 * 3600_000);
-    const [drives, daily, refreshedAt] = await Promise.all([
+    const [drives, daily, refreshedAt, byRole, byCity, byDistance, byHour, joining, retained] = await Promise.all([
       prisma.$queryRaw<FunnelRow[]>`
         SELECT f."driveId", r.title AS "roleTitle", d."startsAt", d.status,
                f.alerted, f.interested, f.confirmed, f."checkedIn", f."walkIns", f.hired,
@@ -68,6 +69,12 @@ export class CompaniesService {
         WHERE "companyId" = ${companyId} AND day >= ${dayKey(since)}::date
       `,
       redis.get(ANALYTICS_REFRESHED_KEY),
+      showUpBy(companyId, "role"),
+      showUpBy(companyId, "city"),
+      showUpBy(companyId, "distance"),
+      showUpBy(companyId, "hour"),
+      timeToJoin(companyId),
+      retentionByRole(companyId),
     ]);
 
     // Every day in the window, including the empty ones, so the chart's
@@ -88,6 +95,9 @@ export class CompaniesService {
         };
       }),
       daily: days.map((day) => ({ day, checkIns: byDay.get(day)?.checkIns ?? 0, hires: byDay.get(day)?.hires ?? 0 })),
+      showUp: { byRole, byCity, byDistance, byHour },
+      timeToJoin: joining,
+      retentionByRole: retained,
     });
   }
 }

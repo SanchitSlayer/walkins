@@ -74,3 +74,52 @@ export function outcomeNeed(
   if (o.started && o.retained === null && o.startedOn && addDays(o.startedOn, RETENTION_DAYS) <= today) return "retained";
   return null;
 }
+
+// What a candidate sees about themselves: every drive they applied to and
+// what was recorded, and after a hire, each fact with who it came from. It
+// is its own shape so nothing else can travel in it: no reporters, no
+// employer notes or shortlists, no match scores, no reliability number
+// (nothing uses one yet), nobody else's anything.
+export const recordEntryStateSchema = z.enum([
+  "booked",
+  "attended",
+  "awaitingConfirmation",
+  "notAttended",
+  // Marked absent from a drive that was moved without the notice reaching
+  // them; not held against them, and the record says so.
+  "notAttendedExcused",
+  "withdrawn",
+  "screenedOut",
+  "turnedAway",
+  "driveCancelled",
+  "drivePaused",
+]);
+
+export const candidateRecordSchema = z.object({
+  entries: z.array(
+    z.object({
+      applicationId: z.string(),
+      roleTitle: z.string(),
+      companyName: z.string(),
+      driveStartsAt: z.string(),
+      state: recordEntryStateSchema,
+      // When the absence was recorded, for a not-attended entry.
+      markedAbsentAt: z.string().nullable(),
+      hired: z.boolean(),
+      // After a hire: the employer's record (from the company) and the
+      // candidate's own answer, side by side.
+      after: z
+        .object({
+          joiningDate: z.string().nullable(),
+          started: z.boolean().nullable(),
+          startedOn: z.string().nullable(),
+          retained: z.boolean().nullable(),
+          yourAnswer: z.boolean().nullable(),
+        })
+        .nullable(),
+    }),
+  ),
+});
+
+export type CandidateRecord = z.infer<typeof candidateRecordSchema>;
+export type RecordEntryState = z.infer<typeof recordEntryStateSchema>;
