@@ -345,6 +345,7 @@ describe("shortening names for the board", () => {
     expect(displayName("Asha Kumari Rao", "9000000000")).toBe("Asha R.");
     expect(displayName("  Ravi   kumar ", "9000000000")).toBe("Ravi K.");
     expect(displayName("Mononym", "9000000000")).toBe("Mononym");
+    expect(displayName("सुप्रिया क्षत्रिय", "9000000000")).toBe("सुप्रिया क्ष.");
     expect(displayName("   ", "9000000000")).toBeNull();
     expect(displayName("9876543210", "9876543210")).toBeNull();
   });

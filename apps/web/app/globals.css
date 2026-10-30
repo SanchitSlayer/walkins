@@ -73,13 +73,83 @@
   }
 }
 
+/* Devanagari: Anek Devanagari, the one Devanagari face with Archivo's width
+   range, so the scale's expanded, standard and narrow steps carry over.
+   Served from here, not Google's CDN, as one static instance per width and
+   weight the scale uses (about 90 KB each, Devanagari only): the variable
+   font is 660 KB even subset, almost all of it variation data, and a page
+   fetches only the instances it draws. The unicode-range means an English
+   page fetches nothing until it shows a Devanagari name. Instances were cut
+   with fontTools from the Google Fonts release; licence beside them.
+   The narrow step (75%) is served at width 90: at 75%, Devanagari's counters
+   and stacked marks close up at the board's small sizes (seats left at
+   14px) far sooner than Latin figures do, and it read as smaller and
+   heavier than the Archivo beside it. The descriptor stays 75%, so
+   Archivo's figures in the same line stay narrow. */
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-125-800.woff2") format("woff2");
+  font-weight: 800;
+  font-stretch: 125%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-125-700.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: 125%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-112-600.woff2") format("woff2");
+  font-weight: 600;
+  font-stretch: 112%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-100-500.woff2") format("woff2");
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-100-400.woff2") format("woff2");
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-90-700.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: 75%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+@font-face {
+  font-family: "Anek Devanagari";
+  src: url("/fonts/anek-devanagari-90-600.woff2") format("woff2");
+  font-weight: 600;
+  font-stretch: 75%;
+  font-display: swap;
+  unicode-range: U+0900-097F, U+A8E0-A8FF, U+200C-200D, U+25CC;
+}
+
 @layer base {
   * {
     @apply border-housing-line;
   }
   body {
     @apply bg-housing text-stock;
-    font-family: var(--font-archivo), system-ui, sans-serif;
+    font-family: var(--font-archivo), "Anek Devanagari", system-ui, sans-serif;
   }
   :focus-visible {
     outline: 3px solid var(--focus);
@@ -156,6 +226,41 @@
     font-weight: 600;
     font-size: 0.875rem;
     line-height: 1.3;
+  }
+
+  /* Devanagari hangs vowel signs above the headline (ि ी ें) and below the
+     baseline (ु ू ृ), where Latin leading leaves no room, so lines collide;
+     and its letters join along the headline, which any tracking breaks
+     apart. Same widths and weights; more leading, no tracking. Codes typed
+     character by character (check-in, OTP) are Latin and keep theirs. */
+  .type-display:lang(hi) {
+    line-height: 1.3;
+    letter-spacing: 0;
+  }
+  .type-h1:lang(hi) {
+    line-height: 1.35;
+    letter-spacing: 0;
+  }
+  .type-h2:lang(hi) {
+    line-height: 1.4;
+  }
+  .type-h3:lang(hi) {
+    line-height: 1.45;
+  }
+  .type-body:lang(hi) {
+    line-height: 1.75;
+  }
+  .type-meta:lang(hi) {
+    line-height: 1.65;
+  }
+  .type-board-lg:lang(hi) {
+    line-height: 1.35;
+  }
+  .type-board-md:lang(hi) {
+    line-height: 1.45;
+  }
+  .type-board-sm:lang(hi) {
+    line-height: 1.55;
   }
 }
 
@@ -251,24 +356,35 @@
     perspective: 240px;
     color: var(--flap-color, var(--stock));
   }
+  /* A Devanagari word on one flap spanning whole cells, so the board's
+     columns still line up, and never cut between letters, which would break
+     the headline joining them. */
+  .flap-cell[data-span] {
+    width: calc(var(--flap-span) * var(--flap-w, 0.68em) + (var(--flap-span) - 1) * 0.08em);
+  }
   .flap-half,
   .flap-leaf {
     position: absolute;
     left: 0;
     right: 0;
     height: 50%;
-    overflow: hidden;
     background: var(--housing-raised);
     backface-visibility: hidden;
   }
+  /* Each half is cut only at the hinge. Overflow hidden cut all four sides,
+     which took off exactly what Devanagari puts above the headline and below
+     the baseline, outside a cell sized for Latin capitals; those marks now
+     stand proud of the flap instead. */
   .flap-top,
   .flap-leaf-front {
     top: 0;
     border-bottom: 1px solid var(--housing);
+    clip-path: inset(-0.5em -0.25em 0 -0.25em);
   }
   .flap-bottom,
   .flap-leaf-back {
     bottom: 0;
+    clip-path: inset(0 -0.25em -0.5em -0.25em);
   }
   .flap-glyph {
     position: absolute;

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { type BoardState, stateColor } from "./board-state";
 import { useTranslations } from "next-intl";
 
 const FLAP_MS = 140;
 
-function FlapCell({ char, delayMs }: { char: string; delayMs: number }) {
+function FlapCell({ char, span, delayMs }: { char: string; span?: number; delayMs: number }) {
   const previous = useRef(char);
   const flips = useRef(0);
   const [flip, setFlip] = useState<{ from: string; to: string; id: number } | null>(null);
@@ -30,7 +30,12 @@ function FlapCell({ char, delayMs }: { char: string; delayMs: number }) {
   const bottom = flip ? flip.from : char;
 
   return (
-    <span className="flap-cell" style={{ "--flap-delay": `${delayMs}ms`, "--flap-ms": `${FLAP_MS}ms` } as CSSProperties}>
+    <span
+      className="flap-cell"
+      data-span={span}
+      lang={span ? "hi" : undefined}
+      style={{ "--flap-delay": `${delayMs}ms`, "--flap-ms": `${FLAP_MS}ms`, ...(span ? { "--flap-span": span } : {}) } as CSSProperties}
+    >
       <span className="flap-half flap-top">
         <span className="flap-glyph">{top}</span>
       </span>
@@ -60,6 +65,21 @@ export function graphemes(text: string): string[] {
   return Array.from(segmenter.segment(text), (s) => s.segment);
 }
 
+const DEVANAGARI = /\p{Script=Devanagari}/u;
+
+// The flaps a value is shown on. A Latin letter is a shape of its own and
+// gets a flap of its own. A Devanagari word doesn't split that way: its
+// letters join along the headline and vary widely in width, so the whole
+// word is one flap spanning whole cells (span): at least one per letter,
+// and more once it is measured, since a conjunct like ष्ण is one letter
+// and two cells wide.
+function flaps(text: string): { char: string; span?: number }[] {
+  return text.split(/( )/).flatMap((word) => {
+    const letters = graphemes(word);
+    return DEVANAGARI.test(word) ? [{ char: word, span: letters.length }] : letters.map((char) => ({ char }));
+  });
+}
+
 export function FlapDisplay({
   value,
   length,
@@ -79,20 +99,47 @@ export function FlapDisplay({
   staggerMs?: number;
   className?: string;
 }) {
-  const glyphs = graphemes(value);
-  const padding = length ? Array<string>(Math.max(0, length - glyphs.length)).fill(" ") : [];
-  const cells = align === "right" ? [...padding, ...glyphs] : [...glyphs, ...padding];
+  const root = useRef<HTMLSpanElement>(null);
+  // Cells each Devanagari word was measured to need, by its text.
+  const [measured, setMeasured] = useState<Record<string, number>>({});
+  const shown = flaps(value).map((flap) => (flap.span ? { ...flap, span: Math.max(flap.span, measured[flap.char] ?? 0) } : flap));
+  const used = shown.reduce((sum, flap) => sum + (flap.span ?? 1), 0);
+  const padding: typeof shown = length ? Array.from({ length: Math.max(0, length - used) }, () => ({ char: " " })) : [];
+  const cells = align === "right" ? [...padding, ...shown] : [...shown, ...padding];
   const style = {
     ...(tone ? { "--flap-color": stateColor(tone, "housing") } : {}),
     ...(cellWidth ? { "--flap-w": `${cellWidth}em` } : {}),
   } as CSSProperties;
 
+  // A word's width is known only once it is drawn, in whichever font loaded,
+  // so it is measured after layout and again whenever a font arrives. The
+  // padding gives up the cells a wide word takes, keeping the row's length.
+  useLayoutEffect(() => {
+    const flap = root.current;
+    if (!flap) return;
+    function measure() {
+      const em = parseFloat(getComputedStyle(flap!).fontSize);
+      const scale = flap!.getBoundingClientRect().width / (flap!.offsetWidth || 1);
+      const step = ((cellWidth ?? 0.68) + 0.08) * em;
+      const range = document.createRange();
+      const next: Record<string, number> = {};
+      flap!.querySelectorAll<HTMLElement>(".flap-cell[data-span] .flap-top .flap-glyph").forEach((glyph) => {
+        range.selectNodeContents(glyph);
+        next[glyph.textContent ?? ""] = Math.ceil((range.getBoundingClientRect().width / scale + 0.32 * em) / step);
+      });
+      setMeasured((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    }
+    measure();
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => document.fonts.removeEventListener("loadingdone", measure);
+  }, [value, cellWidth]);
+
   return (
     <span className={cn("inline-block", className)}>
       <span className="sr-only">{srValue ?? value}</span>
-      <span className="flap" aria-hidden style={style}>
-        {cells.map((char, index) => (
-          <FlapCell key={index} char={char === " " ? " " : char} delayMs={index * staggerMs} />
+      <span ref={root} className="flap" aria-hidden style={style}>
+        {cells.map(({ char, span }, index) => (
+          <FlapCell key={index} char={char === " " ? " " : char} span={span} delayMs={index * staggerMs} />
         ))}
       </span>
     </span>

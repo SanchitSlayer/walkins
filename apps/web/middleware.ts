@@ -33,7 +33,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Pages only: not the API proxy, sockets, uploads, build files, or the
-  // service worker and other files served as they are.
-  matcher: ["/((?!api/|socket\\.io/|storage/|_next/|maplibre/|sw\\.js|manifest\\.webmanifest|icon\\.svg).*)"],
+  // Pages only: not the API proxy, sockets, uploads, build files, fonts, or
+  // the service worker and other files served as they are.
+  matcher: ["/((?!api/|socket\\.io/|storage/|_next/|maplibre/|fonts/|sw\\.js|manifest\\.webmanifest|icon\\.svg).*)"],
 };

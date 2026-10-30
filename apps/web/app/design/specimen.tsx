@@ -49,6 +49,26 @@ const TYPE_STEPS = [
   { token: "type-board-sm", sample: "4.6 km · 12 of 15 seats left" },
 ];
 
+// The same steps in Devanagari, set by Anek Devanagari beside Archivo: the
+// check that the two read as one system, and that the leading clears vowel
+// signs above and below.
+const DEVANAGARI_STEPS: Record<string, string> = {
+  "type-display": "आपके पास वॉक-इन इंटरव्यू",
+  "type-h1": "बेंगलुरु में ड्राइव",
+  "type-h2": "टेलीकॉलर, कोरमंगला",
+  "type-h3": "इंटरव्यू स्लॉट",
+  "type-body": "इंटरव्यू की जगह पर अपने बायोडाटा की दो कॉपी और फ़ोटो वाला पहचान पत्र लेकर आएँ। सुबह पहुँचें तो पहले डेस्क पर कोड स्कैन करें।",
+  "type-meta": "कोरमंगला, बेंगलुरु",
+  "type-board-lg": "आगमन 10:00 · 40/50",
+  "type-board-md": "मंगलवार 29 सितंबर · 10:00–13:00 · ₹15,000–₹25,000",
+  "type-board-sm": "4.6 km · 15 में से 12 सीटें खाली",
+};
+
+// Arrivals as the board shows them: Latin names letter by letter, Devanagari
+// names a word to a flap. Chosen for marks far above the headline (ि ी ँ)
+// and below the baseline (ु ू ृ ्र).
+const BOARD_NAMES = ["Asha R.", "सुप्रिया क्ष.", "कृष्णा शू.", "Ravi हृ.", "प्रीति गुप्ता"];
+
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section id={id} className="border-t border-housing-line py-10">
@@ -169,6 +189,19 @@ export default function Specimen() {
               </div>
             ))}
           </div>
+          <div className="mt-10 grid gap-5" lang="hi">
+            {TYPE_STEPS.map((t) => (
+              <div key={t.token} className="grid gap-1 sm:grid-cols-[10rem_1fr] sm:items-baseline">
+                <span lang="en" className="type-board-sm text-housing-muted">
+                  {t.token}
+                </span>
+                <span className={t.token}>{DEVANAGARI_STEPS[t.token]}</span>
+              </div>
+            ))}
+          </div>
+          <p className="type-h2 mt-8">
+            Telecaller · <span lang="hi">टेलीकॉलर</span> · Koramangala · <span lang="hi">कोरमंगला</span>
+          </p>
           <div className="mt-8 inline-grid gap-1 border border-housing-line p-4">
             <span className="type-meta text-housing-muted">Tabular numerals: these columns must align</span>
             <span className="type-board-lg">11:11 · 111 km</span>
@@ -265,6 +298,15 @@ export default function Specimen() {
               </div>
             </div>
             <Countdown startsAt={sample.startsAt} endsAt={sample.endsAt} />
+          </div>
+          <div className="mt-10 grid gap-2">
+            <span className="type-meta text-housing-muted">Arrivals: a Devanagari word is one flap, as wide as its letters&apos; cells</span>
+            {BOARD_NAMES.map((name) => (
+              <div key={name} className="flex flex-wrap items-center gap-4">
+                <FlapDisplay value="10:42" length={5} className="text-[2rem]" cellWidth={0.62} />
+                <FlapDisplay value={name} length={16} className="text-[2rem]" cellWidth={0.62} staggerMs={20} />
+              </div>
+            ))}
           </div>
         </Section>
       </div>

@@ -1,7 +1,7 @@
 // Keeps the candidate's pass and the check-in page usable with no signal.
 //
 // Only two pages, at their English and Hindi addresses, and the files they
-// load are cached, always network first:
+// load (build files and the Devanagari fonts) are cached, always network first:
 // a fresh copy whenever the network answers, the cached one only when it
 // doesn't. Nothing under /api is touched, and queued scans are never sent
 // from here (see lib/offline.ts for why the page sends them).
@@ -33,7 +33,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   const passPage = request.mode === "navigate" && PASS_PAGES.includes(url.pathname);
-  const staticFile = url.pathname.startsWith("/_next/static/");
+  const staticFile = url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/fonts/");
   // Everything else, /api included, goes to the network as if this worker
   // didn't exist.
   if (!passPage && !staticFile) return;

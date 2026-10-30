@@ -16,7 +16,14 @@ export function displayName(fullName: string, phone: string): string | null {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0 || fullName.trim() === phone) return null;
   if (parts.length === 1) return parts[0];
-  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+  return `${parts[0]} ${firstLetter(parts[parts.length - 1]).toUpperCase()}.`;
+}
+
+// The first letter as a reader sees it, not the first code unit: क्षत्रिय's
+// initial is क्ष, a conjunct, where [0] would give a bare क.
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function firstLetter(word: string): string {
+  return graphemes.segment(word)[Symbol.iterator]().next().value?.segment ?? word;
 }
 
 @Injectable()

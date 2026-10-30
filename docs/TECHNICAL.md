@@ -1875,32 +1875,65 @@ If the review covers more later, the picker says more. Until the reading
 has happened, it says only "Hindi written with AI help; not yet checked
 by a person."
 
+### Devanagari on the board
+
+**The face: Anek Devanagari, beside Archivo.** It is the one Devanagari
+face with Archivo's width range (75% to 125%), so the scale's expanded,
+standard and narrow steps carry over rather than collapsing into weight
+alone. Looked at on `/design`, which now sets every step in Hindi under
+the English:
+- **Headings and reading text read as one system.** At 125% both are
+  wide, flat-sided and low-contrast, and they carry the same colour at
+  700 and 800. In one line, the Devanagari headline sits at about
+  Archivo's x-height, so neither looks smaller.
+- **The narrow step only matched on paper.** At 75%, Devanagari closes
+  up its counters and stacks its marks long before Latin figures do. At
+  the board's small sizes (seats left, at 14px) it read as smaller and
+  heavier than the Archivo figures beside it. The narrow step is served
+  at width 90 for Devanagari, while its descriptor stays 75%, so the
+  figures in the same line stay narrow.
+
+**Served from the app, not Google's CDN.** `apps/web/public/fonts` holds
+seven static instances, one per width and weight the scale uses, cut with
+fontTools from the Google Fonts release and subset to Devanagari. They
+are about 90 KB each, with the OFL licence beside them. The variable font
+was 660 KB even when subset, nearly all of it variation data. Each face
+has a Devanagari `unicode-range`, so an English page fetches nothing until
+it shows a Devanagari name, and then only the one instance it draws. The
+service worker caches them with the offline pass.
+
+**Leading and tracking.** Under `:lang(hi)`, every type step gets more
+leading: display 1.05 becomes 1.3, and body 1.5 becomes 1.75. That makes
+room for the marks above the headline (ि ी ँ) and below the baseline
+(ु ू ृ). Tracking is zero. Codes typed character by character (check-in,
+OTP) are Latin and keep theirs.
+
+**Flaps.**
+- **The clipping bug, live on the English board before this phase.** Each
+  half of a flap cell used `overflow: hidden`, which cut all four sides.
+  That took off what Devanagari puts outside a cell sized for Latin
+  capitals: the ु under ह्र and the ू hook under सू were sheared flat
+  along the cell's bottom edge. Each half is now cut only at the hinge
+  (`clip-path`), and those marks stand proud of the flap.
+- **A Devanagari word is one flap, not one per letter.** A Latin letter
+  is a shape of its own. Devanagari letters join along the headline and
+  vary widely in width, so splitting a word into equal cells broke it at
+  every gap. The flap spans whole cells: at least one per letter, more
+  once measured, since a conjunct like ष्ण is one letter and two cells
+  wide. The padding gives the extra cells back, so a name row stays 16
+  cells and the board's columns line up. Latin text is unchanged.
+- **The cell counts stay.** With words spanning cells, 16 cells for a
+  name and 5 for a time hold in either script. The board's labels
+  ("Walk-in") are sized when the Hindi wording lands.
+
+**Initials.** The board shortens "सुप्रिया क्षत्रिय" to "सुप्रिया क्ष.". It
+used to take the surname's first code unit, which gave a bare "क" for the
+conjunct क्ष. It now takes the first letter as a reader sees it.
+
 ### Known work for the Hindi phase
 
-These were found while building the scaffolding. They were deliberately
-not fixed: each needs real Hindi text and real screens to judge.
+These were found while building the scaffolding and are not fixed yet.
 
-- **Archivo has no Devanagari.** Every Hindi glyph would fall back to the
-  system font. The design system leans on Archivo's width axis
-  (`font-stretch` 75% to 125% across the board and headings), and that
-  contrast would disappear. Hindi needs a paired Devanagari face, chosen
-  for a matching weight and colour, and a decision on what replaces the
-  width contrast.
-- **Line-height clips vowel signs.** `.type-display` is set at 1.05, and the
-  headings at 1.1 to 1.15. Devanagari's matras above the headline (ि ी ें)
-  and below the baseline (ु ू ृ) need more room than Latin, and will be cut
-  off or collide between lines. The split-flap cells are worse: each half is
-  `overflow: hidden` at 50% of a 1.3em cell, which cuts off exactly the
-  parts above and below.
-- **Letter-spacing breaks conjuncts.** Any non-zero tracking (the display's
-  -0.015em, the check-in code's 0.12em) can pull apart conjuncts and break
-  the connecting headline. Tracking has to be zero for Devanagari text.
-- **Flap cell counts assume English lengths.** The arrivals board fixes its
-  cells for English: 7 for the slot column ("Walk-in"), 5 for a time, 16
-  for a name, and 3 or 2 for counts. A Hindi label is a different length in
-  graphemes. Flaps now split by grapheme, so हूँ is one flap, not three, and
-  mixed text won't be torn apart. But the counts themselves need setting
-  per locale, or the cells need to size from the longest label.
 - **Stored English.** `check_ins.flagReason` is still stored as an English
   sentence ("Location only accurate to ±…, … from the venue"), built from
   several flags joined into one string. Moving it to keys needs a schema
