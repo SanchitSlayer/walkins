@@ -36,16 +36,18 @@ afterAll(async () => {
 });
 
 describe("the bot's language", () => {
-  it("answers a chat it can't place once, in English, while the reply has no Hindi", async () => {
-    const [reply, ...more] = await send("start", chatId + 1);
-    expect(more).toHaveLength(0);
-    expect(reply).toContain("http://localhost:3000/profile");
-    expect(reply).not.toContain("/hi/");
-  });
-
   // The gate is read once, at start, so a run sees one state of it: run with
   // WALKINS_OFFER_HINDI=1 as well to see the other.
   const hindi = OFFERED_LOCALES.includes("hi") ? "/hi" : "";
+
+  it(`answers a chat it can't place ${hindi ? "in Hindi above English" : "in English only"} while Hindi is ${hindi ? "" : "not "}offered`, async () => {
+    const [reply, ...more] = await send("start", chatId + 1);
+    expect(more).toHaveLength(0);
+    expect(reply.match(/http:\/\/localhost:3000\S*/g)).toEqual(
+      hindi ? ["http://localhost:3000/hi/profile", "http://localhost:3000/profile"] : ["http://localhost:3000/profile"],
+    );
+    expect(reply.indexOf("प्रोफ़ाइल") >= 0).toBe(Boolean(hindi));
+  });
 
   it(`links a reader who saved Hindi to the ${hindi ? "Hindi" : "English"} pages while Hindi is ${hindi ? "" : "not "}offered`, async () => {
     const [jobs] = await send("jobs", chatId);

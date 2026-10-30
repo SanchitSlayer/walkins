@@ -15,6 +15,7 @@ import {
   localePath,
   MESSAGES,
   messageArguments,
+  NOT_SAFETY_KEYS,
   offeredLocales,
   OFFERED_LOCALES,
   pluralCases,
@@ -397,6 +398,7 @@ describe("Hindi", () => {
     "format.checkInFlags.SYNCED_AFTER_EXPIRY": "मिनट doesn't change for number",
     "format.years": "साल doesn't change for number",
     "format.yearsRange": "साल doesn't change for number",
+    "telegram.linkExpiry": "मिनट doesn't change for number",
   };
 
   it("has a plural wherever English does, with English's cases, saying different things", () => {
@@ -456,8 +458,17 @@ describe("safety wording in Hindi", () => {
     expect(safetyKeys().filter((key) => !hindi.has(key))).toEqual([]);
   });
 
-  // A new string telling someone not to pay or not to travel joins the
-  // manifest, or this fails.
+  it("has every key in scope judged safety or not, exactly once", () => {
+    const safety = new Set<string>(safetyKeys());
+    const notSafety = new Set<string>(NOT_SAFETY_KEYS);
+    const scope = catalogLeaves("en").map(([key]) => key).filter(inHindiScope);
+    expect(scope.filter((key) => !safety.has(key) && !notSafety.has(key)), "undecided: add each to SAFETY_KEYS or NOT_SAFETY_KEYS").toEqual([]);
+    expect([...notSafety].filter((key) => safety.has(key) || !inHindiScope(key))).toEqual([]);
+    expect(notSafety.size).toBe(NOT_SAFETY_KEYS.length);
+  });
+
+  // A backstop for the list above: a string telling someone not to pay or
+  // not to travel can't be judged not safety-critical.
   it("includes every string that speaks about paying, travelling, reporting or being questioned", () => {
     const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|doesn't count towards|haven't done anything wrong|\breport/i;
     const listed = new Set<string>(safetyKeys());

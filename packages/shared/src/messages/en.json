@@ -26,7 +26,7 @@
     "drive_rescheduled": "Moved: {role} at {company}\n\nThe employer has changed the time of this walk-in.\n\nWas: {wasDay}, {wasTime}\nNow: {day}, {time}\n{slot, select, none {} other {Your slot: {slot}\n}}Where: {where}\n\nYour booking is still held. If the new time doesn't work for you, release your seat on Walkins; it won't count against you.",
     "message": "Message from {sender} at {company} about {role}:\n\n{body}\n\nReply on Walkins with the link below.",
     "messageFlagged": "Warning: this message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it from the conversation on Walkins.",
-    "joining_check": "Did you start? {role} at {company}\n\nYou were due to start on {joining}. You can tell Walkins whether you started, on My drives (link below).\n\n{company} sees your answer next to its own record. It doesn't count towards anything else."
+    "joining_check": "Did you start? {role} at {company}\n\nYou were due to start on {joining}. You can tell Walkins whether you started, on Your drives (link below).\n\n{company} sees your answer next to its own record. It doesn't count towards anything else."
   },
   "errors": {
     "generic": "That didn't go through. Try again in a moment.",

@@ -157,8 +157,10 @@ export const HINDI_SCOPE = [
 // confusion. A key belongs here if it tells the reader not to pay or that
 // Walkins never charges, is part of reporting someone, says their account or
 // check-in was questioned, tells them whether to travel to a drive (paused,
-// cancelled, moved, turned down), or promises that something won't count
-// against them. Their Hindi gets a native reading before the language is
+// cancelled, moved, turned down), promises that something won't count
+// against them, or tells them whether their check-in was recorded: someone
+// who wrongly believes they're checked in waits, isn't called, and is marked
+// absent. Their Hindi gets a native reading before the language is
 // offered, and is read again whenever the English changes (test/i18n.test.ts).
 // Typed against the English catalog, so renaming a key here breaks the build
 // rather than quietly dropping it.
@@ -230,11 +232,110 @@ export const SAFETY_KEYS = {
     "board.state.suspended",
     "yourRecord.state.driveCancelled",
     "yourRecord.state.drivePaused",
+    "booking.rejected",
+    "booking.screenedOut",
+    "myDrives.offline",
+    "drive.detail.endedBody",
+    "drive.detail.pillarCentre",
+    "alerts.drive_48h",
+    "alerts.drive_morning_of",
   ],
-  notAgainstYou: ["yourRecord.excused", "yourRecord.state.notAttendedExcused", "myDrives.started.whoSees", "alerts.joining_check"],
+  notAgainstYou: ["yourRecord.excused", "yourRecord.state.notAttendedExcused", "myDrives.started.whoSees", "alerts.joining_check", "yourRecord.intro"],
+  checkInRecorded: [
+    "checkin.savedBody",
+    "errors.checkIn.needsRegistering",
+    "errors.checkIn.refused",
+    "checkin.savedHeading",
+    "checkin.offline",
+    "checkin.waiting",
+    "checkin.in",
+    "checkin.alreadyIn",
+    "checkin.failed",
+    "booking.checkedIn",
+  ],
 } as const satisfies Record<string, readonly MessageKey[]>;
 
 export const safetyKeys = (): MessageKey[] => Object.values(SAFETY_KEYS).flat();
+
+// Every other key in Hindi's scope, each looked at and judged not
+// safety-critical. A key new to the scope is in neither list until someone
+// decides which it belongs in, and the test fails until they do: a keyword
+// check only finds the wording its author already thought of.
+export const NOT_SAFETY_KEYS = [
+  "format.today", "format.tomorrow", "format.dayDate", "format.range", "format.noExperience", "format.years", "format.yearsRange",
+  "format.seatsAllTaken", "format.seatsLeft", "alerts.where", "alerts.message", "errors.generic", "errors.network", "errors.rateLimited.default",
+  "errors.rateLimited.public-read", "errors.rateLimited.application", "errors.rateLimited.voice-upload", "errors.rateLimited.drive-create",
+  "errors.rateLimited.drive-edit", "errors.rateLimited.profile-edit", "errors.rateLimited.applicant-actions", "errors.rateLimited.top-up-order",
+  "errors.rateLimited.top-up-confirm", "errors.rateLimited.webhook", "errors.rateLimited.checkin-code", "errors.rateLimited.intro-audio",
+  "errors.rateLimited.telegram-link", "errors.rateLimited.socket-join", "errors.rateLimited.invitations", "errors.auth.otpPhoneLimit",
+  "errors.auth.otpNetworkLimit", "errors.auth.otpExpired", "errors.auth.otpLocked", "errors.auth.otpWrong", "errors.auth.userGone",
+  "errors.auth.signedOut", "errors.auth.sessionRevoked", "errors.auth.wrongRole", "errors.auth.noCompany", "errors.profile.saveFirst",
+  "errors.profile.incomplete", "errors.profile.telegramUnavailable", "errors.voice.uploadExpired", "errors.voice.uploadIncomplete",
+  "errors.voice.noRecording", "errors.voice.tooLarge", "errors.voice.uploadFailed", "errors.checkIn.codeOnlyLive", "errors.checkIn.tooManyWrong",
+  "errors.checkIn.wrongCode", "errors.checkIn.codeExpired", "errors.checkIn.codeUsed", "errors.checkIn.notOpen", "errors.checkIn.opensAt",
+  "errors.checkIn.ended", "errors.checkIn.noShow", "errors.checkIn.screenedOut", "errors.checkIn.rejected", "errors.checkIn.tooFar",
+  "errors.checkIn.notACode", "errors.drive.notFound", "errors.drive.searchNeedsPlace", "errors.application.notFound",
+  "errors.application.driveEnded", "errors.application.slotNotInDrive", "errors.application.slotStarted", "errors.application.alreadyBooked",
+  "errors.application.screenedOut", "errors.application.alreadyApplied", "errors.application.slotFull", "errors.knockout.missing",
+  "errors.knockout.needsYesNo", "errors.knockout.needsNumber", "errors.knockout.needsChoice", "errors.validation.required",
+  "errors.validation.number", "errors.validation.integer", "errors.validation.tooLow", "errors.validation.tooHigh", "errors.validation.tooShort",
+  "errors.validation.tooLong", "errors.validation.tooFew", "errors.validation.tooMany", "errors.validation.format", "errors.validation.choice",
+  "errors.validation.generic", "errors.validation.phone", "errors.validation.otp", "errors.validation.payRange", "errors.validation.experienceRange",
+  "errors.validation.timeOrder", "errors.validation.topUpMin", "errors.validation.topUpMax", "errors.validation.knockoutBounds",
+  "errors.validation.knockoutOrder", "errors.validation.knockoutDuplicate", "errors.validation.knockoutAccepted",
+  "errors.validation.tooLowExclusive", "errors.validation.tooHighExclusive", "errors.validation.invitePhone", "errors.validation.gstin",
+  "errors.validation.date", "errors.messages.notFound", "errors.messages.blocked.closed", "errors.messages.blocked.applicationClosed",
+  "errors.outcomes.candidate.notHired", "errors.outcomes.candidate.notYet", "errors.outcomes.candidate.tooLate", "fields.default", "fields.phone",
+  "fields.otp", "fields.cityId", "fields.homeLat", "fields.homeLng", "fields.maxTravelKm", "fields.experienceYears", "fields.roleIds",
+  "fields.reason", "fields.code", "fields.slotId", "fields.answers", "fields.details", "fields.body", "fields.seq", "fields.started",
+  "board.state.live", "board.state.filling", "board.state.closing", "board.state.expired", "board.slots.open", "board.slots.booked",
+  "board.slots.underWay", "board.slots.selected", "board.slots.showFewer", "board.slots.showAll", "board.countdown.closesIn",
+  "board.countdown.startsIn", "board.countdown.daysFlap", "board.countdown.daysSpoken", "board.countdown.hoursSpoken", "nav.yourDrives",
+  "nav.yourProfile", "nav.admin", "nav.logIn", "nav.logOut", "nav.loggingOut", "nav.account", "map.drives.noWebgl", "map.drives.label",
+  "map.home.noWebgl", "map.home.label", "transcript.label", "transcript.language", "transcript.languageSure", "meta.title", "meta.titleTemplate",
+  "meta.description", "home.heading", "home.intro", "home.chooseCity", "home.unreachable", "home.seeDrives", "jobs.cityContext", "jobs.cityHeading",
+  "jobs.roleHeading", "jobs.meta.cityTitle", "jobs.meta.cityDescription", "jobs.meta.roleTitle", "jobs.meta.roleDescription", "jobs.search.count",
+  "jobs.search.within", "jobs.search.from", "jobs.search.to", "jobs.search.searching", "jobs.search.apply", "jobs.search.viewAs", "jobs.search.list",
+  "jobs.search.map", "jobs.search.drives", "jobs.search.none", "jobs.search.loading", "jobs.search.more", "jobs.search.cityMap",
+  "jobs.search.mapKey", "drive.meta.title", "drive.meta.description", "drive.detail.endedHeading", "drive.detail.seeLive", "drive.detail.when",
+  "drive.detail.pay", "drive.detail.experience", "drive.detail.seats", "drive.detail.distance", "drive.detail.from", "drive.detail.venueMap",
+  "drive.detail.pillarVenue", "drive.detail.pillarVenueSeats", "booking.yes", "booking.no", "booking.heading", "booking.booked",
+  "booking.bookedWhen", "booking.thisDrive", "booking.checkIn", "booking.yourDrives", "booking.releaseConfirm", "booking.releasing",
+  "booking.release", "booking.asksFor", "booking.noShow", "booking.pickAgain", "booking.pick", "booking.questionsIntro", "booking.booking",
+  "booking.book", "booking.logInToBook", "booking.profileToBook", "myDrives.outcome.INTERESTED", "myDrives.outcome.CONFIRMED",
+  "myDrives.outcome.CHECKED_IN", "myDrives.outcome.INTERVIEWED", "myDrives.outcome.HIRED", "myDrives.outcome.REJECTED", "myDrives.outcome.NO_SHOW",
+  "myDrives.outcome.WITHDRAWN", "myDrives.outcome.SCREENED_OUT", "myDrives.roleAt", "myDrives.drive", "myDrives.yourSlot", "myDrives.status",
+  "myDrives.asksFor", "myDrives.checkIn", "myDrives.details", "myDrives.releasing", "myDrives.release", "myDrives.loadFailed",
+  "myDrives.releaseConfirm", "myDrives.releaseFailed", "myDrives.heading", "myDrives.comingUp", "myDrives.nothingBooked", "myDrives.past",
+  "myDrives.messages", "myDrives.messagesUnread", "myDrives.newMessages", "myDrives.started.joining", "myDrives.started.answered",
+  "myDrives.started.question", "myDrives.started.change", "myDrives.started.yes", "myDrives.started.no", "myDrives.started.failed",
+  "login.sendFailed", "login.checkFailed", "login.heading", "login.phoneIntro", "login.codeIntro", "login.phone", "login.phoneHint", "login.sending",
+  "login.send", "login.code", "login.devCode", "login.checking", "login.logIn", "login.differentNumber", "profile.noLocation", "profile.pickRole",
+  "profile.saveFailed", "profile.heading", "profile.intro", "profile.travel", "profile.travelSpoken", "profile.experience", "profile.roles",
+  "profile.saved", "profile.saving", "profile.save", "profile.home", "profile.locating", "profile.locate", "profile.mapHelp", "profile.nearestCity",
+  "telegram.linkFailed", "telegram.heading", "telegram.connected", "telegram.notConnected", "telegram.saveFirst", "telegram.open", "telegram.orSend",
+  "telegram.linkExpiry", "telegram.connectedHelp", "telegram.pitch", "telegram.creating", "telegram.reconnect", "telegram.connect",
+  "voice.status.UPLOADED", "voice.status.PROCESSING", "voice.status.DONE", "voice.failure.noSpeech", "voice.failure.tooLong", "voice.failure.empty",
+  "voice.failure.unreadable", "voice.failure.unavailable", "voice.noRecorder", "voice.micBlocked", "voice.tooLarge", "voice.heading", "voice.pitch",
+  "voice.saveFirst", "voice.recording", "voice.stop", "voice.sending", "voice.replace", "voice.use", "voice.again", "voice.lowConfidence",
+  "voice.recordNew", "voice.record", "voice.replaces", "checkin.codeShape", "checkin.typeCode", "checkin.typeCodeHint", "checkin.withCode",
+  "checkin.locationOff", "checkin.noFix", "checkin.needsHttps", "checkin.noCamera", "checkin.heading", "checkin.intro", "checkin.scan",
+  "checkin.pointCamera", "checkin.locating", "checkin.sending", "checkin.walkInOffer", "checkin.registerWalkIn", "checkin.notNow", "checkin.at",
+  "checkin.yourDrives", "checkin.scanAgain", "checkin.cancel", "checkin.next", "checkin.nextWithSlot", "checkin.synced", "checkInScreen.drive",
+  "checkInScreen.heading", "checkInScreen.qrAlt", "checkInScreen.typeAt", "checkInScreen.codeSpoken", "checkInScreen.codeFailed",
+  "checkInScreen.gettingCode", "checkInScreen.nextCode", "checkInScreen.stale", "checkInScreen.candidatesHeading", "checkInScreen.candidatesBody",
+  "liveBoard.loading", "liveBoard.arrivals", "liveBoard.title", "liveBoard.where", "liveBoard.live", "liveBoard.reconnecting", "liveBoard.counts",
+  "liveBoard.count.alerted", "liveBoard.count.confirmed", "liveBoard.count.checkedIn", "liveBoard.count.walkIns", "liveBoard.count.hired",
+  "liveBoard.latest", "liveBoard.arrived", "liveBoard.name", "liveBoard.slot", "liveBoard.walkIn", "liveBoard.none", "liveBoard.fullScreen",
+  "liveBoard.back", "liveBoard.unnamed", "bot.connectFirst", "bot.linkUsed", "bot.connected", "bot.notConnected", "bot.noJobs", "bot.jobsHeading",
+  "bot.jobLine", "bot.jobWhen", "bot.stopped", "thread.you", "thread.fromCompany", "thread.emptyCandidate", "thread.write", "thread.count",
+  "thread.send", "thread.sending", "thread.sendFailed", "thread.loadFailed", "thread.backToDrives", "thread.withCompany", "thread.about",
+  "thread.closesOn", "yourRecord.heading", "yourRecord.empty", "yourRecord.roleAt", "yourRecord.state.booked", "yourRecord.state.attended",
+  "yourRecord.state.notAttended", "yourRecord.state.withdrawn", "yourRecord.state.screenedOut", "yourRecord.state.turnedAway", "yourRecord.markedOn",
+  "yourRecord.joining", "yourRecord.started", "yourRecord.retained", "yourRecord.yourAnswer", "yourRecord.notRecorded", "yourRecord.startedOn",
+  "yourRecord.yes", "yourRecord.didNotStart", "yourRecord.stayed", "yourRecord.left", "yourRecord.youStarted", "yourRecord.youDidNotStart",
+  "language.heading", "language.intro", "language.name.en", "language.name.hi", "language.hindiReview", "language.switchTo", "language.saveFailed",
+] as const satisfies readonly MessageKey[];
 
 function leaves(catalog: Catalog, prefix = ""): [string, string][] {
   return Object.entries(catalog).flatMap(([key, value]) =>

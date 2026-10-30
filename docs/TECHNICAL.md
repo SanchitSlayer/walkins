@@ -1961,14 +1961,23 @@ covers most of the critical tier's meaning:
 `packages/shared/src/i18n.ts`. A key is in it if it tells the reader not to
 pay or that Walkins never charges, is part of reporting, tells them their
 account or check-in was questioned, tells them whether to travel (a drive
-paused, cancelled or moved, an application turned down), or promises
-something won't count against them. 64 keys, in five groups. Tests hold
-the set together (`apps/web/test/i18n.test.ts`, "safety wording in
-Hindi"):
+paused, cancelled or moved, an application turned down), promises
+something won't count against them, or tells them whether their check-in
+was recorded. That last is its own group (`checkInRecorded`), apart from a
+check-in being questioned: someone who wrongly believes they're checked in
+waits at the venue, isn't called, and is marked absent, which goes on their
+record. 82 keys, in six groups. Tests hold the set together
+(`apps/web/test/i18n.test.ts`, "safety wording in Hindi"):
 - every key in it is in `HINDI_SCOPE` and has Hindi;
-- every in-scope English string with the wording of one of those things
-  ("never charges", "don't pay", "don't travel", "report", ...) is in it.
-  A new one fails until it joins.
+- **every key in scope is judged one way or the other.** The rest are in
+  `NOT_SAFETY_KEYS`, and a key in neither list fails the test. So a new
+  string fails until someone decides, rather than passing because nobody
+  noticed: a keyword check only finds wording its author thought of, and
+  the first one missed "doesn't count towards" while looking for "won't
+  count against";
+- as a backstop, an in-scope English string with the wording of one of
+  those things ("never charges", "don't pay", "don't travel", "report", ...)
+  can't be in `NOT_SAFETY_KEYS`.
 
 Status: written 30 October 2026, not yet read by a native speaker. Where
 a string departs from a fixed phrase above (a fragment of one, or a word
