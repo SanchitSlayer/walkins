@@ -40,12 +40,13 @@ describe("the bot's language", () => {
   // WALKINS_OFFER_HINDI=1 as well to see the other.
   const hindi = OFFERED_LOCALES.includes("hi") ? "/hi" : "";
 
-  it(`answers a chat it can't place ${hindi ? "in Hindi above English" : "in English only"} while Hindi is ${hindi ? "" : "not "}offered`, async () => {
+  // One link, after both languages and without /hi: the reader hasn't
+  // chosen a language yet.
+  it(`answers a chat it can't place ${hindi ? "in Hindi above English" : "in English only"}, with one link, while Hindi is ${hindi ? "" : "not "}offered`, async () => {
     const [reply, ...more] = await send("start", chatId + 1);
     expect(more).toHaveLength(0);
-    expect(reply.match(/http:\/\/localhost:3000\S*/g)).toEqual(
-      hindi ? ["http://localhost:3000/hi/profile", "http://localhost:3000/profile"] : ["http://localhost:3000/profile"],
-    );
+    expect(reply.match(/http:\/\/localhost:3000\S*/g)).toEqual(["http://localhost:3000/profile"]);
+    expect(reply.endsWith("http://localhost:3000/profile")).toBe(true);
     expect(reply.indexOf("प्रोफ़ाइल") >= 0).toBe(Boolean(hindi));
   });
 

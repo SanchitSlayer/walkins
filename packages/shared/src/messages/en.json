@@ -1253,15 +1253,15 @@
     "failed": "That didn't go through. Reload the page and try again."
   },
   "bot": {
-    "connectFirst": "To get walk-in alerts here, open your profile on Walkins and choose Connect Telegram:\n{profile}",
-    "linkUsed": "That link has expired or was already used. Open your profile to get a new one:\n{profile}",
+    "connectFirst": "To get walk-in alerts here, open your profile on Walkins and choose Connect Telegram.",
+    "linkUsed": "That link has expired or was already used. Open your profile to get a new one.",
     "connected": "Connected. You'll get alerts here for walk-in drives within your travel distance.\n\nSend /jobs to see what's on now, or /stop to turn alerts off.",
-    "notConnected": "This chat isn't connected to a Walkins profile yet. Connect it from your profile:\n{profile}",
+    "notConnected": "This chat isn't connected to a Walkins profile yet. Connect it from your profile.",
     "noJobs": "No live drives within your {km} km travel distance right now. You can widen your travel distance on your profile:\n{profile}",
     "jobsHeading": "Nearest live drives within {km} km:",
     "jobLine": "{n}. {role} at {company}",
     "jobWhen": "{day}, {time} · {distance}",
-    "stopped": "Alerts are off and this chat is disconnected. You can connect again any time from your profile:\n{profile}",
+    "stopped": "Alerts are off and this chat is disconnected. You can connect again any time from your profile.",
     "neverPay": "Walkins never charges candidates, and no employer should ask you for money. If anyone does, open that drive's link and tap Report."
   },
   "neverPay": {

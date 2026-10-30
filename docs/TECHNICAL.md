@@ -1657,7 +1657,9 @@ web app words them itself, from their codes, in the page's language.
 every link for that language: a Hindi reader's Telegram link opens the
 `/hi` page, which matters most with no signal, when nothing can redirect
 them. The bot answers a linked chat in its candidate's language, and a
-chat it can't place yet in Hindi above English.
+chat it can't place yet in Hindi above English, followed by one link
+without `/hi`: two near-identical links read as a bug, and the reader
+hasn't chosen a language yet.
 
 **Public pages set their own metadata.** The home page, city and role
 search pages, and drive pages have their own titles and descriptions.
@@ -1966,7 +1968,7 @@ something won't count against them, or tells them whether their check-in
 was recorded. That last is its own group (`checkInRecorded`), apart from a
 check-in being questioned: someone who wrongly believes they're checked in
 waits at the venue, isn't called, and is marked absent, which goes on their
-record. 82 keys, in six groups. Tests hold the set together
+record. 84 keys, in six groups. Tests hold the set together
 (`apps/web/test/i18n.test.ts`, "safety wording in Hindi"):
 - every key in it is in `HINDI_SCOPE` and has Hindi;
 - **every key in scope is judged one way or the other.** The rest are in

@@ -399,6 +399,7 @@ describe("Hindi", () => {
     "format.years": "साल doesn't change for number",
     "format.yearsRange": "साल doesn't change for number",
     "telegram.linkExpiry": "मिनट doesn't change for number",
+    "profile.travelSpoken": "किलोमीटर doesn't change for number",
   };
 
   it("has a plural wherever English does, with English's cases, saying different things", () => {

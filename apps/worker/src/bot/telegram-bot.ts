@@ -24,9 +24,12 @@ const JOBS_LIMIT = 5;
 // yet, or any key while Hindi isn't offered, is sent in English once.
 const say = (locale: Locale, key: MessageKey, values?: MessageValues) => translate(locale, key, values);
 
-function sayBoth(key: MessageKey, values: (locale: Locale) => MessageValues): string {
-  const en = say(DEFAULT_LOCALE, key, values(DEFAULT_LOCALE));
-  return OFFERED_LOCALES.includes("hi") && isTranslated("hi", key) ? `${say("hi", key, values("hi"))}\n\n${en}` : en;
+// One link after both languages, without a /hi prefix: the reader hasn't
+// chosen a language, and the page follows whichever they choose.
+function sayBoth(key: MessageKey, link: string): string {
+  const en = say(DEFAULT_LOCALE, key);
+  const text = OFFERED_LOCALES.includes("hi") && isTranslated("hi", key) ? `${say("hi", key)}\n\n${en}` : en;
+  return `${text}\n${link}`;
 }
 
 function chatIdOf(ctx: Context): string | null {
@@ -40,7 +43,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
     const token = typeof ctx.match === "string" ? ctx.match : "";
     if (!chatId) return;
     if (!token) {
-      await ctx.reply(sayBoth("bot.connectFirst", (locale) => ({ profile: profile(locale) })));
+      await ctx.reply(sayBoth("bot.connectFirst", profile(DEFAULT_LOCALE)));
       return;
     }
 
@@ -48,7 +51,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
     // with the same token can't both claim it.
     const candidateId = await redis.getdel(telegramLinkKey(token));
     if (!candidateId) {
-      await ctx.reply(sayBoth("bot.linkUsed", (locale) => ({ profile: profile(locale) })));
+      await ctx.reply(sayBoth("bot.linkUsed", profile(DEFAULT_LOCALE)));
       return;
     }
 
@@ -66,7 +69,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
     if (!chatId) return;
     const candidate = await prisma.candidate.findUnique({ where: { telegramChatId: chatId }, include: { user: { select: { locale: true } } } });
     if (!candidate) {
-      await ctx.reply(sayBoth("bot.notConnected", (locale) => ({ profile: profile(locale) })));
+      await ctx.reply(sayBoth("bot.notConnected", profile(DEFAULT_LOCALE)));
       return;
     }
     const locale = servedLocale(candidate.user.locale);
@@ -107,7 +110,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
     const linked = await prisma.candidate.findUnique({ where: { telegramChatId: chatId }, select: { user: { select: { locale: true } } } });
     await prisma.candidate.updateMany({ where: { telegramChatId: chatId }, data: { telegramChatId: null } });
     const locale = linked && servedLocale(linked.user.locale);
-    await ctx.reply(locale ? say(locale, "bot.stopped", { profile: profile(locale) }) : sayBoth("bot.stopped", (l) => ({ profile: profile(l) })));
+    await ctx.reply(locale ? `${say(locale, "bot.stopped")}\n${profile(locale)}` : sayBoth("bot.stopped", profile(DEFAULT_LOCALE)));
   });
 
   bot.catch((err, ctx) => {
