@@ -69,25 +69,33 @@ export class ModerationService {
       role: { select: { title: true } },
       company: { select: { id: true, name: true, suspendedAt: true, verificationStatus: true } },
     } as const;
-    const open = await prisma.report.findMany({
-      where: { resolvedAt: null },
-      include: {
-        reporter: { select: { name: true } },
-        drive: { select: driveSelect },
-        candidate: { select: { id: true, user: { select: { name: true, phone: true } } } },
-        message: {
-          select: {
-            side: true,
-            body: true,
-            sender: { select: { name: true } },
-            thread: { select: { id: true, application: { select: { drive: { select: driveSelect }, candidate: { select: { user: { select: { name: true } } } } } } } },
+    // One snapshot for both reads. Read apart, a report deleted in between,
+    // or one whose reporter's account was removed (which unlinks it), is
+    // listed with no history behind it, and the whole queue fails to parse.
+    const { open, history } = await prisma.$transaction(
+      async (tx) => {
+        const open = await tx.report.findMany({
+          where: { resolvedAt: null },
+          include: {
+            reporter: { select: { name: true } },
+            drive: { select: driveSelect },
+            candidate: { select: { id: true, user: { select: { name: true, phone: true } } } },
+            message: {
+              select: {
+                side: true,
+                body: true,
+                sender: { select: { name: true } },
+                thread: { select: { id: true, application: { select: { drive: { select: driveSelect }, candidate: { select: { user: { select: { name: true } } } } } } } },
+              },
+            },
           },
-        },
+          orderBy: { createdAt: "desc" },
+        });
+        return { open, history: await this.reporterHistory(tx, open) };
       },
-      orderBy: { createdAt: "desc" },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
-    const history = await this.reporterHistory(open);
     const targets = new Map<string, ModerationTarget>();
     const accounts = new Map<string, Set<string>>();
     for (const report of open) {
@@ -173,13 +181,11 @@ export class ModerationService {
 
   // Everything this reporter has ever reported and how it was decided, so
   // someone whose reports are always dismissed stands out.
-  private async reporterHistory(reports: { reporterUserId: string | null; reporterNetwork: string | null }[]) {
+  private async reporterHistory(tx: Tx, reports: { reporterUserId: string | null; reporterNetwork: string | null }[]) {
     const users = [...new Set(reports.flatMap((r) => (r.reporterUserId ? [r.reporterUserId] : [])))];
     const networks = [...new Set(reports.flatMap((r) => (r.reporterNetwork ? [r.reporterNetwork] : [])))];
-    const [byUser, byNetwork] = await Promise.all([
-      prisma.report.groupBy({ by: ["reporterUserId", "outcome"], where: { reporterUserId: { in: users } }, _count: { _all: true } }),
-      prisma.report.groupBy({ by: ["reporterNetwork", "outcome"], where: { reporterNetwork: { in: networks } }, _count: { _all: true } }),
-    ]);
+    const byUser = await tx.report.groupBy({ by: ["reporterUserId", "outcome"], where: { reporterUserId: { in: users } }, _count: { _all: true } });
+    const byNetwork = await tx.report.groupBy({ by: ["reporterNetwork", "outcome"], where: { reporterNetwork: { in: networks } }, _count: { _all: true } });
     const history = new Map<string, { total: number; dismissed: number; actioned: number }>();
     const add = (key: string, outcome: string | null, count: number) => {
       const h = history.get(key) ?? { total: 0, dismissed: 0, actioned: 0 };

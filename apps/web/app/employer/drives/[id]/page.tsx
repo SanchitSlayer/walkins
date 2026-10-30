@@ -64,7 +64,6 @@ function Reschedule({ drive, onChange }: { drive: DriveDetail; onChange: (next: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now] = useState(() => new Date());
-  const booked = drive.slots.reduce((sum, s) => sum + s.bookedCount, 0);
   const open = ["DRAFT", "PENDING", "LIVE"].includes(drive.status) && new Date(drive.endsAt) > now;
 
   async function move() {
@@ -73,7 +72,7 @@ function Reschedule({ drive, onChange }: { drive: DriveDetail; onChange: (next: 
       setError(issueText(parsed.error.errors[0]));
       return;
     }
-    if (drive.status === "LIVE" && booked > 0 && !confirm(t("confirm", { count: booked }))) return;
+    if (drive.status === "LIVE" && drive.confirmedCount > 0 && !confirm(t("confirm", { count: drive.confirmedCount }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -114,8 +113,8 @@ function Reschedule({ drive, onChange }: { drive: DriveDetail; onChange: (next: 
       {drive.reschedules.length > 0 && (
         <ul className="grid gap-2">
           {drive.reschedules.map((r) => {
-            const from = formatWhen(r.fromStartsAt, r.fromEndsAt, now);
-            const to = formatWhen(r.toStartsAt, r.toEndsAt, now);
+            const from = formatWhen(r.fromStartsAt, r.fromEndsAt);
+            const to = formatWhen(r.toStartsAt, r.toEndsAt);
             return (
               <li key={r.createdAt} className="type-meta text-housing-muted">
                 {t.rich("history", {

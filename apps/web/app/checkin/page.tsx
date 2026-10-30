@@ -277,7 +277,14 @@ export default function CheckInPage() {
               <p className="type-h2">{step.again ? t("alreadyIn") : t("in")}</p>
               <p className="type-board-md">{t("at", { time: formatTime(step.checkIn.scannedAt) })}</p>
               {!step.checkIn.isValid && (
-                <p className="type-meta text-housing-muted">{t("flagged", { reason: formatFlags(step.checkIn).toLowerCase() })}</p>
+                <div className="type-meta text-housing-muted">
+                  <p>{t("flagged")}</p>
+                  <ul>
+                    {formatFlags(step.checkIn).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
               <Link href="/my-drives" className={boardButtonClass("housing", "quiet")}>
                 {t("yourDrives")}

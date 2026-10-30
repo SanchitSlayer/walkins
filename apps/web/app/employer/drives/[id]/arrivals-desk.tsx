@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { ApplicationState, Outcomes } from "@walkins/shared";
+import type { ApplicationState, LiveBoard, Outcomes } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useLiveFeed } from "@/lib/use-live-feed";
 import { BoardButton, boardButtonClass, BoardInput } from "@/components/board/field";
@@ -75,6 +75,16 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
   const state = useTranslations("deskState");
   const errorText = useErrorText();
   const { formatTime, formatFlags } = useFormat();
+  // For an offline scan, the time the phone saved it beside the time it was
+  // accepted, which for a late one is when its code expired. The phone's
+  // clock is the candidate's, so it is labelled as such and never trusted.
+  const scanTimes = (a: LiveBoard["arrivals"][number]) =>
+    [
+      t("arrivedAt", { method: a.method, time: formatTime(a.scannedAt) }),
+      a.capturedAt ? t("capturedAt", { time: formatTime(a.capturedAt) }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   const runs = useMembership().can("runDrives");
   const personName = usePersonName();
   const threads = useDriveThreads(driveId);
@@ -139,9 +149,12 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
               <Row key={a.checkInId}>
                 <div>
                   <p className="type-body">{a.name}</p>
-                  <p className="type-meta text-housing-muted">
-                    {t("flaggedLine", { method: a.method, time: formatTime(a.scannedAt), reason: formatFlags(a) })}
-                  </p>
+                  <p className="type-meta text-housing-muted">{scanTimes(a)}</p>
+                  {formatFlags(a).map((line) => (
+                    <p key={line} className="type-meta text-housing-muted">
+                      {line}
+                    </p>
+                  ))}
                 </div>
                 {runs && (
                   <BoardButton onClick={() => act(a.checkInId, () => apiClient.confirmCheckIn(a.checkInId))} disabled={busy !== null}>
@@ -194,11 +207,11 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
           <ul className="border-t border-housing-line">
             {desk.arrivals.map((a) => (
               <Row key={a.checkInId}>
-                <div>
+                <div className="grid">
                   <p className="type-body">{a.name}</p>
                   <p className="type-meta text-housing-muted">
                     {[
-                      t("arrivedAt", { method: a.method, time: formatTime(a.scannedAt) }),
+                      scanTimes(a),
                       a.slotStartsAt ? t("slot", { time: formatTime(a.slotStartsAt) }) : null,
                       state(a.state),
                       a.isValid ? null : t("awaitingConfirmation"),

@@ -89,6 +89,7 @@ export class LiveBoardService {
         state: checkIn.application.state,
         method: checkIn.method,
         scannedAt: checkIn.scannedAt.toISOString(),
+        capturedAt: checkIn.capturedAt?.toISOString() ?? null,
         slotStartsAt: checkIn.application.slot?.startsAt.toISOString() ?? null,
         distanceMeters: checkIn.distanceMeters,
         accuracyMeters: checkIn.accuracyMeters,

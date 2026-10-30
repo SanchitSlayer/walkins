@@ -22,6 +22,11 @@ import {
   voiceJobId,
 } from "@walkins/shared";
 
+// Who alertBooked tells: holding a seat and not yet checked in. Someone
+// already checked in is at the venue, where the desk speaks to them. The
+// drive's page counts with the same filter, so it never promises more.
+export const BOOKED = { state: "CONFIRMED" } as const;
+
 // The API adds jobs; the worker runs them. Names, ids and options come from
 // @walkins/shared so the two sides can't disagree about any of them.
 @Injectable()
@@ -52,7 +57,7 @@ export class JobsService implements OnModuleDestroy {
   // they must know before travelling: it was cancelled, suspended, put back
   // on or moved.
   async alertBooked(driveId: string, templateKey: TemplateKey, scheduleVersion?: number) {
-    const booked = await prisma.application.findMany({ where: { driveId, state: "CONFIRMED" }, select: { candidateId: true } });
+    const booked = await prisma.application.findMany({ where: { driveId, ...BOOKED }, select: { candidateId: true } });
     await this.alerts.addBulk(
       booked.map(({ candidateId }) => {
         const data = { driveId, candidateId, templateKey, scheduleVersion };

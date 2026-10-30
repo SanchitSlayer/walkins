@@ -166,6 +166,8 @@ export const driveDetailSchema = driveSummarySchema.extend({
   city: z.object({ name: z.string(), centerLat: z.number(), centerLng: z.number() }),
   owner: personRefSchema,
   reschedules: z.array(driveRescheduleSchema),
+  // Who a reschedule notice reaches: bookings not yet checked in.
+  confirmedCount: z.number().int(),
 });
 
 export const employerDriveRowSchema = driveSummarySchema.extend({
@@ -317,6 +319,7 @@ export const liveBoardSchema = z.object({
       state: applicationStateSchema,
       method: checkInMethodSchema,
       scannedAt: z.string(),
+      capturedAt: z.string().nullable(),
       slotStartsAt: z.string().nullable(),
       distanceMeters: z.number().nullable(),
       accuracyMeters: z.number().nullable(),

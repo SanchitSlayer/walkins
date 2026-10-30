@@ -172,7 +172,10 @@ Check-in keeps working without signal. The service worker keeps the
 candidate's pass and the check-in page available offline, and a scan made
 with no signal is saved on the phone and sent as soon as there is signal,
 within the 30 minutes the server accepts a late scan for (it is flagged for
-the employer). The page sends it, never the service worker: sending from the
+the employer). For a late scan the recorded time is when its code expired,
+the latest moment the server can vouch for, so the arrivals desk also shows
+when the phone saved the scan, labelled as the phone's clock because the
+candidate's phone sets it. The page sends it, never the service worker: sending from the
 worker would mean refreshing the session outside the page, which races the
 page's own refresh and logs the candidate out. Where Background Sync exists
 (Chrome on Android) the worker wakes an open page when signal returns; Safari
@@ -1053,13 +1056,13 @@ having to know about suspension.
 | Search and `/jobs` | Gone at once |
 | Public page | A civil "paused" notice instead of a 404, so someone arriving from an old alert understands |
 | Bookings | Kept as they are; candidates can release them |
-| Telling people | Everyone booked gets a `drive_suspended` Telegram alert and a notice on My drives: paused while Walkins checks it, they haven't done anything wrong, don't travel for now, and holding it won't count against them |
+| Telling people | Everyone booked who hasn't checked in gets a `drive_suspended` Telegram alert and a notice on My drives: paused while Walkins checks it, they haven't done anything wrong, don't travel for now, and holding it won't count against them |
 | Queued alerts | Each alert checks the drive is still in the status it was written for, so a stale reminder is skipped |
 | Check-in | Refused with the same civil wording; no code is issued |
 | The desk | Read-only: nothing can be confirmed, marked present or moved on |
 | Charges | Check-ins made before the suspension stay charged. Flagged ones can't be confirmed, so they're never charged |
 | No-shows and reliability | Never marked against anyone on a suspended drive |
-| Lifting it | If the drive hasn't ended, it goes back to the status it had and everyone booked gets a `drive_reinstated` alert. If it ended while suspended, it stays SUSPENDED for good, as the record of what happened |
+| Lifting it | If the drive hasn't ended, it goes back to the status it had and everyone booked who hasn't checked in gets a `drive_reinstated` alert. If it ended while suspended, it stays SUSPENDED for good, as the record of what happened |
 
 **Suspending a company:**
 - sets `Company.suspendedAt` and suspends every drive it has live or in
@@ -1101,8 +1104,11 @@ cancelled drives goes back to having no score.
 query.
 
 Cancelling a live drive also used to tell nobody who had booked it. It now
-sends each of them a `drive_cancelled` alert: don't travel, and this won't
-count against you. A drive can no longer be cancelled once it has ended, or
+sends each of them who hasn't checked in a `drive_cancelled` alert: don't
+travel, and this won't count against you. Someone already checked in is
+at the venue, and hears it from the desk. The cancel, suspend, lift and
+reschedule notices all go through `alertBooked` and its `BOOKED` filter,
+and their wording says "who hasn't checked in" to match. A drive can no longer be cancelled once it has ended, or
 while it's suspended.
 
 #### Known gaps
@@ -1155,7 +1161,13 @@ be at the venue, so the start is fixed and only the end can move:
 
 People already checked in, their charges and the desk are untouched.
 
-**Everyone booked is told** with a `drive_rescheduled` Telegram alert.
+**Everyone booked who hasn't checked in is told** with a
+`drive_rescheduled` Telegram alert. Someone already checked in is at the
+venue, where only the end can still move and the desk can tell them in
+person; a notice offering to release a seat they are sitting in would be
+wrong. The confirmation the employer sees counts the same people
+(`confirmedCount` on the drive, from the filter `alertBooked` uses), so it
+never promises a notice to someone who won't get one.
 - It gives the old and new times and their slot.
 - It says they can release their seat without it counting against them.
   That was already true: a WITHDRAWN booking never counts in reliability,
@@ -1165,12 +1177,26 @@ People already checked in, their charges and the desk are untouched.
   time nobody announced to them.
 
 **History.** Every reschedule is a `drive_reschedules` row and an audit
-entry, and the drive's page lists them with who made each change.
+entry, and the drive's page lists them with who made each change. Each
+entry gives the dates themselves: "today" and "tomorrow" are relative to
+the reader, and a move made two days ago to "Tomorrow" would read as a date
+still to come.
 
 **The edit form no longer changes times.** Editing a draft's or pending
 drive's time through the form used to leave its slots at the old times, a
 bug from before this phase. The form's time fields now point to
 Reschedule, and the API refuses a time change through edit.
+
+#### Known gaps
+
+- **The confirmation comes before the server checks the move.** The
+  employer agrees that people will be told, and only then may the server
+  refuse the move (someone would be stranded, or the time is in the past).
+  Nothing changes on a refusal, so it costs a click, not a wrong move.
+- **The time fields show the browser's clock format.** A
+  `datetime-local` input is drawn by the browser in its own locale, so it
+  can show "03:30 PM" while the rest of Walkins uses the 24-hour clock. A
+  page can't set the format of a native input.
 
 #### Everything that keys off a drive's time
 
@@ -1702,6 +1728,15 @@ What the check does **not** cover on the server:
   verification provider's verdict and the reasons for rejecting a company
   became codes in Phase 10, and a check-in's flags in Phase 13 (below), so
   they are worded from the catalog.
+- **Log lines, job outcomes and embedding input.** These are for operators
+  and the model, not people, and stay in English on purpose.
+
+There are three escape hatches, each visible in review:
+- `/design` is exempt as a whole. It is the design system's specimen page,
+  and its text is sample content, not product.
+- `data-i18n-ignore` on a JSX element exempts its subtree, for content that
+  is data.
+- An `i18n-ignore` comment on a line exempts that line, and should say why.
 
 Why a check-in was held for the employer is stored as codes in
 `check_ins.flags`, never as wording:
@@ -1717,6 +1752,11 @@ candidate's check-in result and the employer's arrivals desk, and it is
 keyed by every code, so a new code doesn't compile without wording. The
 audit entry for confirming a flag records the codes too.
 
+Each flag is a sentence of its own, shown on its own line: never joined to
+another flag or built into a longer sentence, so a translation is one
+complete sentence per flag. The desk shows them under the time line
+("Scanned at 15:25"), so no flag starts with "Scanned".
+
 Until Phase 13 this was an English sentence in `flagReason`, several flags
 joined by "; ". The migration (`20261031100000_check_in_flags`) converted
 each sentence to its codes. The accuracy and distance in the text were the
@@ -1725,15 +1765,12 @@ whole minutes, so it became minutes × 60, which words the same again. It
 converted the audit log's copies the same way. It refuses to run, before
 changing anything, if any sentence isn't one of the two shapes the
 check-in service wrote.
-- **Log lines, job outcomes and embedding input.** These are for operators
-  and the model, not people, and stay in English on purpose.
 
-There are three escape hatches, each visible in review:
-- `/design` is exempt as a whole. It is the design system's specimen page,
-  and its text is sample content, not product.
-- `data-i18n-ignore` on a JSX element exempts its subtree, for content that
-  is data.
-- An `i18n-ignore` comment on a line exempts that line, and should say why.
+A count before a noun always goes through a plural (`{count, plural, one
+{# seat} other {# seats}}`), even where the number is never 1 in practice,
+so every count has the same shape for a translator. "All 1 seats taken"
+came from a bare `{capacity} seats`. A test in `apps/web/test/i18n.test.ts`
+fails on a bare count before seat, slot, candidate, person or yr.
 
 ### Hindi: register and glossary
 
@@ -1960,6 +1997,13 @@ These were found while building the scaffolding and are not fixed yet.
 - **Stored English.** Decline reasons from the payment gateway are stored as
   the gateway sends them, and admins' notes on decisions and warnings are
   their own words.
+- **The plural guard reads English only.** The test that fails on a bare
+  count before a noun (see "Languages") matches English words: seat, slot,
+  candidate, person, yr. It never looks at Hindi. A Hindi string that drops
+  the plural English has is still caught, by the check that each argument
+  keeps its kind. What nothing catches is the wording inside the plural: a
+  translation with the same noun form in both cases, or one written for a
+  count English leaves bare, reads wrong for one number and passes.
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override
@@ -2177,6 +2221,21 @@ test's own rows, or give it fake storage. Unscoped, it acts on everything in
 the database. Before tests had their own database, a test that ran the real
 voice purge unscoped deleted the rows for two real recordings, which left
 their audio in storage with nothing tracking it.
+
+The same goes for lookups. A `findFirst` that matches on kind alone ("any
+message report filed by the system") can return another file's row, and
+which one depends on timing. Scope it to the fixture's own drive, company
+or ids. Code that reads a whole table on purpose, like the moderation
+queue, must also survive other files deleting rows while it reads: the
+queue reads its reports and their reporters' history in one snapshot for
+that reason.
+
+**Known debt: test files are outside the typecheck.** The API and worker
+`tsconfig.json` include only `src`, and vitest strips types without checking
+them, so a type error in a test file fails nothing. That is how
+`apps/api/test/errors.test.ts` and `apps/worker/test/charging.test.ts` have
+carried type errors unnoticed. Check a test file by hand with a tsconfig that
+also includes `test`.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 

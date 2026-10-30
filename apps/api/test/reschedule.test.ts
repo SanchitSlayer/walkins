@@ -2,7 +2,7 @@ import type { HttpException } from "@nestjs/common";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@walkins/db";
 import { ApplicationsService } from "../src/applications/applications.service";
-import type { JobsService } from "../src/common/jobs.service";
+import { JobsService } from "../src/common/jobs.service";
 import { DrivesService } from "../src/drives/drives.service";
 import type { GeocodingService } from "../src/drives/geocoding.service";
 import type { LiveGateway } from "../src/live/live.gateway";
@@ -83,6 +83,26 @@ describe("rescheduling a drive that hasn't started", () => {
     expect(moved.reschedules[0]).toMatchObject({ fromStartsAt: drive.startsAt.toISOString(), toStartsAt: to.toISOString(), by: { userId: fixture.employer.id } });
     expect((await prisma.drive.findUniqueOrThrow({ where: { id: drive.id } })).scheduleVersion).toBe(1);
     expect(jobs.alertBooked).toHaveBeenCalledWith(drive.id, "drive_rescheduled", 1);
+  });
+
+  it("promises the notice to exactly the people the notice goes to", async () => {
+    const drive = await tomorrowsDrive();
+    const [first, second, arrived] = [nextCandidate(), nextCandidate(), nextCandidate()];
+    await applications.apply(first.userId, drive.id, drive.slots[0].id, {});
+    await applications.apply(second.userId, drive.id, drive.slots[1].id, {});
+    const checkedIn = await applications.apply(arrived.userId, drive.id, drive.slots[1].id, {});
+    await prisma.application.update({ where: { id: checkedIn.id }, data: { state: "CHECKED_IN" } });
+    // The real alertBooked, with its queue swapped for one that records.
+    const queue = { addBulk: vi.fn(async (added: unknown[]) => added) };
+    const realJobs = Object.create(JobsService.prototype) as JobsService;
+    Object.assign(realJobs, { alerts: queue });
+
+    const detail = await drives.findOne(fixture.employer.id, drive.id);
+    await realJobs.alertBooked(drive.id, "drive_rescheduled", 1);
+
+    expect(detail.slots.reduce((sum, s) => sum + s.bookedCount, 0)).toBe(3);
+    expect(detail.confirmedCount).toBe(2);
+    expect(queue.addBulk.mock.calls[0][0]).toHaveLength(detail.confirmedCount);
   });
 
   it("gives a longer window new slots with the same seats", async () => {

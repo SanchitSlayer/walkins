@@ -21,7 +21,7 @@ import {
   INTL_LOCALE,
   type RescheduleDriveInput,
 } from "@walkins/shared";
-import { JobsService } from "../common/jobs.service";
+import { BOOKED, JobsService } from "../common/jobs.service";
 import { GeocodingService } from "./geocoding.service";
 import { apiError } from "../common/api-error";
 import { PERSON_SELECT, personRef, requireCompanyAccess, requireNotSuspended } from "../common/require-company";
@@ -113,6 +113,7 @@ const DRIVE_DETAIL_INCLUDE = {
   city: { select: { name: true, centerLat: true, centerLng: true } },
   owner: { select: PERSON_SELECT },
   reschedules: { include: { by: { select: PERSON_SELECT } }, orderBy: { version: "desc" } },
+  _count: { select: { applications: { where: BOOKED } } },
 } as const;
 
 type DriveWithDetail = Prisma.DriveGetPayload<{ include: typeof DRIVE_DETAIL_INCLUDE }>;
@@ -121,9 +122,10 @@ function withOwner<T extends Pick<DriveWithDetail, "companyId" | "owner">>(drive
   return { ...drive, owner: personRef(drive.owner, drive.companyId) };
 }
 
-function toDetail(drive: DriveWithDetail) {
+function toDetail({ _count, ...drive }: DriveWithDetail) {
   return {
     ...withOwner(drive),
+    confirmedCount: _count.applications,
     reschedules: drive.reschedules.map((r) => ({
       fromStartsAt: r.fromStartsAt.toISOString(),
       fromEndsAt: r.fromEndsAt.toISOString(),

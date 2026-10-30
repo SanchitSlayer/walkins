@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import {
   catalogLeaves,
+  formatFor,
   hindiGaps,
   LOCALE_COOKIE,
   LOCALE_HEADER,
@@ -303,6 +304,38 @@ describe("internationalisation", () => {
       (key) => !SERVER_NAMESPACES.has(key.split(".")[0]) && !exact.has(key) && ![...prefixes].some((p) => p === "" || key.startsWith(`${p}.`)),
     );
     expect(unused).toEqual([]);
+  });
+});
+
+describe("wording around numbers", () => {
+  const en = formatFor("en");
+
+  it("counts one seat in the singular", () => {
+    expect(en.formatSeats(1, 1)).toBe("The only seat is taken");
+    expect(en.formatSeats(5, 5)).toBe("All 5 seats taken");
+    expect(en.formatSeats(1, 0)).toBe("1 of 1 seat left");
+    expect(en.formatSeats(5, 2)).toBe("3 of 5 seats left");
+  });
+
+  // "All 1 seats taken" came from a bare {count} before a plural noun; every
+  // count of these goes through {count, plural, ...} instead.
+  it("puts every counted seat, slot, candidate or person through a plural", () => {
+    const bare = catalogLeaves("en").filter(([, text]) => /\{\w+\} (seats?|slots?|candidates?|people|person|yrs?)\b/.test(text));
+    expect(bare.map(([key]) => key)).toEqual([]);
+  });
+
+  it("dates a past reschedule by its date, not relative to today", () => {
+    const now = new Date("2026-10-30T06:00:00Z");
+    expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("Tomorrow");
+    expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z")).toEqual({ day: "Sat 31 Oct", time: "15:30–19:30" });
+  });
+
+  it("words each check-in flag as a line of its own", () => {
+    const lines = en.formatFlags({ flags: ["LOW_GPS_ACCURACY", "SYNCED_AFTER_EXPIRY"], accuracyMeters: 450, distanceMeters: 1234, lateBySeconds: 420 });
+    expect(lines).toEqual(["Location only accurate to ±450 m, 1.2 km from the venue", "Saved offline and sent 7 minutes after the code expired"]);
+    expect(en.formatFlags({ flags: ["SYNCED_AFTER_EXPIRY"], accuracyMeters: null, distanceMeters: null, lateBySeconds: 30 })).toEqual([
+      "Saved offline and sent less than a minute after the code expired",
+    ]);
   });
 });
 

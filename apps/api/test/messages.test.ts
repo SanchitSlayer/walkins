@@ -25,6 +25,12 @@ function code(err: unknown): string | undefined {
 const refusedWith = (expected: string) => (err: unknown) => code(err) === expected;
 
 // A candidate with a booking, and the application their thread hangs off.
+// Message reports on this file's own drive. Other files report messages in
+// the same database at the same time, so an unscoped lookup can pick theirs.
+function flaggedHere() {
+  return { targetType: "MESSAGE" as const, message: { thread: { application: { driveId: fixture.drive.id } } } };
+}
+
 async function booked() {
   const person = fixture.candidates[candidate++];
   const application = await applications.apply(person.userId, fixture.drive.id, fixture.roomySlot.id, {});
@@ -209,14 +215,14 @@ describe("reporting and moderation", () => {
     const quietThread = await prisma.messageThread.findUniqueOrThrow({ where: { applicationId: quiet.applicationId } });
     await expect(messages.adminThread(fixture.employer.id, quietThread.id)).rejects.toSatisfy(refusedWith("errors.messages.notReported"));
 
-    const reported = await prisma.report.findFirstOrThrow({ where: { targetType: "MESSAGE", reporterUserId: null } });
+    const reported = await prisma.report.findFirstOrThrow({ where: { ...flaggedHere(), reporterUserId: null } });
     const message = await prisma.message.findUniqueOrThrow({ where: { id: reported.messageId! } });
     await messages.adminThread(fixture.employer.id, message.threadId);
     expect(await prisma.auditLog.count({ where: { entityId: message.threadId, action: "viewed_by_admin" } })).toBe(1);
   });
 
   it("warns the company when what was reported in a thread was the company's", async () => {
-    const reported = await prisma.report.findFirstOrThrow({ where: { targetType: "MESSAGE", reporterUserId: null, resolvedAt: null } });
+    const reported = await prisma.report.findFirstOrThrow({ where: { ...flaggedHere(), reporterUserId: null, resolvedAt: null } });
     const { threadId } = await prisma.message.findUniqueOrThrow({ where: { id: reported.messageId! } });
     await moderation.act(fixture.employer.id, { kind: "WARN", targetType: "THREAD", targetId: threadId });
     expect(await prisma.warning.findFirst({ where: { companyId: fixture.company.id, reason: "ASKS_FOR_MONEY" } })).not.toBeNull();

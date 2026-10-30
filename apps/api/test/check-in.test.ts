@@ -176,7 +176,7 @@ describe("the geofence", () => {
     if (result.outcome !== "checked_in") return;
     expect(result.checkIn.isValid).toBe(false);
     expect(result.checkIn).toMatchObject({ flags: ["LOW_GPS_ACCURACY"], accuracyMeters: 450 });
-    expect(formatFor("en").formatFlags(result.checkIn)).toBe("Location only accurate to ±450 m, 1.1 km from the venue");
+    expect(formatFor("en").formatFlags(result.checkIn)).toEqual(["Location only accurate to ±450 m, 1.1 km from the venue"]);
   });
 });
 
@@ -256,7 +256,7 @@ describe("check-in codes", () => {
     if (result.outcome !== "checked_in") return;
     expect(result.checkIn.isValid).toBe(false);
     expect(result.checkIn.flags).toEqual(["SYNCED_AFTER_EXPIRY"]);
-    expect(formatFor("en").formatFlags(result.checkIn)).toBe("Scanned offline, sent 5 min after the code expired");
+    expect(formatFor("en").formatFlags(result.checkIn)).toEqual(["Saved offline and sent 5 minutes after the code expired"]);
     expect(result.checkIn.capturedAt).not.toBeNull();
   });
 });
@@ -316,6 +316,7 @@ describe("the employer's side", () => {
     // none; walk-ins are counted apart.
     expect(desk.counts).toMatchObject({ checkedIn: 8, walkIns: 2, hired: 0 });
     expect(desk.arrivals.some((a) => a.flags.length > 0)).toBe(true);
+    expect(desk.arrivals.some((a) => a.capturedAt !== null)).toBe(true);
   });
 
   it("gives the public board short names and nothing the desk alone should see", async () => {
@@ -337,7 +338,7 @@ describe("the employer's side", () => {
       const user = await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, include: { user: true } });
       expect(serialised).not.toContain(user.user.name);
     }
-    expect(serialised).not.toMatch(/"flags"|lateBySeconds|accuracyMeters|distanceMeters|applicationId/);
+    expect(serialised).not.toMatch(/"flags"|lateBySeconds|accuracyMeters|distanceMeters|capturedAt|applicationId/);
     // Fixture names are "Check-in Test Candidate 7", so the short form is "Check-in 7.".
     expect(board.arrivals[0].displayName).toMatch(/^Check-in \w+\.$/);
   });

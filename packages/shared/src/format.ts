@@ -24,13 +24,16 @@ export type Format = {
   // Always the date itself, never "Today": for text that outlives the
   // moment it was made, like a page's description in search results.
   formatDate(date: Date): string;
-  formatWhen(startsAt: string, endsAt: string, now: Date): { day: string; time: string };
+  // Without now, the date itself rather than "Today": for a record of
+  // something past, which would otherwise read as relative to the reader.
+  formatWhen(startsAt: string, endsAt: string, now?: Date): { day: string; time: string };
   formatSalary(min: number, max: number): string;
   formatPaise(paise: number): string;
   formatExperience(min: number, max: number): string;
   formatDistance(km: number): string;
   formatSeats(capacity: number, booked: number): string;
-  formatFlags(checkIn: Pick<CheckIn, "flags" | "accuracyMeters" | "distanceMeters" | "lateBySeconds">): string;
+  // One line per flag, each a sentence of its own.
+  formatFlags(checkIn: Pick<CheckIn, "flags" | "accuracyMeters" | "distanceMeters" | "lateBySeconds">): string[];
   formatNumber(n: number): string;
   languageName(code: string): string;
   scriptName(code: string): string;
@@ -77,7 +80,7 @@ function createFormat(locale: Locale): Format {
     dayLabel,
     formatDate,
     formatWhen: (startsAt, endsAt, now) => ({
-      day: dayLabel(new Date(startsAt), now),
+      day: now ? dayLabel(new Date(startsAt), now) : formatDate(new Date(startsAt)),
       time: translate(locale, "format.range", { from: formatTime(startsAt), to: formatTime(endsAt) }),
     }),
     formatSalary: (min, max) =>
@@ -112,7 +115,7 @@ function createFormat(locale: Locale): Format {
         SYNCED_AFTER_EXPIRY: () =>
           translate(locale, "format.checkInFlags.SYNCED_AFTER_EXPIRY", { minutes: Math.floor(checkIn.lateBySeconds! / 60) }),
       };
-      return checkIn.flags.map((flag) => wording[flag]()).join("; ");
+      return checkIn.flags.map((flag) => wording[flag]());
     },
     formatNumber: (n) => number.format(n),
     languageName: (code) => languages.of(code) ?? code,
