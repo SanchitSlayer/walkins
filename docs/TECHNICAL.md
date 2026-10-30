@@ -1655,6 +1655,27 @@ yrs") come from the catalog. Language and script names come from
 words its refusals in English for any client that isn't the web app; the
 web app words them itself, from their codes, in the page's language.
 
+**The venue's screens show both languages.** The check-in screen and the
+arrivals board are served from `/employer/drives/[id]/...`, English-only
+addresses, but they face a queue, and nobody in it chose a language. Once
+Hindi is offered, each shows it alongside English (`apps/web/lib/venue-hindi.ts`),
+in the way that suits what is on it:
+- The check-in screen stacks Hindi above each line a candidate reads. These
+  are instructions read in full and acted on, so neither language can make
+  anyone wait. The lines only the staff act on stay in English.
+- The arrivals board alternates, every 8 seconds. Its words are labels
+  around names, times and counts that don't change with the language, so a
+  reader waits for a label at most, never for their own row. Stacking would
+  double every label on the wall, and can't fit inside a flap row: the
+  "Walk-in" flap would have had to alternate anyway. Indian station boards
+  cycle their languages the same way. The title stays as the employer
+  typed it, since alternating would move the role and company around the
+  headline. "वॉक-इन" measures five cells and fits the slot column's seven.
+
+The drive card keeps its day on one line at 375 px in both languages; the
+longest, "आज (शुक्रवार, 30 अक्टूबर) · 22:46–03:46", ends 36 px short of the
+card's edge.
+
 **Alerts and the bot speak the candidate's language.** The worker reads
 `users.locale` when it sends, not when the alert was queued, and builds
 every link for that language: a Hindi reader's Telegram link opens the
@@ -1847,13 +1868,19 @@ argument the English string doesn't have. Phrase around it instead:
 - **Digits stay Latin (0–9),** as the formatter gives them for `hi-IN`.
   Times are on the 24-hour clock (14:30), as in English.
 - **Units stay Latin:** km and m. The formatter's कि॰मी॰ is overridden.
-- **Dates use the long weekday and month** (शुक्रवार, 30 अक्तूबर), never
-  the formatter's abbreviations (शुक्र, अक्तू॰). Month and day names are
+- **Lists join without a comma before और:** "A, B और C". CLDR's
+  "A, B, और C" is overridden, as the units are.
+- **Dates use the long weekday and month** (शुक्रवार, 30 अक्टूबर), never
+  the formatter's abbreviations (शुक्र, अक्टू॰). Month and day names are
   never written into the catalog: they come from the formatter, so their
-  spelling stays consistent.
+  spelling stays consistent. Where runtimes disagree, the formatter pins
+  one spelling (`MONTH_SPELLING` in `packages/shared/src/format.ts`): Node
+  20 writes अक्तूबर and current Chrome अक्टूबर, which broke hydration on
+  every Hindi page showing an October date. अक्टूबर is kept, as the
+  everyday spelling.
 - **Today and tomorrow always come with their date, in both languages:**
-  "Today, Fri 30 Oct", "Tomorrow, Sat 31 Oct", "आज (शुक्रवार, 30 अक्तूबर)",
-  "कल (शनिवार, 31 अक्तूबर)". A page kept offline is read on a later day,
+  "Today, Fri 30 Oct", "Tomorrow, Sat 31 Oct", "आज (शुक्रवार, 30 अक्टूबर)",
+  "कल (शनिवार, 31 अक्टूबर)". A page kept offline is read on a later day,
   when a bare "Today" or "Tomorrow" is wrong, and कल means both yesterday
   and tomorrow.
 - **Hindi's "one" plural form covers 0 as well as 1.** A count that can be
@@ -2103,19 +2130,6 @@ These were found while building the scaffolding and are not fixed yet.
     for both.
 
   When a key is used somewhere new, check whose words it is in.
-
-To do with the board (the last Hindi group):
-- **The live board is English only.** It is served from
-  `/employer/drives/[id]/live`, an English-only address, so its Hindi is
-  never shown. Decided: it becomes bilingual, since a screen facing a queue
-  can't know who reads it, as the check-in screen already is (Hindi stacked
-  above each line a candidate reads, once Hindi is offered). For the board,
-  alternating (each language held a few seconds, flapping between them, as
-  departure boards do) is to be weighed against stacking with the board in
-  front of us.
-- **The drive card at phone width.** It keeps the day on one line, now
-  "Tomorrow, Sat 31 Oct". If that doesn't fit, shorten the English form;
-  don't change the layout.
 
 ## Prerequisites
 

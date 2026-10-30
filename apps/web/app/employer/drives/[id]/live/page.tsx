@@ -3,19 +3,25 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { LiveDisplay } from "@walkins/shared";
+import { formatFor, type LiveDisplay } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { useLiveFeed } from "@/lib/use-live-feed";
 import { cn } from "@/lib/utils";
 import { BoardButton } from "@/components/board/field";
 import { FlapDisplay, graphemes } from "@/components/board/flap-display";
-import { useTranslations } from "next-intl";
-import { useFormat } from "@/lib/format";
+import { useLocale, useTranslations } from "next-intl";
+import { venueHindi } from "@/lib/venue-hindi";
 
 const ROWS = 12;
 const NAME_CELLS = 16;
 
 const COUNTS: (keyof LiveDisplay["counts"])[] = ["alerted", "confirmed", "checkedIn", "walkIns", "hired"];
+
+// How long the board holds each language. Its words are labels around
+// names, times and counts that don't change with the language, so a reader
+// waits for a label at most, never for their own row. Indian station boards
+// cycle their languages the same way.
+const LANGUAGE_MS = 8_000;
 
 // Counts characters as a reader sees them, so a name is never cut between a
 // Devanagari letter and its vowel sign.
@@ -32,8 +38,13 @@ function fit(text: string, length: number) {
 // arrives every row takes the one above it, so each cell flips to its new
 // value and the newest arrival lands at the top.
 export default function ArrivalsBoardPage() {
-  const t = useTranslations("liveBoard");
-  const { formatTime, formatWhen } = useFormat();
+  const pageT = useTranslations("liveBoard");
+  const pageLocale = useLocale();
+  const [inHindi, setInHindi] = useState(false);
+  const locale = inHindi ? "hi" : pageLocale;
+  const t = (key: Parameters<typeof pageT>[0], values?: Record<string, string>) =>
+    inHindi && venueHindi ? venueHindi(`liveBoard.${key}` as never, values as never) : pageT(key, values as never);
+  const { formatTime, formatWhen } = formatFor(locale);
   const { id } = useParams<{ id: string }>();
   const { data: board, connected } = useLiveFeed(id, "board", () => apiClient.getLiveDisplay(id));
   const [clock, setClock] = useState<Date | null>(null);
@@ -42,10 +53,12 @@ export default function ArrivalsBoardPage() {
   useEffect(() => {
     setClock(new Date());
     const tick = setInterval(() => setClock(new Date()), 5_000);
+    const swap = venueHindi && setInterval(() => setInHindi((current) => !current), LANGUAGE_MS);
     const onChange = () => setFullscreen(document.fullscreenElement !== null);
     document.addEventListener("fullscreenchange", onChange);
     return () => {
       clearInterval(tick);
+      if (swap) clearInterval(swap);
       document.removeEventListener("fullscreenchange", onChange);
     };
   }, []);
@@ -58,12 +71,12 @@ export default function ArrivalsBoardPage() {
   const rows = Array.from({ length: ROWS }, (_, index) => board.arrivals[index] ?? null);
 
   return (
-    <div className="grid gap-8 bg-housing pb-8 text-stock">
+    <div lang={locale} className="grid gap-8 bg-housing pb-8 text-stock">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-housing-line pb-6">
         <div className="grid gap-1">
           <p className="type-board-md text-housing-muted">{t("arrivals")}</p>
-          <h1 className="type-display">
-            {t.rich("title", {
+          <h1 lang={pageLocale} className="type-display">
+            {pageT.rich("title", {
               role: board.roleTitle,
               company: board.companyName,
               quiet: (chunks) => <span className="text-housing-muted">{chunks}</span>,

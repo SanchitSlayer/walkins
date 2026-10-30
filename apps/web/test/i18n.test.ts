@@ -338,8 +338,8 @@ describe("wording around numbers", () => {
   // well as tomorrow, so today and tomorrow always come with their date.
   it("names today and tomorrow with their date", () => {
     const now = new Date("2026-10-30T06:00:00Z");
-    expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("कल (शनिवार, 31 अक्तूबर)");
-    expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज (शुक्रवार, 30 अक्तूबर)");
+    expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("कल (शनिवार, 31 अक्टूबर)");
+    expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज (शुक्रवार, 30 अक्टूबर)");
     expect(en.formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("Today, Fri 30 Oct");
   });
 
@@ -365,7 +365,7 @@ describe("Hindi", () => {
     const say = (locale: Locale) => (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
     const values = { fields: ["fields.homeLat", "fields.roleIds", "fields.maxTravelKm"], field: "fields.phone", prompt: "fields.phone?" } as const;
     expect(wordFields({ ...values, fields: [...values.fields] }, say("hi"), "hi")).toEqual({
-      fields: "घर की लोकेशन, काम, और आने-जाने की दूरी",
+      fields: "घर की लोकेशन, काम और आने-जाने की दूरी",
       field: "मोबाइल नंबर",
       prompt: "fields.phone?",
     });
@@ -414,6 +414,8 @@ describe("Hindi", () => {
     "profile.travelSpoken": "किलोमीटर doesn't change for number",
     "errors.validation.tooShort": "अक्षर doesn't change for number",
     "errors.validation.tooLong": "अक्षर doesn't change for number",
+    "board.countdown.daysSpoken": "दिन and मिनट don't change for number",
+    "board.countdown.hoursSpoken": "मिनट doesn't change for number",
   };
 
   it("has a plural wherever English does, with English's cases, saying different things", () => {

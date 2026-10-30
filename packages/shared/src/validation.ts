@@ -60,15 +60,16 @@ export function issueText(issue: ZodIssue, t: Translator): string {
 // A refusal names its fields by key ("fields.homeLat"), never in words, so
 // the reader's side words them: the web app in the page's language, the API
 // in English for any other client. A list of fields is joined the way the
-// language joins one. Only fields. keys are worded: other values can be an
-// employer's own text.
+// language joins one, except that Hindi drops the comma CLDR puts before और
+// ("A, B, और C"), as everyday writing does. Only fields. keys are worded:
+// other values can be an employer's own text.
 export type ErrorValues = Record<string, string | number | Date | MessageKey[]>;
 
 export function wordFields(values: ErrorValues, t: Translator, locale: Locale): MessageValues {
   const list = new Intl.ListFormat(INTL_LOCALE[locale], { type: "conjunction" });
   return Object.fromEntries(
     Object.entries(values).map(([name, value]) => {
-      if (Array.isArray(value)) return [name, list.format(value.map((key) => t(key)))];
+      if (Array.isArray(value)) return [name, list.format(value.map((key) => t(key))).replace(", और ", " और ")];
       return [name, typeof value === "string" && value.startsWith("fields.") && isMessageKey(value) ? t(value) : value];
     }),
   );

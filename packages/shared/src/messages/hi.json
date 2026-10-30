@@ -159,8 +159,27 @@
   },
   "board": {
     "state": {
+      "live": "लाइव",
+      "filling": "भर रही है",
+      "closing": "आज बंद",
+      "expired": "खत्म",
       "cancelled": "रद्द",
       "suspended": "रोकी गई"
+    },
+    "slots": {
+      "open": "खाली {perToken, plural, =1 {सीट} other {(हर स्लॉट में # सीटें)}}",
+      "booked": "बुक है",
+      "underWay": "चल रहा है या खत्म",
+      "selected": " · चुना गया",
+      "showFewer": "कम स्लॉट दिखाएँ",
+      "showAll": "{count, plural, one {# स्लॉट दिखाएँ} other {सभी # स्लॉट दिखाएँ}}"
+    },
+    "countdown": {
+      "closesIn": "बंद होने में",
+      "startsIn": "शुरू होने में",
+      "daysFlap": "{days} दिन {clock}",
+      "daysSpoken": "{days, plural, one {# दिन} other {# दिन}}, {hours, plural, one {# घंटा} other {# घंटे}} और {minutes, plural, one {# मिनट} other {# मिनट}}",
+      "hoursSpoken": "{hours, plural, one {# घंटा} other {# घंटे}} और {minutes, plural, one {# मिनट} other {# मिनट}}"
     }
   },
   "nav": {
@@ -452,6 +471,31 @@
     "stale": "नया कोड नहीं मिल पाया ({problem})। पिछला कोड ही दिख रहा है; फिर से कोशिश जारी है।",
     "candidatesHeading": "वॉक-इन इंटरव्यू के लिए: यहाँ चेक-इन करें",
     "candidatesBody": "फ़ोन का कैमरा QR कोड की तरफ़ करें और लिंक खोलें। अगर कैमरा कोड न पढ़ पाए, तो <strong>{address}</strong> खोलें और नीचे लिखा कोड टाइप करें। आप यहीं हैं, यह पक्का करने के लिए आपकी लोकेशन एक बार देखी जाती है।"
+  },
+  "liveBoard": {
+    "loading": "आगमन बोर्ड लोड हो रहा है…",
+    "arrivals": "आगमन",
+    "title": "{company} <quiet>में</quiet> {role}",
+    "where": "{venue} · {day}, {time}",
+    "live": "लाइव",
+    "reconnecting": "फिर से जुड़ रहा है",
+    "counts": "गिनती",
+    "count": {
+      "alerted": "मैसेज गया",
+      "confirmed": "बुक",
+      "checkedIn": "हाज़िर",
+      "walkIns": "वॉक-इन",
+      "hired": "सिलेक्शन"
+    },
+    "latest": "ताज़ा आगमन",
+    "arrived": "समय",
+    "name": "नाम",
+    "slot": "स्लॉट",
+    "walkIn": "वॉक-इन",
+    "none": "अभी तक कोई आगमन नहीं।",
+    "fullScreen": "फ़ुल स्क्रीन में दिखाएँ",
+    "back": "ड्राइव पर वापस जाएँ",
+    "unnamed": "हाज़िर"
   },
   "bot": {
     "connectFirst": "यहाँ वॉक-इन के मैसेज पाने के लिए Walkins पर अपनी प्रोफ़ाइल खोलें और “Telegram जोड़ें” (Connect Telegram) चुनें।",

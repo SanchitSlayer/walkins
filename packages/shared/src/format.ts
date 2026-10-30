@@ -39,12 +39,18 @@ export type Format = {
   scriptName(code: string): string;
 };
 
+// Runtimes carry different CLDR data: Node 20 spells October अक्तूबर and
+// current Chrome अक्टूबर, so a date rendered on the server failed hydration
+// in the browser. Each month spelling that differs is pinned here, to the
+// everyday one.
+const MONTH_SPELLING: Partial<Record<Locale, Record<string, string>>> = { hi: { अक्तूबर: "अक्टूबर" } };
+
 // Numbers, dates and currency come from Intl for the locale; the few words
 // around them come from the message catalog, so a new locale changes both
 // through the same files the rest of the interface uses.
 function createFormat(locale: Locale): Format {
   const tag = INTL_LOCALE[locale];
-  // Hindi's short forms (शुक्र, अक्तू॰) are abbreviations nobody writes, and
+  // Hindi's short forms (शुक्र, अक्टू॰) are abbreviations nobody writes, and
   // its units (कि॰मी॰) aren't what a jobseeker reads on a sign; the glossary
   // in docs/TECHNICAL.md has both rules.
   const short = locale === "hi" ? "long" : "short";
@@ -66,7 +72,8 @@ function createFormat(locale: Locale): Format {
 
   const formatDate = (date: Date) => {
     const parts = Object.fromEntries(dayParts.formatToParts(date).map((p) => [p.type, p.value]));
-    return translate(locale, "format.dayDate", { weekday: parts.weekday, day: parts.day, month: parts.month });
+    const month = MONTH_SPELLING[locale]?.[parts.month] ?? parts.month;
+    return translate(locale, "format.dayDate", { weekday: parts.weekday, day: parts.day, month });
   };
 
   const dayLabel = (date: Date, now: Date) => {

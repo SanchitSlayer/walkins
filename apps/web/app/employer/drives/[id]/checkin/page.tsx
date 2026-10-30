@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { type DriveDetail, formatCheckInCode, isTranslated, MESSAGES, type MessageKey, OFFERED_LOCALES } from "@walkins/shared";
+import { type DriveDetail, formatCheckInCode, isTranslated, type MessageKey } from "@walkins/shared";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
 import { VenueOutsideCityNotice } from "../../venue-notice";
-import { createTranslator, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
+import { venueHindi as hindi } from "@/lib/venue-hindi";
 
 const RETRY_MS = 5_000;
 
@@ -18,10 +19,9 @@ const strong = (chunks: ReactNode) => <span className="type-board-md text-stock"
 
 type Code = { image: string; text: string; expiresAt: number; nextAt: number };
 
-// The screen faces a queue, and nobody in it chose this page's language, so
-// once Hindi is offered each line a candidate reads has its Hindi above it.
-// What only the staff act on stays in the page's language.
-const hindi = OFFERED_LOCALES.includes("hi") ? createTranslator({ locale: "hi", messages: MESSAGES.hi }) : null;
+// Each line a candidate reads has its Hindi above it: they read these lines
+// in full and act on them, so neither language can make them wait. What
+// only the staff act on stays in the page's language.
 
 function InHindi({ id, values }: { id: MessageKey; values?: Record<string, string | number | ((chunks: ReactNode) => ReactNode)> }) {
   if (!hindi || !isTranslated("hi", id)) return null;
