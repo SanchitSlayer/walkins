@@ -56,7 +56,7 @@ export default function LoginPage() {
     event.preventDefault();
     setError(null);
 
-    const parsed = otpVerifySchema.safeParse({ phone, otp });
+    const parsed = otpVerifySchema.safeParse({ phone, otp, locale: page });
     if (!parsed.success) {
       setError(issueText(parsed.error.issues[0]));
       return;

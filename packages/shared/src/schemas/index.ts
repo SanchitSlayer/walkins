@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type Locale, OFFERED_LOCALES } from "../i18n";
+import { type Locale, LOCALES, OFFERED_LOCALES } from "../i18n";
 import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionSchema } from "../knockout";
 import { personRefSchema } from "../people";
 import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
@@ -30,9 +30,14 @@ export const otpRequestSchema = z.object({
   phone: phoneSchema,
 });
 
+// locale is the language of the page the code was typed on. It is saved only
+// on an account this sign-in creates, and only once offered (servedLocale),
+// so a language that isn't offered yet signs in as English rather than
+// failing the sign-in.
 export const otpVerifySchema = z.object({
   phone: phoneSchema,
   otp: z.string().regex(/^\d{6}$/, "errors.validation.otp"),
+  locale: z.enum(LOCALES).optional(),
 });
 
 // Shared by createDriveSchema and updateDriveSchema. Deliberately excludes

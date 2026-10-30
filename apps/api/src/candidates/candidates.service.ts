@@ -8,8 +8,6 @@ import {
   telegramLinkKey,
   telegramLinkSchema,
   type UpdateCandidateProfileInput,
-  type Locale,
-  type SetLocale,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { redis } from "../common/redis";
@@ -30,13 +28,6 @@ export class CandidatesService {
       return null;
     }
     return this.toProfile(candidate);
-  }
-
-  // Kept apart from the profile: a person chooses their language before
-  // they have a profile to save.
-  async setLocale(userId: string, locale: Locale): Promise<SetLocale> {
-    const user = await prisma.user.update({ where: { id: userId }, data: { locale }, select: { locale: true } });
-    return { locale: user.locale };
   }
 
   async updateMe(userId: string, input: UpdateCandidateProfileInput): Promise<CandidateProfile> {

@@ -49,6 +49,7 @@ flowchart LR
 | Check-in that works even without mobile signal | A live arrivals board for the venue and a show-up funnel in analytics |
 | A "never pay anyone" warning on every conversation | Team roles (owner, recruiter, viewer) and one shared inbox per company |
 | **Their own record** of every drive, showing what was marked and why | Hiring outcomes and retention, always shown with how many they rest on |
+| Everything in **Hindi or English**, chosen once: pages, alerts and the Telegram bot | A check-in screen in both languages, and an arrivals board that alternates between them |
 
 ## Business model: pay per verified show-up
 
@@ -95,7 +96,7 @@ flowchart TB
 | `apps/worker` | Alert fan-out, reminders, charging, transcription and embedding jobs, nightly maintenance, and the Telegram bot. |
 | `services/ml` | Python FastAPI service running Whisper `small` for speech-to-text and a multilingual MiniLM model for 384-dimension embeddings. |
 | `packages/db` | Prisma schema, migrations, geospatial targeting and the ledger. |
-| `packages/shared` | Shared types, zod schemas and the single message catalog, ready for Hindi. |
+| `packages/shared` | Shared types, zod schemas, and the English and Hindi message catalogs. |
 
 ## Engineering highlights
 
@@ -103,13 +104,14 @@ flowchart TB
 - **AI matching across languages.** Candidates and drives are embedded with a multilingual model in pgvector, so a Hindi voice intro can match an English job post. Employers blend match score and distance with a slider.
 - **Honest AI.** Whisper's Hindi error rate was measured on real voices (about 39% on one read script) and the interface was designed around that: every transcript is labelled as automatic, low-confidence text is folded behind the recording, and transcripts in a script the employer's team cannot read are not shown.
 - **Honest numbers.** Analytics read a materialised fact view, never the live tables. Outcome figures carry their coverage ("from 10 of 14"), count "not recorded" apart rather than as left, and appear only once 10 are recorded. Alert attendance reads "attended after an alert", never "because of". Six errors in the original show-up funnel were found and fixed, among them releasing a seat after a reschedule being counted as not turning up.
+- **Hindi that can't ship half-done.** Hindi covers everything a candidate meets, in everyday Hindi and without ever asking the reader's gender. It is offered only while every in-scope string has a translation; a new English string closes it again. The 87 safety strings (never pay, don't travel, whether a check-in was recorded) are a manifest that every in-scope key must be sorted into, and a test fails whenever the English a Hindi string was made from changes. The language picker says plainly that the Hindi was written with AI help and how far a person has checked it.
 - **Exactly-once alerts and charges.** Database claims and unique indexes stop duplicate sends and double charges, even when jobs retry; failed jobs land in a dead-letter view admins can retry safely.
 - **Built for real venues.** Check-in codes are short enough to type when a camera fails, scans made without signal are saved on the phone and sent later, and rescheduling a drive moves every booking with it.
-- **Tested.** About 200 automated tests across the API, worker and web app.
+- **Tested.** About 260 automated tests across the API, worker and web app.
 
 ## Status
 
-A working prototype that runs end to end on one machine with no paid services or API keys. Still to come: company self sign-up, WhatsApp delivery (a stub pending Meta business verification), a Hindi interface, and refunds. The full list is in the [technical reference](docs/TECHNICAL.md).
+A working prototype that runs end to end on one machine with no paid services or API keys. Still to come: company self sign-up, WhatsApp delivery (a stub pending Meta business verification), and refunds. The Hindi interface is complete, but only its glossary has been read by a native speaker so far; the rest, including the safety strings, awaits that reading. The full list is in the [technical reference](docs/TECHNICAL.md).
 
 ## Run it locally
 
@@ -128,4 +130,4 @@ The first start downloads about 590 MB of speech and embedding models. Alerts pr
 
 ## Documentation
 
-The [technical reference](docs/TECHNICAL.md) covers every feature in depth: notification guarantees, check-in rules, the transcription measurements, the ledger, team permissions, rescheduling, messaging, analytics and hiring outcomes, the candidate's record, rate limits, and setup details.
+The [technical reference](docs/TECHNICAL.md) covers every feature in depth: notification guarantees, check-in rules, the transcription measurements, the ledger, team permissions, rescheduling, messaging, analytics and hiring outcomes, the candidate's record, rate limits, languages and the Hindi glossary, and setup details.

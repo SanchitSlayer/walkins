@@ -33,13 +33,13 @@ export function useRouter() {
   );
 }
 
-// Switches the reader to another language: saved first for a signed-in
-// candidate, so the choice outlives this page, then the same page reloaded
-// at its address in that language. A full load rather than a client
+// Switches the reader to another language: saved first for anyone signed in,
+// whatever their role, so the choice outlives this page, then the same page
+// reloaded at its address in that language. A full load rather than a client
 // navigation, because both addresses share the root layout, and the router
 // would keep the old language's <html lang> and catalog.
 export async function readIn(locale: Locale) {
-  if (apiClient.getCurrentRole() === "CANDIDATE") await apiClient.setLocale(locale);
+  if (apiClient.isAuthenticated()) await apiClient.setLocale(locale);
   const { pathname, search, hash } = window.location;
   window.location.assign(`${localePath(splitLocalePath(pathname).path, locale)}${search}${hash}`);
 }

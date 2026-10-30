@@ -1609,6 +1609,24 @@ states), the candidate's keys are listed one by one, so an employer's
 refusal doesn't hold Hindi back. Field names in scope are those of the
 schemas candidate and public endpoints check.
 
+**`/join` is in scope, though it leads into the console.** An invitation is
+read by a candidate account before it joins, sometimes one with seats still
+booked, and carriers reissue numbers, so it can reach a jobseeker who never
+worked at the company. Its warning not to join a company you don't
+recognise is for exactly that reader. So `/join` has a `/hi` address, its
+keys and the invitation refusals are in scope, and so are the six role
+names and descriptions it shows (`people.role.*`, `people.invite.can.*`),
+though the rest of `people.` is the console's. Joining ends on the English
+console with a full page load, for the reason `readIn()` gives.
+
+Known gap: when a booking appears between the page loading and the tap,
+the API's `errors.invitation.upcomingBookings` names the bookings in a
+list it words in English (`{bookings}`), so a Hindi reader gets a Hindi
+sentence around an English list. The page itself blocks the button and
+says the same in Hindi first, so only that race reaches it. The fix is the
+field names' one: send the bookings as values and word them on the
+reader's side.
+
 **Until `hi.json` covers all of it, nobody meets Hindi.** The condition is
 completeness only: every key in scope has a Hindi string. It is not review.
 Hindi is offered as soon as it is complete, whether or not a person has
@@ -1631,12 +1649,16 @@ other ways. While it isn't offered (`OFFERED_LOCALES`):
 
 The gate lifts itself when the last key lands, read or not: there is no
 flag to forget. It lifted on 30 October 2026, with the venue board's keys.
+It closes again by itself if a key enters the scope without Hindi: the
+gate is what keeps a new candidate string from shipping half-translated.
 `WALKINS_OFFER_HINDI=1` in `.env` lifts it early on one machine, to look at
-a partial catalog. It is off unless set, so a developer sees the gated path
-by default, and it is never set in production. The gate is read once, when
-each app starts. The tests of the gate's rules take both states directly;
-the API and worker tests that follow a saved choice through follow whichever
-state the run started in, so run `pnpm test` with the variable set as well.
+a partial catalog. It is never set in production. The gate is read once,
+when each app starts. The tests of the gate's rules take both states
+directly. The API and worker tests that follow a saved choice through follow
+whichever state the run started in, and with the catalog complete that is
+always the offered one, flag or not: the gated path through the API and
+worker is now covered only by those direct tests. While a key is missing,
+run `pnpm test` with and without the variable to cover both.
 
 **One catalog per language.** All English wording lives in
 `packages/shared/src/messages/en.json`, and Hindi in `hi.json` beside it.
@@ -1708,6 +1730,32 @@ page lists its other language's address as an `hreflang` alternate.
 profile.** Someone chooses their language before they have a profile to
 save, and an employer will choose one later too. Don't move it onto
 `candidates`.
+
+**Saving it is open to every role,** at `PATCH /auth/locale`, beside the
+sign-in, refresh and sign-out that write the same cookie. The cookie is set
+for every role, so a role that couldn't save would be stuck: an invitee who
+signed up at `/hi/login` joins a company with `hi`, each refresh writes `hi`
+back, and the middleware sends them from `/jobs` to `/hi/jobs` with no way to
+choose English. An employer's saved language moves only the public pages; the
+console is English-only and no alert reaches an employer by language. It
+moved here from `/candidates/me/locale` rather than being opened in place:
+a method-level `@Roles` that contradicts its controller's class annotation
+would work, but would mislead whoever reads that controller next, the same
+failure as the prefix scope matching and the keyword safety guard. A test
+in `apps/api/test/locale.test.ts` has an employer change back and checks that
+their next refresh follows.
+
+**A new account takes the language of the page it signed up on.** The
+sign-in request carries the page's language, and `verifyOtp` saves it on an
+account that sign-in creates (as English while Hindi isn't offered). Coming
+to `/hi/login` is the reader choosing Hindi before there was an account to
+save it to, and a clearer signal than `Accept-Language`, which says what a
+phone was set up with, not what its owner reads. An existing account's
+language is never changed by signing in, from any page: a saved Hindi choice
+must survive signing in from an English link, and only the picker changes
+it. `users.locale` can't tell "never chose" from "chose English", so an
+account made before this, on an English page, stays English until its owner
+picks Hindi. Tests in `apps/api/test/locale.test.ts` hold both rules.
 
 **The address decides what a page says.** `/hi/jobs/pune` is Hindi and
 `/jobs/pune` is English, for a crawler and a phone alike: `middleware.ts`
@@ -1987,6 +2035,10 @@ adjective agreeing with it depends on it. Gender is m (masculine), f
 | started (the job) | काम शुरू किया | – | Transitive with ने, so the verb agrees with काम, not the reader |
 | still there after 30 days | 30 दिन बाद भी काम पर हैं | – | हैं doesn't mark gender |
 | Your record | आपका रिकॉर्ड | m | |
+| invitation | इनवाइट | m | What people say, as in "इनवाइट भेजा". Not आमंत्रण, not न्योता |
+| join (a company) | कंपनी से जुड़ना | – | Joining: जोड़ा जा रहा है, impersonal |
+| Owner, Recruiter, Viewer | ओनर, रिक्रूटर, व्यूअर | m | The console's role names, recognisable once they reach it |
+| applicants | अप्लाई करने वाले | m pl | From the verb, as with आवेदन |
 | Arrivals (venue board) | आगमन | m | A formal word, kept on purpose: every Indian station board uses it, and the board is a station board |
 | Live / Filling up / Closing today / Ended | लाइव / भर रही है / आज बंद / खत्म | – | Agrees with ड्राइव |
 | starts in / doors close in | शुरू होने में / बंद होने में | – | Countdown labels |
@@ -2012,11 +2064,14 @@ covers most of the critical tier's meaning:
 pay or that Walkins never charges, is part of reporting, tells them their
 account or check-in was questioned, tells them whether to travel (a drive
 paused, cancelled or moved, an application turned down), promises
-something won't count against them, or tells them whether their check-in
-was recorded. That last is its own group (`checkInRecorded`), apart from a
-check-in being questioned: someone who wrongly believes they're checked in
-waits at the venue, isn't called, and is marked absent, which goes on their
-record. 84 keys, in six groups. Tests hold the set together
+something won't count against them, tells them whether their check-in
+was recorded, or warns them off joining a company. Check-ins are their own
+group (`checkInRecorded`), apart from a check-in being questioned: someone
+who wrongly believes they're checked in waits at the venue, isn't called,
+and is marked absent, which goes on their record. Joining is its own group
+(`joining`): it ends a candidate account and its booked seats, and an
+invitation can reach whoever now holds a former employee's number. 87
+keys, in seven groups. Tests hold the set together
 (`apps/web/test/i18n.test.ts`, "safety wording in Hindi"):
 - every key in it is in `HINDI_SCOPE` and has Hindi;
 - **every key in scope is judged one way or the other.** The rest are in
@@ -2397,14 +2452,64 @@ terminal runs one too:
 lsof -a -c node -d cwd | grep apps/worker
 ```
 
-The hazard is the charge sweep. Every 15 minutes it charges each valid
-check-in that has no charge yet, so a seeded check-in becomes a debit from a
-real company's wallet and platform revenue, and the ledger is append-only:
-deleting the seeded rows afterwards removes the check-in but not the charge.
-The only correction is a reversing transaction. The same run also sends the
-seeded drives' alerts and copies the seeded rows into the analytics views,
-which keep them until the next refresh. Stop the worker before seeding, or
-seed nothing it acts on.
+It prints a line for each process running from `apps/worker` (pnpm, tsx
+and the worker itself), and nothing when there is no worker; both results
+have been seen. Look rather than trust a closed terminal: a `pnpm dev`
+started through `dotenv` has outlived its tab being closed.
+
+Two hazards follow from a running worker:
+- **The charge sweep.** Every 15 minutes it charges each valid check-in
+  that has no charge yet, so a seeded check-in becomes a debit from a real
+  company's wallet and a credit to platform revenue. The ledger is
+  append-only: deleting the seeded rows removes the check-in but not the
+  charge, and the only correction is a reversing transaction. At least it
+  is visible, in the ledger and on the billing page.
+- **The analytics refresh, which is quieter.** Every 15 minutes it copies
+  whatever is in the tables into `drive_funnel`, `application_facts` and
+  `company_daily`. Seeded rows deleted afterwards stay in all three, and
+  nothing errors: dev analytics just show drives that never existed, until
+  something refreshes them again. So cleanup after seeding is deleting the
+  rows **and** refreshing all three views:
+
+```
+REFRESH MATERIALIZED VIEW CONCURRENTLY drive_funnel;
+REFRESH MATERIALIZED VIEW CONCURRENTLY company_daily;
+REFRESH MATERIALIZED VIEW CONCURRENTLY application_facts;
+```
+
+The same run also sends the seeded drives' alerts. Stop the worker before
+seeding, or seed nothing it acts on.
+
+**Record Redis too, before signing in or seeding.** A Postgres dump says
+nothing about Redis, and afterwards a session or a limit key can't be told
+apart from one that was already there. Signing in as a dev account leaves:
+- **sessions:** `refresh:user:<userId>`, the set of that account's refresh
+  tokens, and a `refresh:token:<token>` for each. Refreshing an existing
+  session replaces its token and keeps the old key as a used marker, so new
+  `refresh:token:` keys appear even when no session was added. Compare the
+  number of members in `refresh:user:<userId>`, not the token keys.
+- **rate-limit keys:** `ratelimit:<rule>:<subject>`, where the subject is
+  `user:<userId>`, `address:<ip>`, or `phone:<phone>` for code requests.
+- **codes:** `otp:<phone>`, for a code requested and not used.
+
+Keep the key list from before, and after cleanup delete only what is new in
+that list:
+
+```
+docker exec walkins-redis-1 redis-cli --scan | sort > redis-before.txt
+docker exec walkins-redis-1 redis-cli smembers refresh:user:<userId> | wc -l
+```
+
+**Known work: the ledger has no reversal reason.** `LedgerReason` is
+`TOP_UP`, `CHECK_IN_CHARGE` or `PROMO_GRANT`. The one reversal posted so far
+(a dev charge for a seeded check-in) had to use `CHECK_IN_CHARGE`, with a
+`reversal:` txnId prefix and the original txnId as `refId`. So a reversal
+can be told from a charge only by its txnId prefix; the ledger has no
+first-class notion of reversing an entry. The employer's billing page labels
+each entry by its reason, so the reversal shows there as a second check-in
+charge, credited. A
+production dispute, refund or double charge needs one: a `REVERSAL` reason,
+and a reference to the reversed transaction that the database checks.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 

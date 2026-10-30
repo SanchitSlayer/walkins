@@ -43,8 +43,11 @@ export const INTL_LOCALE: Record<Locale, string> = { en: "en-IN", hi: "hi-IN" };
 // before anyone is offered it. An entry ending in "." is a whole namespace;
 // any other is one key, exactly, so "fields.started" can't take in the
 // employer's "fields.startedOn". The employer console, admin, and
-// the venue-pinning tools stay English. Where a namespace mixes the two
-// (errors, field names, the board's drive states), the candidate's keys are
+// the venue-pinning tools stay English. An invitation is read before
+// joining, as a candidate, and can reach a jobseeker whose number was
+// reissued, so /join is in scope with the role names it shows. Where a
+// namespace mixes the two (errors, field names, the board's drive states,
+// people's roles), the candidate's keys are
 // listed one by one, so an employer's refusal doesn't hold Hindi back. The
 // field names are those of the schemas candidate and public endpoints check.
 export const HINDI_SCOPE = [
@@ -177,6 +180,14 @@ export const HINDI_SCOPE = [
   "errors.messages.blocked.closed",
   "errors.messages.blocked.applicationClosed",
   "errors.outcomes.candidate.",
+  "join.",
+  "errors.invitation.",
+  "people.role.OWNER",
+  "people.role.RECRUITER",
+  "people.role.VIEWER",
+  "people.invite.can.OWNER",
+  "people.invite.can.RECRUITER",
+  "people.invite.can.VIEWER",
 ] as const;
 
 // The safety-critical strings: where a wrong translation causes harm, not
@@ -184,9 +195,11 @@ export const HINDI_SCOPE = [
 // Walkins never charges, is part of reporting someone, says their account or
 // check-in was questioned, tells them whether to travel to a drive (paused,
 // cancelled, moved, turned down), promises that something won't count
-// against them, or tells them whether their check-in was recorded: someone
+// against them, tells them whether their check-in was recorded (someone
 // who wrongly believes they're checked in waits, isn't called, and is marked
-// absent. Their Hindi gets a native reading before the language is
+// absent), or warns them off joining a company: joining ends a candidate
+// account and its booked seats, and an invitation can reach whoever was
+// reissued a former employee's number. Their Hindi gets a native reading before the language is
 // offered, and is read again whenever the English changes (test/i18n.test.ts).
 // Typed against the English catalog, so renaming a key here breaks the build
 // rather than quietly dropping it.
@@ -281,6 +294,7 @@ export const SAFETY_KEYS = {
     "errors.checkIn.noShow",
     "booking.noShow",
   ],
+  joining: ["join.notYou", "join.bookedFirst", "errors.invitation.upcomingBookings"],
 } as const satisfies Record<string, readonly MessageKey[]>;
 
 export const safetyKeys = (): MessageKey[] => Object.values(SAFETY_KEYS).flat();
@@ -358,6 +372,10 @@ export const NOT_SAFETY_KEYS = [
   "yourRecord.joining", "yourRecord.started", "yourRecord.retained", "yourRecord.yourAnswer", "yourRecord.notRecorded", "yourRecord.startedOn",
   "yourRecord.yes", "yourRecord.didNotStart", "yourRecord.stayed", "yourRecord.left", "yourRecord.youStarted", "yourRecord.youDidNotStart",
   "language.heading", "language.intro", "language.name.en", "language.name.hi", "language.hindiReview", "language.switchTo", "language.saveFailed",
+  "join.heading", "join.loading", "join.loadFailed", "join.none", "join.toProfile", "join.booking", "join.toMyDrives", "join.invitedAs", "join.expires",
+  "join.join", "join.joining", "join.notNow", "join.failed", "errors.invitation.adminAccount", "errors.invitation.alreadyInCompany",
+  "errors.invitation.booking", "errors.invitation.gone", "people.role.OWNER", "people.role.RECRUITER", "people.role.VIEWER", "people.invite.can.OWNER",
+  "people.invite.can.RECRUITER", "people.invite.can.VIEWER",
 ] as const satisfies readonly MessageKey[];
 
 function leaves(catalog: Catalog, prefix = ""): [string, string][] {
@@ -406,9 +424,9 @@ export function servedLocale(locale: Locale, offered: readonly Locale[] = OFFERE
 }
 
 // The pages that exist in every language, under /hi for Hindi. Everything
-// else (the employer console, admin, invitations, the design specimen) is
-// English at one address.
-export const LOCALIZED_PATHS = ["/", "/jobs", "/drives", "/login", "/profile", "/my-drives", "/checkin"] as const;
+// else (the employer console, admin, the design specimen) is English at one
+// address.
+export const LOCALIZED_PATHS = ["/", "/jobs", "/drives", "/login", "/profile", "/my-drives", "/checkin", "/join"] as const;
 
 export function isLocalizedPath(path: string): boolean {
   return LOCALIZED_PATHS.some((p) => (p === "/" ? path === "/" : path === p || path.startsWith(`${p}/`)));

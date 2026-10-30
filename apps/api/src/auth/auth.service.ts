@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from "node:crypto";
 import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { prisma } from "@walkins/db";
-import { type AccessTokenPayload, type Locale, servedLocale } from "@walkins/shared";
+import { type AccessTokenPayload, DEFAULT_LOCALE, type Locale, type SetLocale, servedLocale } from "@walkins/shared";
 import { redis } from "../common/redis";
 import { RateLimiterService } from "../common/rate-limiter.service";
 import { apiError } from "../common/api-error";
@@ -71,7 +71,7 @@ export class AuthService {
     return {};
   }
 
-  async verifyOtp(phone: string, otp: string): Promise<{ accessToken: string; refreshToken: string; locale: Locale }> {
+  async verifyOtp(phone: string, otp: string, pageLocale?: Locale): Promise<{ accessToken: string; refreshToken: string; locale: Locale }> {
     const stored = await redis.hgetall(otpKey(phone));
 
     if (!stored || !stored.code) {
@@ -98,9 +98,14 @@ export class AuthService {
     // Correct code: burn it immediately so it can't be reused.
     await redis.del(otpKey(phone));
 
+    // A new account takes the language of the page it signed up on: someone
+    // who came to /hi/login chose Hindi before there was an account to save
+    // it to. An existing account's saved language is left alone on purpose,
+    // whatever page this is: signing in from an English link must never
+    // overwrite a saved Hindi choice. Only the language picker changes it.
     const user =
       (await prisma.user.findUnique({ where: { phone } })) ??
-      (await prisma.user.create({ data: { phone, name: phone, role: "CANDIDATE" } }));
+      (await prisma.user.create({ data: { phone, name: phone, role: "CANDIDATE", locale: servedLocale(pageLocale ?? DEFAULT_LOCALE) } }));
 
     const accessToken = this.signAccessToken(user);
     const refreshToken = await this.issueRefreshToken(user.id);
@@ -118,6 +123,14 @@ export class AuthService {
 
     const accessToken = this.signAccessToken(user);
     return { accessToken, refreshToken: rotated.newToken, locale: servedLocale(user.locale) };
+  }
+
+  // Any role: the language is the person's, and the cookie that steers the
+  // public pages is set for everyone. An employer who could not save it would
+  // be held on Hindi pages by their own refreshes.
+  async setLocale(userId: string, locale: Locale): Promise<SetLocale> {
+    const user = await prisma.user.update({ where: { id: userId }, data: { locale }, select: { locale: true } });
+    return { locale: user.locale };
   }
 
   async logout(token: string): Promise<void> {

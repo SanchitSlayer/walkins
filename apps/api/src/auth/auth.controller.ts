@@ -1,6 +1,9 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
-import { otpRequestSchema, otpVerifySchema } from "@walkins/shared";
+import { Body, Controller, HttpCode, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { type AccessTokenPayload, otpRequestSchema, type OtpVerifyInput, otpVerifySchema, type SetLocale, setLocaleSchema } from "@walkins/shared";
 import type { Request, Response } from "express";
+import { CurrentUser } from "../common/current-user.decorator";
+import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { LIMITS, RateLimit } from "../common/rate-limit";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
 import { apiError } from "../common/api-error";
@@ -32,10 +35,10 @@ export class AuthController {
   @Post("otp/verify")
   @HttpCode(200)
   async verifyOtp(
-    @Body(new ZodValidationPipe(otpVerifySchema)) body: { phone: string; otp: string },
+    @Body(new ZodValidationPipe(otpVerifySchema)) body: OtpVerifyInput,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const { accessToken, refreshToken, locale } = await this.authService.verifyOtp(body.phone, body.otp);
+    const { accessToken, refreshToken, locale } = await this.authService.verifyOtp(body.phone, body.otp, body.locale);
     setRefreshCookie(response, refreshToken);
     setLocaleCookie(response, locale);
     return { accessToken, locale };
@@ -54,6 +57,19 @@ export class AuthController {
     setRefreshCookie(response, refreshToken);
     setLocaleCookie(response, locale);
     return { accessToken, locale };
+  }
+
+  @Patch("locale")
+  @UseGuards(JwtAuthGuard)
+  @RateLimit(LIMITS.profileEdit)
+  async setLocale(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(setLocaleSchema)) body: SetLocale,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const saved = await this.authService.setLocale(user.userId, body.locale);
+    setLocaleCookie(response, saved.locale);
+    return saved;
   }
 
   @Post("logout")

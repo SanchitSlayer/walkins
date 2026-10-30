@@ -230,7 +230,7 @@ export const apiClient = {
 
   // The API saves it and sets the middleware's cookie from what it saved.
   async setLocale(locale: Locale): Promise<SetLocale> {
-    const saved = await parseOrThrow<SetLocale>(await request("/candidates/me/locale", { method: "PATCH", body: JSON.stringify({ locale }) }));
+    const saved = await parseOrThrow<SetLocale>(await request("/auth/locale", { method: "PATCH", body: JSON.stringify({ locale }) }));
     savedLocale = saved.locale;
     return saved;
   },

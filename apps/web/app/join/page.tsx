@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { MyInvitation, MyInvitations } from "@walkins/shared";
+import { Link, useRouter } from "@/lib/navigation";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, boardButtonClass } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
@@ -42,9 +41,11 @@ export default function JoinPage() {
     setError(null);
     try {
       await apiClient.acceptInvitation(invitation.id);
-      // The account is an employer's now; a fresh session carries that.
+      // The account is an employer's now; a fresh session carries that. A
+      // full load, as readIn() explains: from /hi/join the console is in
+      // another language, and a client navigation would keep this page's.
       await apiClient.restoreSession();
-      router.replace("/employer/drives");
+      window.location.replace("/employer/drives");
     } catch (err) {
       setError(errorText(err, "join.failed"));
       setJoining(null);
