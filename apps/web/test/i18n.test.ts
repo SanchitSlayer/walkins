@@ -7,12 +7,15 @@ import {
   catalogLeaves,
   formatFor,
   hindiGaps,
+  HINDI_SCOPE,
   LOCALE_COOKIE,
   LOCALE_HEADER,
   localePath,
   MESSAGES,
   messageArguments,
   OFFERED_LOCALES,
+  pluralCases,
+  safetyKeys,
   splitLocalePath,
 } from "@walkins/shared";
 import { middleware } from "../middleware";
@@ -356,6 +359,96 @@ describe("Hindi", () => {
 
   it("is offered for choosing only once it covers everything a Hindi reader meets", () => {
     expect(OFFERED_LOCALES).toEqual(hindiGaps().length === 0 ? ["en", "hi"] : ["en"]);
+  });
+
+  // Hindi's "one" covers 0 and 1, so English's one/other maps onto it, but
+  // the branches must then say different things. Where Hindi's noun really
+  // doesn't change, the key is listed here with why.
+  const SAME_IN_BOTH: Record<string, string> = {
+    "format.checkInFlags.SYNCED_AFTER_EXPIRY": "मिनट doesn't change for number",
+  };
+
+  it("has a plural wherever English does, with English's cases, saying different things", () => {
+    const wrong = catalogLeaves("hi").flatMap(([key, hindi]) => {
+      const source = english.get(key);
+      if (source === undefined) return [];
+      const ours = pluralCases(hindi);
+      return Object.entries(pluralCases(source)).flatMap(([argument, cases]) => {
+        const theirs = ours[argument];
+        if (!theirs) return [`${key}: {${argument}} isn't a plural`];
+        const missing = Object.keys(cases).filter((name) => (name.startsWith("=") || name === "one" || name === "other") && !(name in theirs));
+        if (missing.length > 0) return [`${key}: {${argument}} has no ${missing.join(", ")}`];
+        if (theirs.one === theirs.other && !(key in SAME_IN_BOTH)) return [`${key}: {${argument}} says the same for one and other`];
+        return [];
+      });
+    });
+    expect(wrong).toEqual([]);
+  });
+
+  it("lists only keys whose branches really are the same", () => {
+    const listed = Object.keys(SAME_IN_BOTH).filter((key) => {
+      const hindi = catalogLeaves("hi").find(([k]) => k === key)?.[1];
+      return hindi === undefined || !Object.values(pluralCases(hindi)).some((cases) => cases.one === cases.other);
+    });
+    expect(listed).toEqual([]);
+  });
+
+  it("writes numbers in Latin digits", () => {
+    expect(catalogLeaves("hi").filter(([, hindi]) => /[०-९]/.test(hindi)).map(([key]) => key)).toEqual([]);
+  });
+
+  // The brand, the codes a person reads off a screen or types, and bot
+  // commands stay exactly as English has them.
+  it("keeps names, codes and bot commands untranslated", () => {
+    const kept = /\b(Walkins|Telegram|OTP|QR|UPI)\b|\/[a-z]+\b/g;
+    const changed = catalogLeaves("hi").filter(([key, hindi]) =>
+      [...(english.get(key) ?? "").matchAll(kept)].some(([token]) => !hindi.includes(token)),
+    );
+    expect(changed.map(([key]) => key)).toEqual([]);
+  });
+});
+
+// The strings a reader acts on to stay safe: whether to pay, whether to
+// travel, how to report, and that a flag isn't held against them. Each is
+// in a manifest (SAFETY_KEYS) so none can drop out of the set unnoticed,
+// and each Hindi string records the English it was made from, so a change
+// to the English sends it back for translation and a native re-read rather
+// than leaving the Hindi saying the old thing.
+describe("safety wording in Hindi", () => {
+  const english = new Map(catalogLeaves("en"));
+  const hindi = new Map(catalogLeaves("hi"));
+  const sources: Record<string, string> = JSON.parse(readFileSync(join(__dirname, "../../../packages/shared/src/messages/hi.source.json"), "utf8"));
+  const inScope = (key: string) => HINDI_SCOPE.some((prefix) => key.startsWith(prefix));
+
+  it("names safety keys, all in Hindi's scope and all written in Hindi", () => {
+    expect(safetyKeys().length).toBeGreaterThan(0);
+    expect(safetyKeys().filter((key) => !inScope(key))).toEqual([]);
+    expect(safetyKeys().filter((key) => !hindi.has(key))).toEqual([]);
+  });
+
+  // In Hindi's scope by prefix, but only an employer or an admin reads them.
+  const NOT_A_CANDIDATES: Record<string, string> = {
+    "errors.drive.rescheduleStrands": "tells the employer why a reschedule was refused",
+    "errors.messages.notReported": "an admin opening a conversation nobody reported",
+    "errors.messages.blocked.companySuspended": "tells the employer their company can't send",
+  };
+
+  // A new string telling someone not to pay or not to travel joins the
+  // manifest, or this fails.
+  it("includes every string that speaks about paying, travelling, reporting or being questioned", () => {
+    const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|haven't done anything wrong|\breport/i;
+    const listed = new Set<string>([...safetyKeys(), ...Object.keys(NOT_A_CANDIDATES)]);
+    const missed = [...english].filter(([key, text]) => inScope(key) && marker.test(text) && !listed.has(key)).map(([key]) => key);
+    expect(missed).toEqual([]);
+  });
+
+  it("was translated from the English as it reads now", () => {
+    const stale = [...hindi.keys()].filter((key) => sources[key] !== english.get(key));
+    expect(stale, "these changed in English: translate them again and have the safety ones re-read").toEqual([]);
+  });
+
+  it("records a source only for what Hindi has", () => {
+    expect(Object.keys(sources).filter((key) => !hindi.has(key))).toEqual([]);
   });
 });
 

@@ -56,9 +56,20 @@ describe("the money-request tripwire", () => {
     expect(moneyRequestSignals("रजिस्ट्रेशन फीस 500 जमा करें")).toContain("feeWithAmount");
   });
 
+  // फ़ is written two ways (फ + nukta, or one precomposed letter), and the
+  // glossary's own spelling has the nukta; an amount usually comes first.
+  it("catches a Hindi fee demand however फ़ीस is typed, and with the amount first", () => {
+    for (const fee of ["फीस", "\u092B\u093C\u0940\u0938", "\u095E\u0940\u0938"]) {
+      expect(moneyRequestSignals(`${fee} 500 दें`)).toContain("feeWithAmount");
+    }
+    expect(moneyRequestSignals("500 रुपये फ़ीस दें")).toContain("feeWithAmount");
+    expect(moneyRequestSignals("1000 rupaye registration fee")).toContain("feeWithAmount");
+  });
+
   it("leaves pay, times and ordinary contact details alone", () => {
     expect(moneyRequestSignals("Pay is ₹15,000 a month. Come at 10:30 with your Aadhaar.")).toEqual([]);
     expect(moneyRequestSignals("Email hr@company.com if you're running late")).toEqual([]);
+    expect(moneyRequestSignals("सैलरी 15000 रुपये महीना, सुबह 10:30 बजे आएँ")).toEqual([]);
   });
 
   // Written down so nobody mistakes it for a screen.

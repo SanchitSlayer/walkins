@@ -112,6 +112,89 @@ export const HINDI_SCOPE = [
   "errors.outcomes.",
 ] as const;
 
+// The safety-critical strings: where a wrong translation causes harm, not
+// confusion. A key belongs here if it tells the reader not to pay or that
+// Walkins never charges, is part of reporting someone, says their account or
+// check-in was questioned, tells them whether to travel to a drive (paused,
+// cancelled, moved, turned down), or promises that something won't count
+// against them. Their Hindi gets a native reading before the language is
+// offered, and is read again whenever the English changes (test/i18n.test.ts).
+// Typed against the English catalog, so renaming a key here breaks the build
+// rather than quietly dropping it.
+export const SAFETY_KEYS = {
+  neverPay: [
+    "neverPay.heading",
+    "neverPay.body",
+    "neverPay.report",
+    "neverPay.howToReport",
+    "alerts.neverPay",
+    "bot.neverPay",
+    "alerts.messageFlagged",
+    "thread.flaggedCandidate",
+    "drive.detail.unverified",
+    "errors.checkIn.suspended",
+    "report.drive.thanks",
+  ],
+  report: [
+    "report.reason.ASKS_FOR_MONEY",
+    "report.reason.NOT_A_REAL_JOB",
+    "report.reason.MISLEADING_PAY",
+    "report.reason.ABUSIVE",
+    "report.reason.FAKE_PROFILE",
+    "report.reason.OTHER",
+    "report.drive.heading",
+    "report.drive.intro",
+    "report.drive.whatsWrong",
+    "report.drive.chooseReason",
+    "report.drive.details",
+    "report.drive.detailsHint",
+    "report.drive.send",
+    "report.drive.sending",
+    "report.drive.failed",
+    "thread.report.open",
+    "thread.report.reason",
+    "thread.report.send",
+    "thread.report.cancel",
+    "thread.report.sent",
+    "thread.report.failed",
+    "errors.messages.reportOwnSide",
+  ],
+  questioned: [
+    "warning.heading",
+    "warning.candidate",
+    "warning.note",
+    "warning.acknowledge",
+    "format.checkInFlags.LOW_GPS_ACCURACY",
+    "format.checkInFlags.SYNCED_AFTER_EXPIRY",
+    "checkin.flagged",
+    "myDrives.outcome.awaitingConfirmation",
+    "yourRecord.state.awaitingConfirmation",
+  ],
+  travel: [
+    "alerts.drive_cancelled",
+    "alerts.drive_suspended",
+    "alerts.drive_reinstated",
+    "alerts.application_rejected",
+    "alerts.drive_rescheduled",
+    "errors.application.suspended",
+    "drive.detail.pausedHeading",
+    "drive.detail.pausedBody",
+    "myDrives.paused",
+    "myDrives.cancelled",
+    "myDrives.moved",
+    "myDrives.movedOffline",
+    "myDrives.noSeatHeld",
+    "booking.noNeedToTravel",
+    "board.state.cancelled",
+    "board.state.suspended",
+    "yourRecord.state.driveCancelled",
+    "yourRecord.state.drivePaused",
+  ],
+  notAgainstYou: ["yourRecord.excused", "yourRecord.state.notAttendedExcused"],
+} as const satisfies Record<string, readonly MessageKey[]>;
+
+export const safetyKeys = (): MessageKey[] => Object.values(SAFETY_KEYS).flat();
+
 function leaves(catalog: Catalog, prefix = ""): [string, string][] {
   return Object.entries(catalog).flatMap(([key, value]) =>
     typeof value === "string" ? [[`${prefix}${key}`, value] as [string, string]] : leaves(value, `${prefix}${key}.`),
@@ -210,17 +293,37 @@ type MessageNode = { type: number; value?: unknown; options?: Record<string, { v
 // never had, fails on this.
 export function messageArguments(message: string): string[] {
   const found = new Set<string>();
-  (function walk(nodes: MessageNode[]) {
-    for (const node of nodes) {
-      if (typeof node.value === "string" && node.type !== 0) {
-        const cases = node.options && node.pluralType === undefined ? `:${Object.keys(node.options).sort().join("|")}` : "";
-        found.add(`${node.type}:${node.value}${cases}`);
-      }
-      for (const option of Object.values(node.options ?? {})) walk(option.value);
-      if (node.children) walk(node.children);
+  for (const node of messageNodes(message)) {
+    if (typeof node.value === "string" && node.type !== 0) {
+      const cases = node.options && node.pluralType === undefined ? `:${Object.keys(node.options).sort().join("|")}` : "";
+      found.add(`${node.type}:${node.value}${cases}`);
     }
-  })(new IntlMessageFormat(message, INTL_LOCALE.en).getAst() as unknown as MessageNode[]);
+  }
   return [...found].sort();
+}
+
+// Each plural argument's cases and what each case says, so a translation's
+// plurals can be held to English's cases and its branches to differing.
+export function pluralCases(message: string): Record<string, Record<string, string>> {
+  const found: Record<string, Record<string, string>> = {};
+  for (const node of messageNodes(message)) {
+    if (node.pluralType === undefined || typeof node.value !== "string") continue;
+    found[node.value] = Object.fromEntries(Object.entries(node.options ?? {}).map(([name, option]) => [name, JSON.stringify(option.value, withoutLocation)]));
+  }
+  return found;
+}
+
+const withoutLocation = (key: string, value: unknown) => (key === "location" ? undefined : value);
+
+function* messageNodes(message: string): Generator<MessageNode> {
+  function* walk(nodes: MessageNode[]): Generator<MessageNode> {
+    for (const node of nodes) {
+      yield node;
+      for (const option of Object.values(node.options ?? {})) yield* walk(option.value);
+      if (node.children) yield* walk(node.children);
+    }
+  }
+  yield* walk(new IntlMessageFormat(message, INTL_LOCALE.en).getAst() as unknown as MessageNode[]);
 }
 
 const compiled = new Map<string, IntlMessageFormat>();

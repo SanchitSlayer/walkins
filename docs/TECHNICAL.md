@@ -1321,6 +1321,10 @@ wording of a fee demand: a UPI handle, a bank account or IFSC, a payment
 app, or a fee word next to an amount, in English, Hinglish and Devanagari.
 It is easy to defeat. "send me 500 on the number you have" passes it
 completely, and a test pins that down so nobody mistakes it for a screen.
+It does catch फ़ीस however it is typed (with the nukta as its own mark, as
+one precomposed letter, or without it) and an amount before the fee word
+("500 रुपये फ़ीस"). Both missed the glossary's own spelling until Hindi
+was written.
 
 **The real protection is elsewhere:**
 - the never-pay band at the foot of every thread and on every Telegram
@@ -1923,6 +1927,41 @@ covers most of the critical tier's meaning:
 | Your booking is still held. | आपकी बुकिंग अब भी बनी हुई है। |
 | This message seems to ask for money. | लगता है यह मैसेज पैसे माँग रहा है। |
 
+**The safety strings are a manifest, `SAFETY_KEYS`** in
+`packages/shared/src/i18n.ts`. A key is in it if it tells the reader not to
+pay or that Walkins never charges, is part of reporting, tells them their
+account or check-in was questioned, tells them whether to travel (a drive
+paused, cancelled or moved, an application turned down), or promises
+something won't count against them. 62 keys, in five groups. Tests hold
+the set together (`apps/web/test/i18n.test.ts`, "safety wording in
+Hindi"):
+- every key in it is in `HINDI_SCOPE` and has Hindi;
+- every in-scope English string with the wording of one of those things
+  ("never charges", "don't pay", "don't travel", "report", ...) is in it.
+  A new one fails until it joins. Three keys match but only an employer or
+  admin reads them; the test lists them with why.
+
+Status: written 30 October 2026, not yet read by a native speaker. Where
+a string departs from a fixed phrase above (a fragment of one, or a word
+added), that is a choice for the reading to confirm, not settled.
+
+**Each Hindi string records the English it was made from**, in
+`hi.source.json` beside `hi.json`. A test fails when the two differ: the
+English changed, so the Hindi says the old thing. Translate it again, put
+the new English in `hi.source.json`, and have a safety string re-read.
+Updating `hi.source.json` alone silences the test; that is the step review
+should look for.
+
+**Plurals.** Wherever English has a plural, Hindi has one with English's
+`one`, `other` and `=n` cases, and its `one` and `other` say different
+things. Hindi's "one" covers 0 and 1. Some nouns really don't change
+(मिनट, दिन, साल): a key using one is listed in the test with its reason,
+and the list fails if a listed key's branches stop being the same.
+
+**Digits and kept words.** Numbers are Latin digits, and a test fails on
+०–९. Walkins, Telegram, OTP, QR, UPI and bot commands (`/start`) appear in
+the Hindi exactly as in the English.
+
 **The language picker** says exactly what review happened. Once the
 glossary and the safety strings have had their native reading, and not
 before, it reads:
@@ -2001,9 +2040,19 @@ These were found while building the scaffolding and are not fixed yet.
   count before a noun (see "Languages") matches English words: seat, slot,
   candidate, person, yr. It never looks at Hindi. A Hindi string that drops
   the plural English has is still caught, by the check that each argument
-  keeps its kind. What nothing catches is the wording inside the plural: a
-  translation with the same noun form in both cases, or one written for a
-  count English leaves bare, reads wrong for one number and passes.
+  keeps its kind, and a Hindi plural whose `one` and `other` say the same
+  is caught too (see "Plurals" above). What nothing catches is a Hindi
+  plural that differs but is still wrong, or a count English leaves bare
+  that Hindi needs to agree with.
+- **Some of `HINDI_SCOPE` is employer and admin wording.** Its prefixes
+  (`errors.drive`, `errors.messages`, `errors.outcomes`, `board.state`)
+  take in about 28 keys no candidate meets, such as the reasons a
+  reschedule is refused or `board.state.draft`. They count as Hindi gaps,
+  so the picker waits on them. Narrow the scope, or translate them.
+- **Hindi addresses work before Hindi is offered.** The gate hides the
+  picker and the `hreflang` alternates. A typed `/hi` address still renders,
+  in Hindi where `hi.json` has the key and English elsewhere, and the API
+  accepts `hi` as a saved language from any caller.
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override

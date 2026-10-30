@@ -87,11 +87,13 @@ export type ThreadMessage = z.infer<typeof threadMessageSchema>;
 // A tripwire, not a guard. It catches the common wording of a fee demand
 // (a UPI handle, a bank account or IFSC, a payment app, a fee word next to an
 // amount, in English, Hinglish and Devanagari) so the warning is shouted when
-// it most matters. It does not screen messages: "send me 500 on the number
-// you have" passes it completely. The never-pay band and the report route
-// are the protection; this only decides when to raise the alarm. A salary
-// on its own is not flagged; a salary next to "deposit" may be, and that is
-// accepted, because a flag only adds a warning.
+// it most matters. फ़ीस is matched with or without its nukta, in either of
+// its two encodings, and the amount may come first ("500 रुपये फ़ीस"). It
+// does not screen messages: "send me 500 on the number you have" passes it
+// completely. The never-pay band and the report route are the protection;
+// this only decides when to raise the alarm. A salary on its own is not
+// flagged; a salary next to "deposit" may be, and that is accepted, because
+// a flag only adds a warning.
 const SIGNALS: [string, RegExp][] = [
   ["upiHandle", /(^|[\s:(])[\w.-]{2,}@[a-z]{2,}(?![\w.])/i],
   ["ifsc", /\b[A-Z]{4}0[A-Z0-9]{6}\b/],
@@ -99,7 +101,7 @@ const SIGNALS: [string, RegExp][] = [
   ["paymentApp", /\b(upi|paytm|g\s?pay|google\s?pay|phone\s?pe|bhim|razorpay\.me|paytm\.me)\b/i],
   [
     "feeWithAmount",
-    /(\b(fee|fees|registration|deposit|security|advance|charges?|processing|refundable|uniform|training|kit|transfer|bhejo|bhej|jama|paise|paisa|rupaye)\b|फीस|शुल्क|जमा|पैसे|रुपये|भेजो|भेजें|रजिस्ट्रेशन)[^\n]{0,40}(₹|\brs\.?|\binr\b|\d{3,})|(₹|\brs\.?|\binr\b)\s?\d[\d,]*[^\n]{0,40}(\b(fee|fees|registration|deposit|advance|charges?|jama|bhejo)\b|फीस|शुल्क|जमा)/i,
+    /(\b(fee|fees|registration|deposit|security|advance|charges?|processing|refundable|uniform|training|kit|transfer|bhejo|bhej|jama|paise|paisa|rupaye)\b|[फ\u095E]\u093C?ीस|शुल्क|जमा|पैसे|रुपये|रुपए|भेजो|भेजें|रजिस्ट्रेशन)[^\n]{0,40}(₹|\brs\.?|\binr\b|\d{3,})|((₹|\brs\.?|\binr\b)\s?\d[\d,]*|\b\d[\d,]*\s?(rupaye|rupees|रुपये|रुपए))[^\n]{0,40}(\b(fee|fees|registration|deposit|advance|charges?|jama|bhejo)\b|[फ\u095E]\u093C?ीस|शुल्क|जमा)/i,
   ],
 ];
 
