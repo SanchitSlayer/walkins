@@ -21,6 +21,8 @@ const archivo = Archivo({
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
   return {
+    // Resolves the hreflang alternates public pages give to full addresses.
+    metadataBase: new URL(process.env.WEB_URL ?? "http://localhost:3000"),
     title: { default: t("title"), template: t("titleTemplate") },
     description: t("description"),
     manifest: "/manifest.webmanifest",

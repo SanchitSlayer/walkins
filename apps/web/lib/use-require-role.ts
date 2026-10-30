@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useRouter } from "./navigation";
 import { apiClient } from "./api-client";
 import { isNetworkError, lastSession, rememberSession } from "./offline";
 

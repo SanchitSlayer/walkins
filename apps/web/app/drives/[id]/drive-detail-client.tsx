@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation";
 import dynamic from "next/dynamic";
 import { type ReactNode, useEffect, useState } from "react";
 import { dayKey, type PublicDriveDetail } from "@walkins/shared";

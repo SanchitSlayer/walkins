@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { localeAlternates } from "@walkins/shared";
 import { Masthead } from "@/components/board/masthead";
 import { getCityCenterByName, getRoleBySlugOnServer, searchDrivesOnServer } from "@/lib/server-search";
 import JobsSearchClient from "../../jobs-search-client";
@@ -14,6 +15,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!cityRow || !role) return {};
   const t = await getTranslations("jobs.meta");
   return {
+    alternates: localeAlternates(`/jobs/${city}/${roleSlug}`, await getLocale()),
     title: t("roleTitle", { role: role.title, city: cityRow.name }),
     description: t("roleDescription", { role: role.title, city: cityRow.name, state: cityRow.state }),
   };

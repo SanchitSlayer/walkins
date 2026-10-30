@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
+import { LanguagePanel } from "./language-panel";
 import { TelegramPanel } from "./telegram-panel";
 import { VoicePanel } from "./voice-panel";
 import { WarningNotices } from "@/components/warning-notices";
@@ -215,6 +216,7 @@ export default function ProfilePage() {
             <VoicePanel hasProfile={telegramConnected !== null} />
             <YourRecord />
             <TelegramPanel connected={telegramConnected} />
+            <LanguagePanel />
           </div>
 
           <section aria-labelledby="home-heading" className="grid content-start gap-3">

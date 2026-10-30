@@ -45,6 +45,7 @@ import type {
   Invite,
   KnockoutAnswers,
   LedgerExplorer,
+  Locale,
   LiveBoard,
   LiveDisplay,
   Membership,
@@ -58,6 +59,7 @@ import type {
   People,
   PricingRuleView,
   PublicDriveDetail,
+  SetLocale,
   TelegramLink,
   TopUpOrder,
   TopUpStatus,
@@ -78,6 +80,11 @@ const API_URL = "/api";
 // "include". Lost on a full page reload by design; restoreSession() below
 // re-establishes it from the cookie.
 let accessToken: string | null = null;
+
+// users.locale as the API last reported it, with every session it issues:
+// what a candidate has chosen to read, which may differ from the page in
+// front of them (a shared /hi link, another device's choice).
+let savedLocale: Locale | null = null;
 
 type JwtPayload = { userId: string; role: string; companyId: string | null; exp: number };
 
@@ -102,6 +109,7 @@ function refreshAccessToken(): Promise<boolean> {
       }
       const data = await response.json();
       accessToken = data.accessToken;
+      savedLocale = data.locale;
       return true;
     } finally {
       refreshing = null;
@@ -169,10 +177,11 @@ export const apiClient = {
   },
 
   async verifyOtp(input: OtpVerifyInput): Promise<{ role: string; companyId: string | null }> {
-    const data = await parseOrThrow<{ accessToken: string }>(
+    const data = await parseOrThrow<{ accessToken: string; locale: Locale }>(
       await request("/auth/otp/verify", { method: "POST", body: JSON.stringify(input) }),
     );
     accessToken = data.accessToken;
+    savedLocale = data.locale;
     const payload = decodeAccessToken(data.accessToken);
     return { role: payload.role, companyId: payload.companyId };
   },
@@ -180,6 +189,7 @@ export const apiClient = {
   async logout(): Promise<void> {
     await request("/auth/logout", { method: "POST" });
     accessToken = null;
+    savedLocale = null;
   },
 
   // Re-establishes a session from the httpOnly refresh cookie after a page
@@ -211,6 +221,17 @@ export const apiClient = {
 
   getCurrentRole(): string | null {
     return accessToken ? decodeAccessToken(accessToken).role : null;
+  },
+
+  getSavedLocale(): Locale | null {
+    return savedLocale;
+  },
+
+  // The API saves it and sets the middleware's cookie from what it saved.
+  async setLocale(locale: Locale): Promise<SetLocale> {
+    const saved = await parseOrThrow<SetLocale>(await request("/candidates/me/locale", { method: "PATCH", body: JSON.stringify({ locale }) }));
+    savedLocale = saved.locale;
+    return saved;
   },
 
   async createDrive(input: CreateDriveInput): Promise<DriveDetail> {

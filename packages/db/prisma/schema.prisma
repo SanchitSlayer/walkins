@@ -77,6 +77,13 @@ enum CompanyRole {
   VIEWER
 }
 
+// The language a person reads Walkins in. LOCALES in @walkins/shared lists
+// the same values.
+enum Locale {
+  en
+  hi
+}
+
 model User {
   id          String       @id @default(cuid())
   phone       String       @unique
@@ -84,6 +91,9 @@ model User {
   role        UserRole
   companyId   String?
   companyRole CompanyRole?
+  // On the person, not the candidate profile: someone chooses their
+  // language before they have a profile, and an employer will later too.
+  locale      Locale       @default(en)
   createdAt   DateTime     @default(now())
 
   company              Company?                 @relation(fields: [companyId], references: [id])

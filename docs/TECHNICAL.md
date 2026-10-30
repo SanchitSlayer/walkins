@@ -1560,20 +1560,26 @@ only as the last fallback for a failure the page has no words for.
 
 ## Languages
 
-The interface is English only for now. Everything is routed so that adding
-Hindi means translating, not tracking down strings.
+English and Hindi. Hindi covers what a candidate meets: the public pages,
+everything a candidate signs in to, the venue's screens, alerts and the
+bot. The employer console and admin stay English. Until `hi.json` covers
+all of that (`HINDI_SCOPE` in `packages/shared/src/i18n.ts`), Hindi isn't
+offered: the picker and the header switch are hidden, and no `hreflang`
+alternates are given. The gate lifts itself when the last key lands: there
+is no flag to forget.
 
-**One catalog.** All wording lives in
-`packages/shared/src/messages/en.json`. The web app, the API's error
-messages and the worker's Telegram alerts all read it. Nothing user-facing
-is written anywhere else.
+**One catalog per language.** All English wording lives in
+`packages/shared/src/messages/en.json`, and Hindi in `hi.json` beside it.
+The web app, the API's error messages and the worker's Telegram alerts all
+read them. Nothing user-facing is written anywhere else. A key `hi.json`
+doesn't have reads in English, which is how the employer console stays
+whole.
 
 **Web: `next-intl`.** It works with the App Router's server components and
 `generateMetadata`. Messages are typed against the catalog through
 `AppConfig` (`apps/web/i18n/global.d.ts`), so a misspelt key is a type
-error. It runs without locale routing for now: `apps/web/i18n/request.ts`
-always picks the default locale. Adding Hindi means adding `/hi` routing
-and `hreflang` alternates there.
+error. `apps/web/i18n/request.ts` takes the locale from the address, as
+the middleware reports it (see "Addresses and the saved language").
 
 **API and worker: `intl-messageformat` 10.** The obvious choice would have
 been `use-intl`, the formatter under `next-intl`. Version 4 is ESM-only,
@@ -1586,17 +1592,64 @@ seat counts come from `formatFor(locale)` in `packages/shared/src/format.ts`.
 The numbers come from `Intl`, and the words around them ("Today", "2–4
 yrs") come from the catalog. Language and script names come from
 `Intl.DisplayNames`, so they translate themselves. The web app uses
-`useFormat()`. The API and worker don't know a reader's language yet, so
-they use the default-locale exports.
+`useFormat()`, and the worker `formatFor(the candidate's locale)`. The API
+words its refusals in English for any client that isn't the web app; the
+web app words them itself, from their codes, in the page's language.
 
-**Worker alerts are in the catalog now** (`alerts.*`). They are rendered
-with a locale argument that is always the default for now. A candidate's
-language preference only needs to be passed through to switch them.
+**Alerts and the bot speak the candidate's language.** The worker reads
+`users.locale` when it sends, not when the alert was queued, and builds
+every link for that language: a Hindi reader's Telegram link opens the
+`/hi` page, which matters most with no signal, when nothing can redirect
+them. The bot answers a linked chat in its candidate's language, and a
+chat it can't place yet in Hindi above English.
 
 **Public pages set their own metadata.** The home page, city and role
 search pages, and drive pages have their own titles and descriptions.
 Descriptions use absolute dates, because a search result outlives "today".
-`<html lang>` follows the locale.
+`<html lang>` follows the locale, and once Hindi is offered each public
+page lists its other language's address as an `hreflang` alternate.
+
+### Addresses and the saved language
+
+**The language is on the person, `users.locale`, not the candidate
+profile.** Someone chooses their language before they have a profile to
+save, and an employer will choose one later too. Don't move it onto
+`candidates`.
+
+**The address decides what a page says.** `/hi/jobs/pune` is Hindi and
+`/jobs/pune` is English, for a crawler and a phone alike: `middleware.ts`
+serves both from the same page and tells it which language it is in. It
+never reads `Accept-Language`. Pages that exist only in English redirect
+from their `/hi` address.
+
+**Redirects go from English to Hindi, never back.** A reader who saved
+Hindi is sent from an English address to its Hindi one. A reader who saved
+English is never sent from a Hindi address to an English one. That is
+what keeps a shared `/hi` link working: a Hindi reader can forward a link
+to a friend, or an employer can paste one into a message, and it opens in
+the language it was sent in, whatever the person opening it saved. A
+redirect back would make what a link says depend on who clicks it.
+
+**The database wins over the cookie.** The middleware can't read the
+database, so it reads a `locale` cookie: a copy of `users.locale`. The two
+can disagree, most often when someone switches language on another
+device. They are kept from drifting by who writes the cookie:
+- only the API writes it, never the browser's code, and only with the
+  value it has just read from or saved to `users.locale`;
+- it is written at sign-in, at every session refresh (each page load and
+  every 15 minutes), and when a choice is saved;
+- signing out clears it.
+
+So a stale copy lasts at most until that device's next refresh, and
+overwrites nothing. Whichever value was written last never matters: the
+database's value always reaches the cookie, and the cookie never reaches
+the database. The API test "follows the database, not the last cookie
+written" pins this down.
+
+**Switching language** saves the choice first for a signed-in candidate,
+then reloads the same page at its other address. A full reload, because
+both addresses share the root layout, and a client-side navigation would
+keep the old language's `<html lang>` and catalog.
 
 ### The check
 
@@ -1619,6 +1672,10 @@ described below.
   `alerts`, `bot`, `fields`, `format`) are exempt.
 - **A phrase written into the worker's alert templates** rather than the
   catalog.
+- **A Hindi key English doesn't have,** or a Hindi string whose arguments,
+  tags or select cases differ from its English. A translation that drops
+  `{link}` fails, and so does one that adds a gender `select`. Plural
+  categories may differ, since Hindi's differ.
 
 **The API and worker.** The check covers the places where they speak to a
 person directly:
@@ -1654,6 +1711,169 @@ There are three escape hatches, each visible in review:
 - `data-i18n-ignore` on a JSX element exempts its subtree, for content that
   is data.
 - An `i18n-ignore` comment on a line exempts that line, and should say why.
+
+### Hindi: register and glossary
+
+Status: read by a native speaker on 30 October 2026 and accepted as
+written. The safety strings built from the fixed phrases below still get
+their own reading once they exist.
+
+**The register: everyday Hindi, with English loanwords in Devanagari.**
+Write what a jobseeker in a tier-2 city says, not what a government form
+says. Where people say the English word, write it in Devanagari: ड्राइव,
+स्लॉट, चेक-इन, बुकिंग, लोकेशन. OTP and QR stay in Latin, as on the
+reader's own phone. Sanskritised vocabulary (पंजीकरण, अभ्यर्थी, सत्यापन,
+आरक्षित, स्थल) is correct and wrong here: it rebuilds, in Devanagari, the
+barrier the Hindi interface exists to remove. This is the decision every
+other choice below follows from. Don't drift from it string by string.
+
+**Never ask, or assume, the reader's gender.** Hindi verbs agree with the
+subject's gender in many tenses: "you came" is आप आए or आप आईं. English
+never made Walkins ask a candidate's gender, and Hindi must not become the
+reason it starts. Don't "fix" an awkward sentence by adding a gender
+field or a gender `select`. The placeholder-parity test fails on any
+argument the English string doesn't have. Phrase around it instead:
+- **Make a noun the subject.** आपकी बुकिंग हो गई, not आप बुक हो गए.
+- **Use a transitive past tense with ने.** The verb then agrees with the
+  object, not the reader: आपने सीट छोड़ दी, आपने काम शुरू किया.
+- **Imperatives and the subjunctive are neutral.** करें, जाएँ, चुनें.
+- **Use an impersonal passive.** आपको गैरहाज़िर दर्ज किया गया.
+- **Avoid** आप with an intransitive verb in the progressive, habitual or
+  future (आप आ रहे हैं, आप जाएँगे), and adjectives that inflect (अच्छा,
+  अच्छी). Invariant ones are fine: हाज़िर, गैरहाज़िर, रद्द, तैयार.
+
+**Other rules:**
+- **आप throughout,** never तुम or तू.
+- **Instructions and buttons use the -एँ form:** सेव करें, सीट बुक करें.
+- **Sentences end with ।**
+- **Nukta on ज़ and फ़ only** (प्रोफ़ाइल, फ़ीस, ज़रूरी), not on क़ ख़ ग़,
+  which everyday writing drops (गैरहाज़िर, तारीख).
+- **Digits stay Latin (0–9),** as the formatter gives them for `hi-IN`.
+  Times are on the 24-hour clock (14:30), as in English.
+- **Units stay Latin:** km and m. The formatter's कि॰मी॰ is overridden.
+- **Dates use the long weekday and month** (शुक्रवार, 30 अक्तूबर), never
+  the formatter's abbreviations (शुक्र, अक्तू॰). Month and day names are
+  never written into the catalog: they come from the formatter, so their
+  spelling stays consistent.
+- **कल means both yesterday and tomorrow,** so in Hindi it never appears
+  without the date beside it.
+- **Hindi's "one" plural form covers 0 as well as 1.** A count that can be
+  zero needs an explicit `=0` case.
+- **Placeholders move with Hindi word order.** "{role} at {company}"
+  becomes "{company} में {role}". Employer content stays as typed, and
+  Hindi postpositions follow it whatever its script.
+- **Names the reader sees in Latin on their phone stay in Latin:**
+  Walkins, Telegram, Chrome, Safari, iPhone, WebGL, OTP, QR, UPI, AI.
+
+**Each loanword's gender is fixed here**, because every verb and
+adjective agreeing with it depends on it. Gender is m (masculine), f
+(feminine), or "–" where nothing agrees with the word.
+
+| English | Hindi | Gender | Note |
+| --- | --- | --- | --- |
+| Walkins | Walkins | m | Brand, Latin. "Walkins ... करता है" |
+| walk-in interview | वॉक-इन इंटरव्यू | m | |
+| walk-in (a person without a booking) | वॉक-इन | m | Also the board's slot label |
+| drive | ड्राइव | f | ड्राइव रद्द हो गई. Not अभियान, which means campaign |
+| interview | इंटरव्यू | m | |
+| employer | कंपनी | f | What a jobseeker calls them. Not नियोक्ता |
+| the employer at the desk | डेस्क पर कंपनी का स्टाफ़ | m | A person, not the company |
+| candidates (third person) | नौकरी ढूँढने वाले | m pl | Better still, rephrase to आप. Not अभ्यर्थी |
+| job | नौकरी | f | |
+| role (kind of work) | काम | m | "Roles you'd walk in for": किन कामों के लिए |
+| pay | सैलरी | f | Not वेतन |
+| experience | अनुभव | m | Everyday enough; एक्सपीरियंस reads as English |
+| seat | सीट | f | |
+| slot | स्लॉट | m | |
+| book (a slot) | बुक करना | – | स्लॉट बुक करें |
+| booking | बुकिंग | f | आपकी बुकिंग हो गई |
+| Booked (status) | बुक है | – | |
+| release my seat | अपनी सीट छोड़ें | – | Not मुक्त करें |
+| Seat released (status) | सीट छोड़ दी | – | Agrees with सीट, not the reader |
+| check in (verb) | चेक-इन करना | – | |
+| check-in (noun) | चेक-इन | m | आपका चेक-इन हो गया |
+| checked in, waiting for the employer to confirm | चेक-इन हुआ, कंपनी की पुष्टि बाकी है | – | पुष्टि is common enough to keep |
+| venue | इंटरव्यू की जगह | f | Labels: जगह. Not स्थल |
+| address | पता | m | |
+| screening questions | बुकिंग से पहले के सवाल | m pl | Described, not named |
+| requirement | ज़रूरी शर्त | f | "It asks for": इसके लिए ज़रूरी है |
+| not a match (screened out) | इस ड्राइव की ज़रूरी शर्त पूरी नहीं होती | – | About the requirement, never the person |
+| application | आवेदन | m | Known from every form. Verb: अप्लाई करना |
+| hired / selected | सिलेक्शन हो गया | m | What people say. Not चयन, not चुने गए (gendered) |
+| not selected / not taken forward | सिलेक्शन नहीं हुआ / आवेदन आगे नहीं बढ़ाया | – | |
+| attended | हाज़िरी दर्ज हुई | f | Not आप आए |
+| marked absent | गैरहाज़िर दर्ज किया गया | – | Known from school registers |
+| paused (suspended) | रोकी गई | – | Agrees with ड्राइव: ड्राइव अभी रोकी गई है. Status label: रुकी हुई |
+| cancelled | रद्द | – | Invariant: ड्राइव रद्द हो गई |
+| moved (rescheduled) | समय बदल गया | – | ड्राइव का समय बदल गया है |
+| Was / Now | पहले / अब | – | |
+| report (noun) | रिपोर्ट | f | |
+| report (verb) | रिपोर्ट करें | – | इस ड्राइव की रिपोर्ट करें |
+| money | पैसे | m pl | |
+| fee | फ़ीस | f | रजिस्ट्रेशन फ़ीस |
+| training, uniform, document, job letter | ट्रेनिंग, यूनिफ़ॉर्म, डॉक्यूमेंट, जॉइनिंग लेटर | – | The never-pay list |
+| profile | प्रोफ़ाइल | f | |
+| home | घर | m | |
+| travel distance | आने-जाने की दूरी | f | A noun, so no verb agrees with the reader |
+| city centre | शहर के बीच | – | Not शहर का केंद्र |
+| voice intro | वॉइस इंट्रो | m | Verb: अपने बारे में बोलकर रिकॉर्ड करें |
+| record / recording | रिकॉर्ड करें / रिकॉर्डिंग | f | |
+| automatic transcript | अपने-आप लिखा गया टेक्स्ट | m | |
+| CV | बायोडाटा | m | What entry-level jobseekers call it |
+| alert | मैसेज | m | An alert reaches people as a message |
+| reminder | रिमाइंडर | m | |
+| message | मैसेज | m | |
+| conversation | बातचीत | f | |
+| Telegram | Telegram | m | Latin. Telegram जोड़ें, Telegram जुड़ गया |
+| link | लिंक | m | |
+| login code | OTP | m | Latin |
+| check-in code | कोड | m | QR कोड, with QR in Latin |
+| scan | स्कैन करें | – | |
+| location | लोकेशन | f | लोकेशन चालू करें |
+| signal | नेटवर्क | m | What people say: नेटवर्क नहीं आ रहा |
+| offline | ऑफ़लाइन | – | |
+| last synced | आखिरी बार अपडेट हुआ | – | Always with the day and time |
+| save / saved | सेव करें / सेव हो गया | – | |
+| log in / log out | लॉग इन करें / लॉग आउट करें | – | |
+| phone number | मोबाइल नंबर | m | |
+| try again | फिर से कोशिश करें | – | |
+| Cancel (a dialog) | रहने दें | – | Never रद्द, which is reserved for a drive being called off |
+| Not now | अभी नहीं | – | |
+| joining date | जॉइनिंग की तारीख | f | |
+| started (the job) | काम शुरू किया | – | Transitive with ने, so the verb agrees with काम, not the reader |
+| still there after 30 days | 30 दिन बाद भी काम पर हैं | – | हैं doesn't mark gender |
+| Your record | आपका रिकॉर्ड | m | |
+| Arrivals (venue board) | आगमन | m | A formal word, kept on purpose: every Indian station board uses it, and the board is a station board |
+| Live / Filling up / Closing today / Ended | लाइव / भर रही है / आज बंद / खत्म | – | Agrees with ड्राइव |
+| starts in / doors close in | शुरू होने में / बंद होने में | – | Countdown labels |
+
+**Fixed phrases.** These recur in the safety strings, so each is
+written once, here, and reused word for word. A native reading of these
+covers most of the critical tier's meaning:
+
+| English | Hindi |
+| --- | --- |
+| Walkins never charges candidates. | Walkins नौकरी ढूँढने वालों से कभी पैसे नहीं लेता। |
+| No employer should ask you for money. | किसी भी कंपनी को आपसे पैसे नहीं माँगने चाहिए। |
+| If anyone does, don't pay. | अगर कोई माँगे, तो पैसे बिल्कुल न दें। |
+| Report it. | इसकी रिपोर्ट करें। |
+| You haven't done anything wrong. | आपकी कोई गलती नहीं है। |
+| Please don't travel to it. | कृपया वहाँ न जाएँ। |
+| This won't count against you. | इसे आपके खिलाफ़ नहीं गिना जाएगा। |
+| Your booking is still held. | आपकी बुकिंग अब भी बनी हुई है। |
+| This message seems to ask for money. | लगता है यह मैसेज पैसे माँग रहा है। |
+
+**The language picker** says exactly what review happened. Once the
+glossary and the safety strings have had their native reading, and not
+before, it reads:
+- English: "Hindi written with AI help. The glossary and safety wording
+  were checked by a person; the rest hasn't been yet."
+- Hindi: "हिंदी AI की मदद से लिखी गई है। शब्दावली और सुरक्षा से जुड़ी
+  बातें एक व्यक्ति ने जाँची हैं, बाकी अभी नहीं।"
+
+If the review covers more later, the picker says more. Until the reading
+has happened, it says only "Hindi written with AI help; not yet checked
+by a person."
 
 ### Known work for the Hindi phase
 

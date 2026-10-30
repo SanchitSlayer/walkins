@@ -1478,5 +1478,16 @@
     "left": "left",
     "youStarted": "you started",
     "youDidNotStart": "you didn't start"
+  },
+  "language": {
+    "heading": "Language",
+    "intro": "The language Walkins and your Telegram alerts are in. Employers' own words (job titles, addresses, messages) stay as they wrote them.",
+    "name": {
+      "en": "English",
+      "hi": "हिंदी"
+    },
+    "hindiReview": "Hindi written with AI help; not yet checked by a person.",
+    "switchTo": "Read this page in {language}",
+    "saveFailed": "Your language couldn't be saved. Try again."
   }
 }

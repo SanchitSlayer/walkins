@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import { otpRequestSchema, otpVerifySchema } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";

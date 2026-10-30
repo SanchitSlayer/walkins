@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
 import { apiError } from "../common/api-error";
+import { clearLocaleCookie, setLocaleCookie } from "../common/locale-cookie";
 
 const REFRESH_COOKIE = "refresh_token";
 const REFRESH_TOKEN_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 90) * 24 * 60 * 60 * 1000;
@@ -34,9 +35,10 @@ export class AuthController {
     @Body(new ZodValidationPipe(otpVerifySchema)) body: { phone: string; otp: string },
     @Res({ passthrough: true }) response: Response,
   ) {
-    const { accessToken, refreshToken } = await this.authService.verifyOtp(body.phone, body.otp);
+    const { accessToken, refreshToken, locale } = await this.authService.verifyOtp(body.phone, body.otp);
     setRefreshCookie(response, refreshToken);
-    return { accessToken };
+    setLocaleCookie(response, locale);
+    return { accessToken, locale };
   }
 
   @Post("refresh")
@@ -45,11 +47,13 @@ export class AuthController {
     const token = request.cookies?.[REFRESH_COOKIE];
     if (!token) {
       response.clearCookie(REFRESH_COOKIE, { path: "/" });
+      clearLocaleCookie(response);
       throw new UnauthorizedException(apiError("errors.auth.signedOut"));
     }
-    const { accessToken, refreshToken } = await this.authService.refresh(token);
+    const { accessToken, refreshToken, locale } = await this.authService.refresh(token);
     setRefreshCookie(response, refreshToken);
-    return { accessToken };
+    setLocaleCookie(response, locale);
+    return { accessToken, locale };
   }
 
   @Post("logout")
@@ -60,6 +64,7 @@ export class AuthController {
       await this.authService.logout(token);
     }
     response.clearCookie(REFRESH_COOKIE, { path: "/" });
+    clearLocaleCookie(response);
     return { success: true };
   }
 }

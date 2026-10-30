@@ -200,6 +200,19 @@ describe("processAlert", () => {
     expect(message.text).toContain(`http://localhost:3000/drives/${ids.drive}#report`);
   });
 
+  // The language is read when the alert is sent, from the person: nothing in
+  // the queued job carries it. The links matter even before the wording is
+  // translated, since offline nothing can redirect a Hindi reader.
+  it("sends a Hindi reader's links to the Hindi pages", async () => {
+    await prisma.user.update({ where: { id: ids.user }, data: { locale: "hi" } });
+    await processAlert({ data: job, attemptsMade: 0 }, deps);
+    await prisma.user.update({ where: { id: ids.user }, data: { locale: "en" } });
+
+    const [message] = channel.sent;
+    expect(message.url).toBe(`http://localhost:3000/hi/drives/${ids.drive}`);
+    expect(message.text).toContain(`http://localhost:3000/hi/drives/${ids.drive}#report`);
+  });
+
   it("tells a booked candidate a suspended drive is paused, and not anyone once it is back on", async () => {
     const suspended: AlertJob = { ...job, templateKey: "drive_suspended" };
     const application = await prisma.application.create({ data: { driveId: ids.drive, candidateId: ids.candidate, state: "CONFIRMED" } });

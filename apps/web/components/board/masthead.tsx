@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isLocalizedPath, type Locale, OFFERED_LOCALES, splitLocalePath } from "@walkins/shared";
+import { Link, readIn, usePageLocale, useRouter } from "@/lib/navigation";
 import { apiClient } from "@/lib/api-client";
 import { forgetDevice } from "@/lib/offline";
 import { useTranslations } from "next-intl";
@@ -76,6 +77,43 @@ function SessionNav() {
   );
 }
 
+// The other language's own name, on pages that exist in both. Absent until
+// a second language is offered.
+function LanguageSwitch() {
+  const t = useTranslations("language");
+  const page = usePageLocale();
+  const pathname = usePathname();
+  const [failed, setFailed] = useState(false);
+  if (OFFERED_LOCALES.length === 1 || !isLocalizedPath(splitLocalePath(pathname).path)) return null;
+
+  function switchTo(locale: Locale) {
+    setFailed(false);
+    readIn(locale).catch(() => setFailed(true));
+  }
+
+  return (
+    <>
+      {OFFERED_LOCALES.filter((locale) => locale !== page).map((locale) => (
+        <button
+          key={locale}
+          type="button"
+          lang={locale}
+          onClick={() => switchTo(locale)}
+          aria-label={t("switchTo", { language: t(`name.${locale}`) })}
+          className="type-meta min-h-11 whitespace-nowrap text-stock underline-offset-4 hover:underline"
+        >
+          {t(`name.${locale}`)}
+        </button>
+      ))}
+      {failed && (
+        <span role="alert" className="type-meta text-closing-lamp">
+          {t("saveFailed")}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function Masthead({ context }: { context?: string }) {
   return (
     <header className="border-b border-housing-line bg-housing-raised text-stock">
@@ -88,7 +126,10 @@ export function Masthead({ context }: { context?: string }) {
           </Link>
           {context && <span className="type-board-md truncate text-housing-muted">{context}</span>}
         </div>
-        <SessionNav />
+        <div className="flex items-center gap-5">
+          <LanguageSwitch />
+          <SessionNav />
+        </div>
       </div>
     </header>
   );

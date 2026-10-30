@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { localeAlternates } from "@walkins/shared";
 import { Masthead } from "@/components/board/masthead";
 import { getCityCenterByName, searchDrivesOnServer } from "@/lib/server-search";
 import JobsSearchClient from "../jobs-search-client";
@@ -9,10 +10,12 @@ type SearchParams = { radiusKm?: string; fromDate?: string; toDate?: string; cur
 type Params = Promise<{ city: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const cityRow = await getCityCenterByName((await params).city);
+  const { city } = await params;
+  const cityRow = await getCityCenterByName(city);
   if (!cityRow) return {};
   const t = await getTranslations("jobs.meta");
   return {
+    alternates: localeAlternates(`/jobs/${city}`, await getLocale()),
     title: t("cityTitle", { city: cityRow.name }),
     description: t("cityDescription", { city: cityRow.name, state: cityRow.state }),
   };

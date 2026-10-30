@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CHECK_IN_OPENS_BEFORE_START_MS, type MyApplication, type MyApplications, THREAD_CLOSES_AFTER_DAYS, type ThreadList } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";

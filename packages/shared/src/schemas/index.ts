@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LOCALES } from "../i18n";
 import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionSchema } from "../knockout";
 import { personRefSchema } from "../people";
 import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
@@ -113,6 +114,8 @@ export const updateCandidateProfileSchema = z
     roleIds: z.array(z.string().min(1)),
   })
   .partial();
+
+export const setLocaleSchema = z.object({ locale: z.enum(LOCALES) });
 
 export const driveSearchQuerySchema = z.object({
   city: z.string().min(1).optional(),
@@ -457,6 +460,7 @@ export type RescheduleDriveInput = z.infer<typeof rescheduleDriveSchema>;
 export type DriveReschedule = z.infer<typeof driveRescheduleSchema>;
 export type UpdateDriveInput = z.infer<typeof updateDriveSchema>;
 export type UpdateCandidateProfileInput = z.infer<typeof updateCandidateProfileSchema>;
+export type SetLocale = z.infer<typeof setLocaleSchema>;
 export type DriveSearchQuery = z.infer<typeof driveSearchQuerySchema>;
 export type ApplyInput = z.infer<typeof applySchema>;
 export type EmployerApplicationUpdate = z.infer<typeof employerApplicationUpdateSchema>;

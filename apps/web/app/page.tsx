@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import { Masthead } from "@/components/board/masthead";
 import { Slab } from "@/components/board/slab";
 import { listCitiesOnServer } from "@/lib/server-search";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { localeAlternates } from "@walkins/shared";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { alternates: localeAlternates("/", await getLocale()) };
+}
 
 export default async function Home() {
   const t = await getTranslations("home");

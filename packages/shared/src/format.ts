@@ -39,15 +39,20 @@ export type Format = {
 // through the same files the rest of the interface uses.
 function createFormat(locale: Locale): Format {
   const tag = INTL_LOCALE[locale];
-  const dayParts = new Intl.DateTimeFormat(tag, { timeZone: TIME_ZONE, weekday: "short", day: "numeric", month: "short" });
+  // Hindi's short forms (शुक्र, अक्तू॰) are abbreviations nobody writes, and
+  // its units (कि॰मी॰) aren't what a jobseeker reads on a sign; the glossary
+  // in docs/TECHNICAL.md has both rules.
+  const short = locale === "hi" ? "long" : "short";
+  const unitTag = locale === "hi" ? INTL_LOCALE.en : tag;
+  const dayParts = new Intl.DateTimeFormat(tag, { timeZone: TIME_ZONE, weekday: short, day: "numeric", month: short });
   const time = new Intl.DateTimeFormat(tag, { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const rupees = new Intl.NumberFormat(tag, { style: "currency", currency: "INR", maximumFractionDigits: 0 });
   const decimal = new Intl.NumberFormat(tag).formatToParts(1.5).find((p) => p.type === "decimal")?.value ?? ".";
   const number = new Intl.NumberFormat(tag);
-  const km = new Intl.NumberFormat(tag, { style: "unit", unit: "kilometer", minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const km = new Intl.NumberFormat(unitTag, { style: "unit", unit: "kilometer", minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const languages = new Intl.DisplayNames([tag], { type: "language" });
   const scripts = new Intl.DisplayNames([tag], { type: "script" });
-  const metres = new Intl.NumberFormat(tag, { style: "unit", unit: "meter", maximumFractionDigits: 0 });
+  const metres = new Intl.NumberFormat(unitTag, { style: "unit", unit: "meter", maximumFractionDigits: 0 });
 
   const formatTime = (iso: string) => time.format(new Date(iso));
 
@@ -106,8 +111,9 @@ export function formatFor(locale: Locale): Format {
   return format;
 }
 
-// The API and worker don't yet know a reader's language, so they format for
-// the default locale. The web app never imports these: it formats through
-// useFormat(), which follows the page's locale (test/i18n.test.ts checks).
+// For text whose reader's language isn't known: the API's default wording
+// and its logs. The worker formats with formatFor(the candidate's locale).
+// The web app never imports these: it formats through useFormat(), which
+// follows the page's locale (test/i18n.test.ts checks).
 export const { formatTime, dayLabel, formatDate, formatWhen, formatSalary, formatPaise, formatExperience, formatDistance, formatSeats } =
   formatFor(DEFAULT_LOCALE);

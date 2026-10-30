@@ -1,11 +1,12 @@
 // Keeps the candidate's pass and the check-in page usable with no signal.
 //
-// Only two pages and the files they load are cached, always network first:
+// Only two pages, at their English and Hindi addresses, and the files they
+// load are cached, always network first:
 // a fresh copy whenever the network answers, the cached one only when it
 // doesn't. Nothing under /api is touched, and queued scans are never sent
 // from here (see lib/offline.ts for why the page sends them).
 const CACHE = "walkins-pass-v1";
-const PASS_PAGES = ["/checkin", "/my-drives"];
+const PASS_PAGES = ["/checkin", "/my-drives", "/hi/checkin", "/hi/my-drives"];
 const SYNC_TAG = "walkins-checkins";
 
 self.addEventListener("install", () => self.skipWaiting());

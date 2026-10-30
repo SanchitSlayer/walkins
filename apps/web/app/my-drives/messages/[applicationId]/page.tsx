@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { Thread } from "@walkins/shared";

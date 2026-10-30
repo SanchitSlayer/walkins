@@ -11,6 +11,7 @@ import {
   RecipientUnreachableError,
   type TemplatedMessage,
   type TemplateKey,
+  localePath,
 } from "@walkins/shared";
 import type { ChannelResolver } from "../channels/channel-resolver";
 import { type AlertContext, renderAlert, renderMessage } from "./templates";
@@ -76,11 +77,12 @@ async function loadMessage(messageId: string, webUrl: string): Promise<Loaded | 
     where: { id: messageId },
     include: {
       sender: { select: { name: true } },
-      thread: { include: { application: { include: { drive: { include: { role: true, company: true } }, candidate: { include: { user: { select: { phone: true } } } } } } } },
+      thread: { include: { application: { include: { drive: { include: { role: true, company: true } }, candidate: { include: { user: { select: { phone: true, locale: true } } } } } } } },
     },
   });
   if (!message) return null;
   const { application } = message.thread;
+  const { locale } = application.candidate.user;
   return {
     recipient: { candidateId: application.candidateId, phone: application.candidate.user.phone, telegramChatId: application.candidate.telegramChatId },
     message: renderMessage(
@@ -90,8 +92,9 @@ async function loadMessage(messageId: string, webUrl: string): Promise<Loaded | 
         role: application.drive.role.title,
         body: message.body,
         flagged: message.moneyFlag,
-        threadUrl: `${webUrl}/my-drives/messages/${application.id}`,
+        threadUrl: `${webUrl}${localePath(`/my-drives/messages/${application.id}`, locale)}`,
       },
+      locale,
     ),
   };
 }
@@ -100,7 +103,7 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
   if (templateKey === "message") return null;
   const [drive, candidate] = await Promise.all([
     prisma.drive.findUnique({ where: { id: driveId }, include: { role: true, company: true } }),
-    prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true } } } }),
+    prisma.candidate.findUnique({ where: { id: candidateId }, include: { user: { select: { phone: true, locale: true } } } }),
   ]);
   if (!drive || !candidate) return null;
   if (!DRIVE_STATUS_FOR[templateKey].includes(drive.status)) return { skip: `drive is ${drive.status.toLowerCase()}` };
@@ -144,6 +147,8 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
     WHERE c.id = ${candidateId} AND d.id = ${driveId}
   `;
 
+  const { locale } = candidate.user;
+  const link = (path: string) => `${webUrl}${localePath(path, locale)}`;
   const context: AlertContext = {
       roleTitle: drive.role.title,
       companyName: drive.company.name,
@@ -160,13 +165,13 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
       // one that is no longer for them.
       driveUrl:
         templateKey === "joining_check"
-          ? `${webUrl}/my-drives`
+          ? link("/my-drives")
           : templateKey === "application_rejected" || templateKey === "drive_cancelled"
-            ? `${webUrl}/`
-            : `${webUrl}/drives/${driveId}`,
-      reportUrl: `${webUrl}/drives/${driveId}#report`,
+            ? link("/")
+            : link(`/drives/${driveId}`),
+      reportUrl: link(`/drives/${driveId}#report`),
   };
-  return { recipient: { candidateId, phone: candidate.user.phone, telegramChatId: candidate.telegramChatId }, message: renderAlert(templateKey, context, now) };
+  return { recipient: { candidateId, phone: candidate.user.phone, telegramChatId: candidate.telegramChatId }, message: renderAlert(templateKey, context, now, locale) };
 }
 
 // Every attempt leaves a notifications row. The PENDING row inserted before

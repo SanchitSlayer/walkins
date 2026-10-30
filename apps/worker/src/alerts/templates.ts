@@ -19,10 +19,10 @@ export type AlertContext = {
 };
 
 // The wording lives in the shared catalog (alerts.*) like every other
-// string, so sending Hindi later is choosing the locale from the candidate's
-// preference, not rewriting templates. Until candidates have one, alerts go
-// out in the default locale. Role titles, company names and venues are
-// content and go in exactly as entered. Every alert ends with the same
+// string, rendered in the candidate's own language (users.locale), read
+// when the alert is sent rather than when it was queued. Role titles,
+// company names and venues are content and go in exactly as entered. Every
+// alert ends with the same
 // warning: fake recruiters charge "registration fees", and the alert is
 // where a candidate is reading about the job.
 // A message's Telegram copy: who wrote it, what they said exactly as

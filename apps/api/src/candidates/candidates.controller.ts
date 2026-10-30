@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import type { AccessTokenPayload, VoiceUploadRequest } from "@walkins/shared";
-import { updateCandidateProfileSchema, voiceUploadRequestSchema } from "@walkins/shared";
+import { Body, Controller, Get, Param, Patch, Post, Res, UseGuards } from "@nestjs/common";
+import type { AccessTokenPayload, SetLocale, VoiceUploadRequest } from "@walkins/shared";
+import { setLocaleSchema, updateCandidateProfileSchema, voiceUploadRequestSchema } from "@walkins/shared";
+import type { Response } from "express";
 import { CurrentUser } from "../common/current-user.decorator";
 import { JwtAuthGuard } from "../common/jwt-auth.guard";
+import { setLocaleCookie } from "../common/locale-cookie";
 import { LIMITS, RateLimit } from "../common/rate-limit";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
@@ -52,6 +54,18 @@ export class CandidatesController {
     body: ReturnType<typeof updateCandidateProfileSchema.parse>,
   ) {
     return this.candidatesService.updateMe(user.userId, body);
+  }
+
+  @Patch("me/locale")
+  @RateLimit(LIMITS.profileEdit)
+  async setLocale(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(setLocaleSchema)) body: SetLocale,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const saved = await this.candidatesService.setLocale(user.userId, body.locale);
+    setLocaleCookie(response, saved.locale);
+    return saved;
   }
 
   @Post("me/telegram-link")

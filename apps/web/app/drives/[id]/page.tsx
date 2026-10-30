@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { formatFor } from "@walkins/shared";
+import { DEFAULT_LOCALE, formatFor, isLocale, localeAlternates } from "@walkins/shared";
 import { Masthead } from "@/components/board/masthead";
 import { getPublicDriveOnServer } from "@/lib/server-search";
 import DriveDetailClient from "./drive-detail-client";
@@ -13,8 +13,10 @@ type Params = Promise<{ id: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const drive = await getPublicDriveOnServer((await params).id);
   if (!drive) return {};
-  const [t, format] = await Promise.all([getTranslations("drive.meta"), getLocale().then(formatFor)]);
+  const [t, locale] = await Promise.all([getTranslations("drive.meta"), getLocale()]);
+  const format = formatFor(isLocale(locale) ? locale : DEFAULT_LOCALE);
   return {
+    alternates: localeAlternates(`/drives/${drive.id}`, locale),
     title: t("title", { role: drive.role.title, city: drive.city.name }),
     description: t("description", {
       date: format.formatDate(new Date(drive.startsAt)),

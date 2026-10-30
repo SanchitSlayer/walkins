@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@/lib/navigation";
 import { useEffect, useRef, type CSSProperties, type MouseEventHandler, type ReactNode, type Ref } from "react";
 import { cn } from "@/lib/utils";
 import { type BoardState, railColor } from "./board-state";

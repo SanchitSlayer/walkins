@@ -1,7 +1,8 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useRouter } from "@/lib/navigation";
 import dynamic from "next/dynamic";
 import type { DriveSearchPage } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";

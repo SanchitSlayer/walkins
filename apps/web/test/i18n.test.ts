@@ -1,8 +1,20 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
+import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
-import { MESSAGES } from "@walkins/shared";
+import {
+  catalogLeaves,
+  hindiGaps,
+  LOCALE_COOKIE,
+  LOCALE_HEADER,
+  localePath,
+  MESSAGES,
+  messageArguments,
+  OFFERED_LOCALES,
+  splitLocalePath,
+} from "@walkins/shared";
+import { middleware } from "../middleware";
 
 // Every user-facing string goes through the message catalog
 // (packages/shared/src/messages/en.json), so that Hindi later is translation
@@ -291,5 +303,70 @@ describe("internationalisation", () => {
       (key) => !SERVER_NAMESPACES.has(key.split(".")[0]) && !exact.has(key) && ![...prefixes].some((p) => p === "" || key.startsWith(`${p}.`)),
     );
     expect(unused).toEqual([]);
+  });
+});
+
+describe("Hindi", () => {
+  const english = new Map(catalogLeaves("en"));
+
+  it("has no key English doesn't", () => {
+    expect(catalogLeaves("hi").filter(([key]) => !english.has(key))).toEqual([]);
+  });
+
+  it("takes exactly the arguments, tags and cases its English does", () => {
+    const differing = catalogLeaves("hi").filter(([key, hindi]) => {
+      const source = english.get(key);
+      return source !== undefined && messageArguments(hindi).join() !== messageArguments(source).join();
+    });
+    expect(differing.map(([key]) => key)).toEqual([]);
+  });
+
+  it("is offered for choosing only once it covers everything a Hindi reader meets", () => {
+    expect(OFFERED_LOCALES).toEqual(hindiGaps().length === 0 ? ["en", "hi"] : ["en"]);
+  });
+});
+
+describe("language addresses", () => {
+  const visit = (path: string, cookie?: string) => {
+    const request = new NextRequest(`http://localhost:3000${path}`, { headers: cookie ? { cookie: `${LOCALE_COOKIE}=${cookie}` } : {} });
+    const response = middleware(request);
+    return {
+      redirect: response.headers.get("location")?.replace("http://localhost:3000", "") ?? null,
+      rewrite: response.headers.get("x-middleware-rewrite")?.replace("http://localhost:3000", "") ?? null,
+      locale: response.headers.get(`x-middleware-request-${LOCALE_HEADER}`),
+    };
+  };
+
+  it("serves a /hi address from the same page, in Hindi", () => {
+    expect(visit("/hi/my-drives")).toEqual({ redirect: null, rewrite: "/my-drives", locale: "hi" });
+    expect(visit("/hi")).toEqual({ redirect: null, rewrite: "/", locale: "hi" });
+  });
+
+  it("sends a /hi address for an English-only page to its one address", () => {
+    expect(visit("/hi/employer/drives").redirect).toBe("/employer/drives");
+  });
+
+  it("sends a reader who saved Hindi from the English address to the Hindi one, keeping the query", () => {
+    expect(visit("/drives/abc?x=1", "hi").redirect).toBe("/hi/drives/abc?x=1");
+    expect(visit("/employer/drives", "hi")).toMatchObject({ redirect: null, locale: "en" });
+  });
+
+  // The rule that keeps a shared /hi link meaning what it said.
+  it("never sends anyone from a Hindi address to an English one", () => {
+    expect(visit("/hi/drives/abc", "en")).toEqual({ redirect: null, rewrite: "/drives/abc", locale: "hi" });
+  });
+
+  it("decides from the address, not a header a client sent", () => {
+    const request = new NextRequest("http://localhost:3000/jobs", { headers: { [LOCALE_HEADER]: "hi" } });
+    expect(middleware(request).headers.get(`x-middleware-request-${LOCALE_HEADER}`)).toBe("en");
+  });
+
+  it("builds the same addresses for links Walkins sends", () => {
+    expect(localePath("/my-drives/messages/x", "hi")).toBe("/hi/my-drives/messages/x");
+    expect(localePath("/drives/x#report", "hi")).toBe("/hi/drives/x#report");
+    expect(localePath("/", "hi")).toBe("/hi");
+    expect(localePath("/employer/drives", "hi")).toBe("/employer/drives");
+    expect(localePath("/profile", "en")).toBe("/profile");
+    expect(splitLocalePath("/hi/profile")).toEqual({ locale: "hi", path: "/profile" });
   });
 });
