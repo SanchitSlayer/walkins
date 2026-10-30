@@ -39,11 +39,14 @@ export const MESSAGES: Record<Locale, Messages> = { en, hi: withFallback(en, hi)
 // The tag Intl formats with. "en" is Indian English: lakh grouping, ₹.
 export const INTL_LOCALE: Record<Locale, string> = { en: "en-IN", hi: "hi-IN" };
 
-// The candidate-facing, public and venue wording, by key prefix: what Hindi
-// must cover before anyone is offered it. The employer console, admin, and
+// The candidate-facing, public and venue wording: what Hindi must cover
+// before anyone is offered it. An entry ending in "." is a whole namespace;
+// any other is one key, exactly, so "fields.started" can't take in the
+// employer's "fields.startedOn". The employer console, admin, and
 // the venue-pinning tools stay English. Where a namespace mixes the two
-// (errors, the board's drive states), the candidate's keys are listed one by
-// one, so an employer's refusal doesn't hold Hindi back.
+// (errors, field names, the board's drive states), the candidate's keys are
+// listed one by one, so an employer's refusal doesn't hold Hindi back. The
+// field names are those of the schemas candidate and public endpoints check.
 export const HINDI_SCOPE = [
   "home.",
   "nav.",
@@ -62,7 +65,8 @@ export const HINDI_SCOPE = [
   "checkInScreen.gettingCode",
   "checkInScreen.nextCode",
   "checkInScreen.stale",
-  "checkInScreen.candidates",
+  "checkInScreen.candidatesHeading",
+  "checkInScreen.candidatesBody",
   "profile.",
   "voice.",
   "telegram.",
@@ -96,6 +100,7 @@ export const HINDI_SCOPE = [
   "thread.write",
   "thread.count",
   "thread.send",
+  "thread.sending",
   "thread.sendFailed",
   "thread.loadFailed",
   "thread.backToDrives",
@@ -104,7 +109,23 @@ export const HINDI_SCOPE = [
   "thread.closesOn",
   "thread.report.",
   "format.",
-  "fields.",
+  "fields.default",
+  "fields.phone",
+  "fields.otp",
+  "fields.code",
+  "fields.reason",
+  "fields.details",
+  "fields.body",
+  "fields.seq",
+  "fields.cityId",
+  "fields.homeLat",
+  "fields.homeLng",
+  "fields.maxTravelKm",
+  "fields.experienceYears",
+  "fields.roleIds",
+  "fields.started",
+  "fields.slotId",
+  "fields.answers",
   "errors.generic",
   "errors.network",
   "errors.rateLimited.",
@@ -223,12 +244,16 @@ function leaves(catalog: Catalog, prefix = ""): [string, string][] {
 
 export const catalogLeaves = (locale: Locale) => leaves(CATALOGS[locale]);
 
+export function inHindiScope(key: string): boolean {
+  return HINDI_SCOPE.some((entry) => (entry.endsWith(".") ? key.startsWith(entry) : key === entry));
+}
+
 // English keys in Hindi's scope that Hindi doesn't have yet.
 export function hindiGaps(): string[] {
   const written = new Set(leaves(CATALOGS.hi).map(([key]) => key));
   return leaves(CATALOGS.en)
     .map(([key]) => key)
-    .filter((key) => HINDI_SCOPE.some((prefix) => key.startsWith(prefix)) && !written.has(key));
+    .filter((key) => inHindiScope(key) && !written.has(key));
 }
 
 // A language is offered only once it covers its scope, so nobody meets

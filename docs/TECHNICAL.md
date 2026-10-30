@@ -1593,10 +1593,12 @@ only as the last fallback for a failure the page has no words for.
 English and Hindi. Hindi covers what a candidate meets: the public pages,
 everything a candidate signs in to, the venue's screens, alerts and the
 bot. The employer console and admin stay English. `HINDI_SCOPE` in
-`packages/shared/src/i18n.ts` lists that by key prefix; where a namespace
-mixes candidate and employer wording (the API's refusals, the board's drive
+`packages/shared/src/i18n.ts` lists that: an entry ending in "." is a whole
+namespace, any other is one key exactly. Where a namespace mixes candidate
+and employer wording (the API's refusals, field names, the board's drive
 states), the candidate's keys are listed one by one, so an employer's
-refusal doesn't hold Hindi back.
+refusal doesn't hold Hindi back. Field names in scope are those of the
+schemas candidate and public endpoints check.
 
 **Until `hi.json` covers all of it, nobody meets Hindi.** Not offering it
 in the picker isn't enough, since a half-translated page can be reached
@@ -1844,10 +1846,10 @@ argument the English string doesn't have. Phrase around it instead:
   the formatter's abbreviations (शुक्र, अक्तू॰). Month and day names are
   never written into the catalog: they come from the formatter, so their
   spelling stays consistent.
-- **कल means both yesterday and tomorrow,** so in Hindi it never appears
-  without the date beside it. The formatter names tomorrow by its date in
-  Hindi ("शनिवार, 31 अक्तूबर") where English says "Tomorrow"; `format.tomorrow`
-  has Hindi only so the catalog is complete.
+- **Tomorrow always comes with its date, in both languages:** "Tomorrow,
+  Sat 31 Oct", "कल (शनिवार, 31 अक्तूबर)". कल means both yesterday and
+  tomorrow, and a page kept offline is read on a later day, when a bare
+  "Tomorrow" is wrong.
 - **Hindi's "one" plural form covers 0 as well as 1.** A count that can be
   zero needs an explicit `=0` case.
 - **Placeholders move with Hindi word order.** "{role} at {company}"

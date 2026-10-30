@@ -1,7 +1,7 @@
 {
   "format": {
     "today": "Today",
-    "tomorrow": "Tomorrow",
+    "tomorrow": "Tomorrow, {date}",
     "dayDate": "{weekday} {day} {month}",
     "range": "{from}–{to}",
     "noExperience": "No experience needed",

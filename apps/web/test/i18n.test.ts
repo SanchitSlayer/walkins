@@ -8,6 +8,7 @@ import {
   formatFor,
   hindiGaps,
   HINDI_SCOPE,
+  inHindiScope,
   LOCALE_COOKIE,
   type Locale,
   LOCALE_HEADER,
@@ -330,16 +331,17 @@ describe("wording around numbers", () => {
     expect(bare.map(([key]) => key)).toEqual([]);
   });
 
-  // कल means yesterday as well as tomorrow, so Hindi never says it alone.
-  it("names tomorrow by its date in Hindi", () => {
+  // A page kept offline is read on a later day, and कल means yesterday as
+  // well as tomorrow, so tomorrow always comes with its date.
+  it("names tomorrow with its date", () => {
     const now = new Date("2026-10-30T06:00:00Z");
-    expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("शनिवार, 31 अक्तूबर");
+    expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("कल (शनिवार, 31 अक्तूबर)");
     expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज");
   });
 
   it("dates a past reschedule by its date, not relative to today", () => {
     const now = new Date("2026-10-30T06:00:00Z");
-    expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("Tomorrow");
+    expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("Tomorrow, Sat 31 Oct");
     expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z")).toEqual({ day: "Sat 31 Oct", time: "15:30–19:30" });
   });
 
@@ -365,6 +367,13 @@ describe("Hindi", () => {
       return source !== undefined && messageArguments(hindi).join() !== messageArguments(source).join();
     });
     expect(differing.map(([key]) => key)).toEqual([]);
+  });
+
+  // A misspelt key would quietly leave the scope, and Hindi would be
+  // offered without it.
+  it("scopes only keys and namespaces English has", () => {
+    const keys = catalogLeaves("en").map(([key]) => key);
+    expect(HINDI_SCOPE.filter((entry) => !keys.some((key) => (entry.endsWith(".") ? key.startsWith(entry) : key === entry)))).toEqual([]);
   });
 
   it("is offered only once it covers everything a Hindi reader meets, or when asked for early", () => {
@@ -439,11 +448,10 @@ describe("safety wording in Hindi", () => {
   const english = new Map(catalogLeaves("en"));
   const hindi = new Map(catalogLeaves("hi"));
   const sources: Record<string, string> = JSON.parse(readFileSync(join(__dirname, "../../../packages/shared/src/messages/hi.source.json"), "utf8"));
-  const inScope = (key: string) => HINDI_SCOPE.some((prefix) => key.startsWith(prefix));
 
   it("names safety keys, all in Hindi's scope and all written in Hindi", () => {
     expect(safetyKeys().length).toBeGreaterThan(0);
-    expect(safetyKeys().filter((key) => !inScope(key))).toEqual([]);
+    expect(safetyKeys().filter((key) => !inHindiScope(key))).toEqual([]);
     expect(safetyKeys().filter((key) => !hindi.has(key))).toEqual([]);
   });
 
@@ -452,7 +460,7 @@ describe("safety wording in Hindi", () => {
   it("includes every string that speaks about paying, travelling, reporting or being questioned", () => {
     const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|haven't done anything wrong|\breport/i;
     const listed = new Set<string>(safetyKeys());
-    const missed = [...english].filter(([key, text]) => inScope(key) && marker.test(text) && !listed.has(key)).map(([key]) => key);
+    const missed = [...english].filter(([key, text]) => inHindiScope(key) && marker.test(text) && !listed.has(key)).map(([key]) => key);
     expect(missed).toEqual([]);
   });
 
