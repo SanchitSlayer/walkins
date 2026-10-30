@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { createDriveSchema, otpVerifySchema } from "@walkins/shared";
 import { describe, expect, it } from "vitest";
+import { apiError } from "../src/common/api-error";
 import { ZodValidationPipe } from "../src/common/zod-validation.pipe";
 
 const DRIVE = {
@@ -33,7 +34,7 @@ describe("validation errors", () => {
     expect(refusal(createDriveSchema, { ...DRIVE, salaryMin: 20000, salaryMax: 15000 })).toEqual({
       code: "errors.validation.payRange",
       message: "“Pay up to” is lower than “Pay from”. Set it to the same amount or more.",
-      params: { field: "Pay up to" },
+      params: { field: "fields.salaryMax" },
       field: "salaryMax",
     });
   });
@@ -46,5 +47,15 @@ describe("validation errors", () => {
     });
     expect(refusal(createDriveSchema, { ...DRIVE, roleId: undefined })).toMatchObject({ message: "Role is missing. Fill it in, then try again." });
     expect(refusal(otpVerifySchema, { phone: "9999999999", otp: "12" })).toMatchObject({ message: "Enter the 6-digit code from the message." });
+  });
+
+  // The web app words the keys in the page's language; message is for
+  // every other client.
+  it("sends field names as keys, and words them in English only in message", () => {
+    expect(apiError("errors.profile.incomplete", { fields: ["fields.homeLat", "fields.roleIds"] })).toEqual({
+      code: "errors.profile.incomplete",
+      message: "Fill in Home location and Roles before saving your profile for the first time.",
+      params: { fields: ["fields.homeLat", "fields.roleIds"] },
+    });
   });
 });

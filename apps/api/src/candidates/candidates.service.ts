@@ -10,8 +10,6 @@ import {
   type UpdateCandidateProfileInput,
   type Locale,
   type SetLocale,
-  DEFAULT_LOCALE,
-  translate,
 } from "@walkins/shared";
 import { JobsService } from "../common/jobs.service";
 import { redis } from "../common/redis";
@@ -47,7 +45,7 @@ export class CandidatesService {
     if (!existing) {
       const missing = REQUIRED_ON_CREATE.filter((field) => input[field] === undefined);
       if (missing.length > 0) {
-        throw new BadRequestException(apiError("errors.profile.incomplete", { fields: [...new Set(missing.map((f) => translate(DEFAULT_LOCALE, `fields.${f}`)))].join(", ") }));
+        throw new BadRequestException(apiError("errors.profile.incomplete", { fields: missing.map((f) => `fields.${f}` as const) }));
       }
     }
 

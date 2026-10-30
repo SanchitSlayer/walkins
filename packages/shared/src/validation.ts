@@ -1,5 +1,5 @@
 import { type ZodErrorMap, type ZodIssue, ZodIssueCode, z } from "zod";
-import { isMessageKey, type MessageKey, type MessageValues } from "./i18n";
+import { INTL_LOCALE, isMessageKey, type Locale, type MessageKey, type MessageValues } from "./i18n";
 
 // Validation messages are catalog keys, never zod's developer wording
 // ("Number must be greater than or equal to 1"). A schema's own message is
@@ -55,4 +55,21 @@ export function describeIssue(issue: ZodIssue): IssueError {
 export function issueText(issue: ZodIssue, t: Translator): string {
   const { key, values, fieldKey } = describeIssue(issue);
   return t(key, { ...values, field: t(fieldKey) });
+}
+
+// A refusal names its fields by key ("fields.homeLat"), never in words, so
+// the reader's side words them: the web app in the page's language, the API
+// in English for any other client. A list of fields is joined the way the
+// language joins one. Only fields. keys are worded: other values can be an
+// employer's own text.
+export type ErrorValues = Record<string, string | number | Date | MessageKey[]>;
+
+export function wordFields(values: ErrorValues, t: Translator, locale: Locale): MessageValues {
+  const list = new Intl.ListFormat(INTL_LOCALE[locale], { type: "conjunction" });
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => {
+      if (Array.isArray(value)) return [name, list.format(value.map((key) => t(key)))];
+      return [name, typeof value === "string" && value.startsWith("fields.") && isMessageKey(value) ? t(value) : value];
+    }),
+  );
 }

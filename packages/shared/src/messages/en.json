@@ -287,7 +287,7 @@
     "slotId": "Slot",
     "answers": "Answers",
     "applicationIds": "Applicants",
-    "role": "Their role",
+    "role": "Role",
     "successorId": "Who takes over",
     "ownerId": "Owner",
     "gstin": "GSTIN",

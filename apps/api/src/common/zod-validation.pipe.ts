@@ -4,7 +4,7 @@ import type { z, ZodSchema } from "zod";
 
 // Refuses with the first problem, worded for a person (see
 // packages/shared/src/validation.ts), and names the field so a form can
-// point at it.
+// point at it. params.field is the field's key, for the web app to word.
 export class ZodValidationPipe<T extends ZodSchema> implements PipeTransform<unknown, z.infer<T>> {
   constructor(private readonly schema: T) {}
 
@@ -16,7 +16,7 @@ export class ZodValidationPipe<T extends ZodSchema> implements PipeTransform<unk
       throw new BadRequestException({
         code: key,
         message: issueText(issue, (k, v) => translate(DEFAULT_LOCALE, k, v)),
-        params: { ...values, field: translate(DEFAULT_LOCALE, fieldKey) },
+        params: { ...values, field: fieldKey },
         field,
       });
     }

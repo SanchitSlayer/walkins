@@ -22,6 +22,8 @@ import {
   safetyKeys,
   servedLocale,
   splitLocalePath,
+  translate,
+  wordFields,
 } from "@walkins/shared";
 import { routeLocale } from "../middleware";
 
@@ -359,6 +361,16 @@ describe("wording around numbers", () => {
 describe("Hindi", () => {
   const english = new Map(catalogLeaves("en"));
 
+  it("words a refusal's field keys in the page's language, and leaves other values as they are", () => {
+    const say = (locale: Locale) => (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) => translate(locale, key, values);
+    const values = { fields: ["fields.homeLat", "fields.roleIds", "fields.maxTravelKm"], field: "fields.phone", prompt: "fields.phone?" } as const;
+    expect(wordFields({ ...values, fields: [...values.fields] }, say("hi"), "hi")).toEqual({
+      fields: "घर की लोकेशन, काम, और आने-जाने की दूरी",
+      field: "मोबाइल नंबर",
+      prompt: "fields.phone?",
+    });
+  });
+
   it("has no key English doesn't", () => {
     expect(catalogLeaves("hi").filter(([key]) => !english.has(key))).toEqual([]);
   });
@@ -400,6 +412,8 @@ describe("Hindi", () => {
     "format.yearsRange": "साल doesn't change for number",
     "telegram.linkExpiry": "मिनट doesn't change for number",
     "profile.travelSpoken": "किलोमीटर doesn't change for number",
+    "errors.validation.tooShort": "अक्षर doesn't change for number",
+    "errors.validation.tooLong": "अक्षर doesn't change for number",
   };
 
   it("has a plural wherever English does, with English's cases, saying different things", () => {

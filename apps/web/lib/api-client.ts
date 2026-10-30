@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ErrorValues,
   AdminDrive,
   AdminRetention,
   CandidateRecord,
@@ -154,8 +155,8 @@ export class ApiError extends Error {
     super(message);
   }
 
-  get params(): Record<string, string | number> {
-    return (this.body?.params as Record<string, string | number> | undefined) ?? {};
+  get params(): ErrorValues {
+    return (this.body?.params as ErrorValues | undefined) ?? {};
   }
 }
 

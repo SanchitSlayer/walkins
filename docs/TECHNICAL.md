@@ -1558,7 +1558,10 @@ Every refusal the API gives a person has the same shape:
 - `message` is that key's wording in the default locale, for clients that
   don't translate (curl, logs, a future partner).
 - `params` holds the values the wording needs (a field name, a distance, a
-  number of minutes).
+  number of minutes). A field is named by its key (`fields.homeLat`), and a
+  list of fields as an array of keys, never in words: `wordFields()` in
+  `packages/shared/src/validation.ts` words them in the page's language on
+  the web, and in English for `message`.
 
 Validation errors also carry `field`. A 429 also carries
 `retryAfterSeconds`. Services build the body with `apiError(code, params)`
@@ -2096,22 +2099,20 @@ These were found while building the scaffolding and are not fixed yet.
     ("This person isn't recorded as hired"), now `errors.outcomes.candidate.*`;
   - the arrivals desk showing check-in flags in the candidate's wording;
   - `fields.role` ("Their role", a team member's role) naming the public
-    search's `role` filter, the kind of work. Fixed with the next item.
+    search's `role` filter, the kind of work. Now "Role", which reads right
+    for both.
 
   When a key is used somewhere new, check whose words it is in.
 
-To do with the board and the validation wording (the last Hindi group):
-- **Field names reach Hindi pages in English.** The API refuses a form with
-  `params.field` already worded in English, and the web inserts it as it
-  is. The API is to send the field's key, and the web word it in the page's
-  language. `fields.role` is renamed for the search filter at the same time.
-- **The venue's screens are English only.** The check-in screen and the
-  live board are served from `/employer/drives/[id]/...`, an English-only
-  address, so their Hindi is never shown. Decided: both become bilingual,
-  since a screen facing a queue can't know who reads it. The check-in
-  screen stacks Hindi above English. For the board, alternating (each
-  language held a few seconds, flapping between them, as departure boards
-  do) is to be weighed against stacking with the board in front of us.
+To do with the board (the last Hindi group):
+- **The live board is English only.** It is served from
+  `/employer/drives/[id]/live`, an English-only address, so its Hindi is
+  never shown. Decided: it becomes bilingual, since a screen facing a queue
+  can't know who reads it, as the check-in screen already is (Hindi stacked
+  above each line a candidate reads, once Hindi is offered). For the board,
+  alternating (each language held a few seconds, flapping between them, as
+  departure boards do) is to be weighed against stacking with the board in
+  front of us.
 - **The drive card at phone width.** It keeps the day on one line, now
   "Tomorrow, Sat 31 Oct". If that doesn't fit, shorten the English form;
   don't change the layout.
@@ -2343,6 +2344,11 @@ them, so a type error in a test file fails nothing. That is how
 `apps/api/test/errors.test.ts` and `apps/worker/test/charging.test.ts` have
 carried type errors unnoticed. Check a test file by hand with a tsconfig that
 also includes `test`.
+
+**Known debt: API tests flake under load.** vitest's default 5-second
+timeout is tight for the API suite's database-heavy tests, and a busy machine
+fails a few of them, different ones on different runs. A lone timeout that
+passes on a re-run is probably load, not a regression.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 

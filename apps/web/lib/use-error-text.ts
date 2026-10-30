@@ -1,7 +1,7 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-import { isMessageKey, issueText, type MessageKey } from "@walkins/shared";
+import { useLocale, useTranslations } from "next-intl";
+import { isMessageKey, issueText, type MessageKey, wordFields } from "@walkins/shared";
 
 type Issue = Parameters<typeof issueText>[0];
 import { ApiError } from "./api-client";
@@ -12,8 +12,11 @@ import { isNetworkError } from "./offline";
 // and anything else as the fallback the caller names for what it was doing.
 export function useErrorText(): (err: unknown, fallback: MessageKey) => string {
   const t = useTranslations();
+  const locale = useLocale();
   return (err, fallback) => {
-    if (err instanceof ApiError && isMessageKey(err.code)) return t(err.code as MessageKey, err.params as never);
+    if (err instanceof ApiError && isMessageKey(err.code)) {
+      return t(err.code as MessageKey, wordFields(err.params, (key, values) => t(key, values as never), locale) as never);
+    }
     if (isNetworkError(err)) return t("errors.network");
     return t(fallback);
   };

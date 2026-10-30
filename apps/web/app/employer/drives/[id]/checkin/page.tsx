@@ -2,19 +2,35 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { type DriveDetail, formatCheckInCode } from "@walkins/shared";
+import { type DriveDetail, formatCheckInCode, isTranslated, MESSAGES, type MessageKey, OFFERED_LOCALES } from "@walkins/shared";
 import { ApiError, apiClient } from "@/lib/api-client";
 import { BoardButton } from "@/components/board/field";
 import { VenueOutsideCityNotice } from "../../venue-notice";
-import { useTranslations } from "next-intl";
+import { createTranslator, useTranslations } from "next-intl";
 import { useFormat } from "@/lib/format";
 import { useErrorText } from "@/lib/use-error-text";
 
 const RETRY_MS = 5_000;
 
+const strong = (chunks: ReactNode) => <span className="type-board-md text-stock">{chunks}</span>;
+
 type Code = { image: string; text: string; expiresAt: number; nextAt: number };
+
+// The screen faces a queue, and nobody in it chose this page's language, so
+// once Hindi is offered each line a candidate reads has its Hindi above it.
+// What only the staff act on stays in the page's language.
+const hindi = OFFERED_LOCALES.includes("hi") ? createTranslator({ locale: "hi", messages: MESSAGES.hi }) : null;
+
+function InHindi({ id, values }: { id: MessageKey; values?: Record<string, string | number | ((chunks: ReactNode) => ReactNode)> }) {
+  if (!hindi || !isTranslated("hi", id)) return null;
+  return (
+    <span lang="hi" className="mb-2 block">
+      {hindi.rich(id as never, values as never)}
+    </span>
+  );
+}
 
 // Where the check-in zone is measured from. Until the employer sets it from
 // a device at the venue it is a geocode of the address, often an area centre
@@ -178,7 +194,10 @@ export default function CheckInScreenPage() {
         <Link href={`/employer/drives/${id}`} className="type-meta text-housing-muted underline-offset-4 hover:underline">
           {drive ? drive.role.title : t("drive")}
         </Link>
-        <h1 className="type-h2 mt-1">{t("heading")}</h1>
+        <h1 className="type-h2 mt-1">
+          <InHindi id="checkInScreen.heading" />
+          {t("heading")}
+        </h1>
         {drive && <p className="type-meta mt-1 text-housing-muted">{drive.venueAddress}</p>}
       </div>
 
@@ -196,18 +215,35 @@ export default function CheckInScreenPage() {
                 alt={t("qrAlt")}
                 className="aspect-square w-full"
               />
-              <p className="type-meta">{t("typeAt", { address: `${host}/checkin` })}</p>
+              <p className="type-meta text-center">
+                <InHindi id="checkInScreen.typeAt" values={{ address: `${host}/checkin` }} />
+                {t("typeAt", { address: `${host}/checkin` })}
+              </p>
               <p className="type-board-lg text-[clamp(2.5rem,6vw,4rem)] leading-none tracking-[0.12em]" aria-label={t("codeSpoken", { code: code.text })}>
                 {code.text}
               </p>
             </div>
           ) : (
             <div className="grid aspect-square w-full max-w-[34rem] place-items-center border border-housing-line p-6 text-center">
-              <p className="type-body text-housing-muted">{problem !== null ? errorText(problem, "checkInScreen.codeFailed") : t("gettingCode")}</p>
+              <p className="type-body text-housing-muted">
+                {problem !== null ? (
+                  errorText(problem, "checkInScreen.codeFailed")
+                ) : (
+                  <>
+                    <InHindi id="checkInScreen.gettingCode" />
+                    {t("gettingCode")}
+                  </>
+                )}
+              </p>
             </div>
           )}
           <p className="type-board-sm text-housing-muted" aria-live="off">
-            {live ? t("nextCode", { seconds: secondsToNext }) : ""}
+            {live && (
+              <>
+                <InHindi id="checkInScreen.nextCode" values={{ seconds: secondsToNext }} />
+                {t("nextCode", { seconds: secondsToNext })}
+              </>
+            )}
           </p>
           {live && problem !== null && (
             <p role="alert" className="type-meta text-closing-lamp">
@@ -218,12 +254,13 @@ export default function CheckInScreenPage() {
 
         <div className="grid content-start gap-6">
           <section className="grid gap-2">
-            <h2 className="type-h3">{t("candidatesHeading")}</h2>
+            <h2 className="type-h3">
+              <InHindi id="checkInScreen.candidatesHeading" />
+              {t("candidatesHeading")}
+            </h2>
             <p className="type-body text-housing-muted">
-              {t.rich("candidatesBody", {
-                address: `${host}/checkin`,
-                strong: (chunks) => <span className="type-board-md text-stock">{chunks}</span>,
-              })}
+              <InHindi id="checkInScreen.candidatesBody" values={{ address: `${host}/checkin`, strong }} />
+              {t.rich("candidatesBody", { address: `${host}/checkin`, strong })}
             </p>
           </section>
           {drive?.venuePinnedAt && <VenueLocation drive={drive} onPinned={setDrive} />}
