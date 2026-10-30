@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
     ];
   },
   skipTrailingSlashRedirect: true,
+  // Read by @walkins/shared's language gate, in client components too.
+  env: { WALKINS_OFFER_HINDI: process.env.WALKINS_OFFER_HINDI ?? "" },
 };
 
 export default createNextIntlPlugin("./i18n/request.ts")(nextConfig);

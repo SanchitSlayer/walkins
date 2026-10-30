@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { DEFAULT_LOCALE, isLocale, isLocalizedPath, LOCALE_COOKIE, LOCALE_HEADER, localePath, splitLocalePath } from "@walkins/shared";
+import { DEFAULT_LOCALE, isLocale, isLocalizedPath, type Locale, LOCALE_COOKIE, LOCALE_HEADER, localePath, OFFERED_LOCALES, splitLocalePath } from "@walkins/shared";
 
 // Which language a page is in comes from its address alone: /hi/jobs is
 // Hindi, /jobs is English, for a crawler and a phone alike. Two rules sit on
@@ -9,20 +9,27 @@ import { DEFAULT_LOCALE, isLocale, isLocalizedPath, LOCALE_COOKIE, LOCALE_HEADER
 //   copy of users.locale) is sent from an English address to the Hindi one.
 //   Never the other way: a /hi link someone shared opens in Hindi whatever
 //   the reader saved, or forwarding a link would change what it says.
+// Both apply only to a language that is offered. Until then a /hi address
+// redirects to its English one, and a saved Hindi choice is ignored, so
+// nobody reaches a half-translated page by typing or keeping an address.
 export function middleware(request: NextRequest) {
+  return routeLocale(request, OFFERED_LOCALES);
+}
+
+export function routeLocale(request: NextRequest, offered: readonly Locale[]) {
   const headers = new Headers(request.headers);
   const { locale, path } = splitLocalePath(request.nextUrl.pathname);
 
   if (locale !== DEFAULT_LOCALE) {
     const url = request.nextUrl.clone();
     url.pathname = path;
-    if (!isLocalizedPath(path)) return NextResponse.redirect(url);
+    if (!isLocalizedPath(path) || !offered.includes(locale)) return NextResponse.redirect(url);
     headers.set(LOCALE_HEADER, locale);
     return NextResponse.rewrite(url, { request: { headers } });
   }
 
   const saved = request.cookies.get(LOCALE_COOKIE)?.value;
-  if (isLocale(saved) && saved !== DEFAULT_LOCALE && isLocalizedPath(path)) {
+  if (isLocale(saved) && saved !== DEFAULT_LOCALE && offered.includes(saved) && isLocalizedPath(path)) {
     const url = request.nextUrl.clone();
     url.pathname = localePath(path, saved);
     return NextResponse.redirect(url);

@@ -1235,7 +1235,7 @@ isn't knowing where the drive landed. The rule is one SQL fragment,
 `absenceExcusedByReschedule` in `packages/db/src/reliability.ts`, used by
 both the nightly reliability score and Your record, so the two can't
 disagree. The absence stays recorded: Your record shows it as "marked as
-not attending, but not held against you" and says why.
+not attending; this won't count against you" and says why.
 
 #### The offline pass
 
@@ -1592,11 +1592,32 @@ only as the last fallback for a failure the page has no words for.
 
 English and Hindi. Hindi covers what a candidate meets: the public pages,
 everything a candidate signs in to, the venue's screens, alerts and the
-bot. The employer console and admin stay English. Until `hi.json` covers
-all of that (`HINDI_SCOPE` in `packages/shared/src/i18n.ts`), Hindi isn't
-offered: the picker and the header switch are hidden, and no `hreflang`
-alternates are given. The gate lifts itself when the last key lands: there
-is no flag to forget.
+bot. The employer console and admin stay English. `HINDI_SCOPE` in
+`packages/shared/src/i18n.ts` lists that by key prefix; where a namespace
+mixes candidate and employer wording (the API's refusals, the board's drive
+states), the candidate's keys are listed one by one, so an employer's
+refusal doesn't hold Hindi back.
+
+**Until `hi.json` covers all of it, nobody meets Hindi.** Not offering it
+in the picker isn't enough, since a half-translated page can be reached
+other ways. While it isn't offered (`OFFERED_LOCALES`):
+- the picker and the header switch are hidden, and no `hreflang`
+  alternates are given;
+- a `/hi` address redirects to its English one, and a saved Hindi choice
+  doesn't send anyone to `/hi`;
+- the API refuses to save `hi` (`setLocaleSchema`);
+- a Hindi choice already in `users.locale` is served as English
+  (`servedLocale`): the session's cookie, alerts and their links, and the
+  bot's replies;
+- the bot answers a chat it can't place in English only.
+
+The gate lifts itself when the last key lands: there is no flag to forget.
+`WALKINS_OFFER_HINDI=1` in `.env` lifts it early on one machine, to look at
+a partial catalog. It is off unless set, so a developer sees the gated path
+by default, and it is never set in production. The gate is read once, when
+each app starts. The tests of the gate's rules take both states directly;
+the API and worker tests that follow a saved choice through follow whichever
+state the run started in, so run `pnpm test` with the variable set as well.
 
 **One catalog per language.** All English wording lives in
 `packages/shared/src/messages/en.json`, and Hindi in `hi.json` beside it.
@@ -1652,8 +1673,9 @@ serves both from the same page and tells it which language it is in. It
 never reads `Accept-Language`. Pages that exist only in English redirect
 from their `/hi` address.
 
-**Redirects go from English to Hindi, never back.** A reader who saved
-Hindi is sent from an English address to its Hindi one. A reader who saved
+**Redirects go from English to Hindi, never back,** once Hindi is offered
+(before that, see "Languages"). A reader who saved Hindi is sent from an
+English address to its Hindi one. A reader who saved
 English is never sent from a Hindi address to an English one. That is
 what keeps a shared `/hi` link working: a Hindi reader can forward a link
 to a friend, or an employer can paste one into a message, and it opens in
@@ -1867,7 +1889,7 @@ adjective agreeing with it depends on it. Gender is m (masculine), f
 | not selected / not taken forward | सिलेक्शन नहीं हुआ / आवेदन आगे नहीं बढ़ाया | – | |
 | attended | हाज़िरी दर्ज हुई | f | Not आप आए |
 | marked absent | गैरहाज़िर दर्ज किया गया | – | Known from school registers |
-| paused (suspended) | रोकी गई | – | Agrees with ड्राइव: ड्राइव अभी रोकी गई है. Status label: रुकी हुई |
+| paused (suspended) | रोकी गई | – | Everywhere, the board's status label and alert prefixes included: Walkins paused it, and रुकी हुई reads as if it stopped. Agrees with ड्राइव: ड्राइव अभी रोकी गई है |
 | cancelled | रद्द | – | Invariant: ड्राइव रद्द हो गई |
 | moved (rescheduled) | समय बदल गया | – | ड्राइव का समय बदल गया है |
 | Was / Now | पहले / अब | – | |
@@ -1938,8 +1960,7 @@ Hindi"):
 - every key in it is in `HINDI_SCOPE` and has Hindi;
 - every in-scope English string with the wording of one of those things
   ("never charges", "don't pay", "don't travel", "report", ...) is in it.
-  A new one fails until it joins. Three keys match but only an employer or
-  admin reads them; the test lists them with why.
+  A new one fails until it joins.
 
 Status: written 30 October 2026, not yet read by a native speaker. Where
 a string departs from a fixed phrase above (a fragment of one, or a word
@@ -2044,15 +2065,6 @@ These were found while building the scaffolding and are not fixed yet.
   is caught too (see "Plurals" above). What nothing catches is a Hindi
   plural that differs but is still wrong, or a count English leaves bare
   that Hindi needs to agree with.
-- **Some of `HINDI_SCOPE` is employer and admin wording.** Its prefixes
-  (`errors.drive`, `errors.messages`, `errors.outcomes`, `board.state`)
-  take in about 28 keys no candidate meets, such as the reasons a
-  reschedule is refused or `board.state.draft`. They count as Hindi gaps,
-  so the picker waits on them. Narrow the scope, or translate them.
-- **Hindi addresses work before Hindi is offered.** The gate hides the
-  picker and the `hreflang` alternates. A typed `/hi` address still renders,
-  in Hindi where `hi.json` has the key and English elsewhere, and the API
-  accepts `hi` as a saved language from any caller.
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override

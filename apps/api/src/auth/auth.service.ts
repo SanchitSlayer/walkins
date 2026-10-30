@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from "node:crypto";
 import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { prisma } from "@walkins/db";
-import type { AccessTokenPayload, Locale } from "@walkins/shared";
+import { type AccessTokenPayload, type Locale, servedLocale } from "@walkins/shared";
 import { redis } from "../common/redis";
 import { RateLimiterService } from "../common/rate-limiter.service";
 import { apiError } from "../common/api-error";
@@ -105,7 +105,7 @@ export class AuthService {
     const accessToken = this.signAccessToken(user);
     const refreshToken = await this.issueRefreshToken(user.id);
 
-    return { accessToken, refreshToken, locale: user.locale };
+    return { accessToken, refreshToken, locale: servedLocale(user.locale) };
   }
 
   async refresh(oldToken: string): Promise<{ accessToken: string; refreshToken: string; locale: Locale }> {
@@ -117,7 +117,7 @@ export class AuthService {
     }
 
     const accessToken = this.signAccessToken(user);
-    return { accessToken, refreshToken: rotated.newToken, locale: user.locale };
+    return { accessToken, refreshToken: rotated.newToken, locale: servedLocale(user.locale) };
   }
 
   async logout(token: string): Promise<void> {

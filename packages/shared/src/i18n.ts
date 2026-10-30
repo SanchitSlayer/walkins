@@ -41,7 +41,9 @@ export const INTL_LOCALE: Record<Locale, string> = { en: "en-IN", hi: "hi-IN" };
 
 // The candidate-facing, public and venue wording, by key prefix: what Hindi
 // must cover before anyone is offered it. The employer console, admin, and
-// the venue-pinning tools stay English.
+// the venue-pinning tools stay English. Where a namespace mixes the two
+// (errors, the board's drive states), the candidate's keys are listed one by
+// one, so an employer's refusal doesn't hold Hindi back.
 export const HINDI_SCOPE = [
   "home.",
   "nav.",
@@ -76,7 +78,14 @@ export const HINDI_SCOPE = [
   "alerts.",
   "bot.",
   "login.",
-  "board.",
+  "board.state.live",
+  "board.state.filling",
+  "board.state.closing",
+  "board.state.expired",
+  "board.state.cancelled",
+  "board.state.suspended",
+  "board.slots.",
+  "board.countdown.",
   "liveBoard.",
   "map.",
   "transcript.",
@@ -103,13 +112,24 @@ export const HINDI_SCOPE = [
   "errors.profile.",
   "errors.voice.",
   "errors.checkIn.",
-  "errors.drive.",
-  "errors.application.",
+  "errors.drive.notFound",
+  "errors.drive.searchNeedsPlace",
+  "errors.application.notFound",
+  "errors.application.driveEnded",
+  "errors.application.slotNotInDrive",
+  "errors.application.slotStarted",
+  "errors.application.alreadyBooked",
+  "errors.application.screenedOut",
+  "errors.application.alreadyApplied",
+  "errors.application.slotFull",
+  "errors.application.suspended",
   "errors.knockout.",
   "errors.validation.",
-  "errors.live.",
-  "errors.messages.",
-  "errors.outcomes.",
+  "errors.messages.notFound",
+  "errors.messages.reportOwnSide",
+  "errors.messages.blocked.closed",
+  "errors.messages.blocked.applicationClosed",
+  "errors.outcomes.candidate.",
 ] as const;
 
 // The safety-critical strings: where a wrong translation causes harm, not
@@ -211,10 +231,28 @@ export function hindiGaps(): string[] {
     .filter((key) => HINDI_SCOPE.some((prefix) => key.startsWith(prefix)) && !written.has(key));
 }
 
-// A language is offered for choosing only once it covers its scope, so
-// nobody picks Hindi and gets English. The gate lifts itself: there is no
-// flag to forget.
-export const OFFERED_LOCALES: readonly Locale[] = hindiGaps().length === 0 ? LOCALES : [DEFAULT_LOCALE];
+// A language is offered only once it covers its scope, so nobody meets
+// Hindi mixed with English. The gate lifts itself: there is no flag to
+// forget. WALKINS_OFFER_HINDI=1 offers it early on one machine, to look at
+// a partial catalog; it is off unless set, so the gated path is what a
+// developer sees by default too.
+export function offeredLocales(gaps: number, offerEarly: boolean): readonly Locale[] {
+  return gaps === 0 || offerEarly ? LOCALES : [DEFAULT_LOCALE];
+}
+
+// Shared runs in the browser too, so it has no Node types. Written as a
+// literal process.env read because that is what Next inlines into the
+// client bundle (apps/web/next.config.ts), keeping server and browser agreed.
+declare const process: { env: Record<string, string | undefined> };
+
+export const OFFERED_LOCALES = offeredLocales(hindiGaps().length, process.env.WALKINS_OFFER_HINDI === "1");
+
+// A saved language that isn't offered reads as English: users.locale can
+// hold Hindi chosen before the gate closed, and alerts, the bot and the
+// session cookie must not serve it until it is offered.
+export function servedLocale(locale: Locale, offered: readonly Locale[] = OFFERED_LOCALES): Locale {
+  return offered.includes(locale) ? locale : DEFAULT_LOCALE;
+}
 
 // The pages that exist in every language, under /hi for Hindi. Everything
 // else (the employer console, admin, invitations, the design specimen) is

@@ -121,7 +121,7 @@ describe("the candidate's own answer", () => {
   it("is asked only once the joining date has come, sits beside the employer's record, and never changes it", async () => {
     const { userId, applicationId } = await hire();
     await outcomes.record(fixture.employer.id, applicationId, { joiningDate: addDays(today(), 2) });
-    await expect(outcomes.candidateAnswer(userId, applicationId, true)).rejects.toSatisfy(refusedWith("errors.outcomes.notYet"));
+    await expect(outcomes.candidateAnswer(userId, applicationId, true)).rejects.toSatisfy(refusedWith("errors.outcomes.candidate.notYet"));
     const before = (await applications.listMine(userId)).past.concat((await applications.listMine(userId)).upcoming).find((a) => a.id === applicationId)!;
     expect(before.outcome).toMatchObject({ canAnswer: false, candidateStarted: null });
 
@@ -130,6 +130,16 @@ describe("the candidate's own answer", () => {
     await outcomes.candidateAnswer(userId, applicationId, true);
 
     expect(await rowFor(applicationId)).toMatchObject({ started: false, candidateStarted: true });
+  });
+
+  // The employer's refusals speak about "this person" and "what was
+  // recorded"; the candidate is told in their own terms.
+  it("refuses in words written for the candidate", async () => {
+    const { userId, applicationId } = await hire();
+    await expect(outcomes.candidateAnswer(fixture.employer.id, applicationId, true)).rejects.toSatisfy(refusedWith("errors.outcomes.candidate.notHired"));
+
+    await prisma.hiringOutcome.update({ where: { applicationId }, data: { hiredAt: new Date(Date.now() - 200 * DAY), joiningDate: new Date(addDays(today(), -100)) } });
+    await expect(outcomes.candidateAnswer(userId, applicationId, true)).rejects.toSatisfy(refusedWith("errors.outcomes.candidate.tooLate"));
   });
 });
 

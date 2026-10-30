@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Bot } from "node-telegram-bot-api";
 import type { Redis } from "ioredis";
 import { prisma } from "@walkins/db";
+import { OFFERED_LOCALES } from "@walkins/shared";
 import { registerBotCommands } from "../src/bot/telegram-bot";
 
 type Handler = (ctx: { chatId?: number; match?: string; reply: (text: string) => Promise<void> }) => Promise<void>;
@@ -42,11 +43,15 @@ describe("the bot's language", () => {
     expect(reply).not.toContain("/hi/");
   });
 
-  it("links a Hindi reader to the Hindi pages", async () => {
+  // The gate is read once, at start, so a run sees one state of it: run with
+  // WALKINS_OFFER_HINDI=1 as well to see the other.
+  const hindi = OFFERED_LOCALES.includes("hi") ? "/hi" : "";
+
+  it(`links a reader who saved Hindi to the ${hindi ? "Hindi" : "English"} pages while Hindi is ${hindi ? "" : "not "}offered`, async () => {
     const [jobs] = await send("jobs", chatId);
-    expect(jobs).toMatch(/http:\/\/localhost:3000\/hi\/(profile|drives\/)/);
+    expect(jobs).toMatch(new RegExp(`http://localhost:3000${hindi}/(profile|drives/)`));
 
     const [stopped] = await send("stop", chatId);
-    expect(stopped).toContain("http://localhost:3000/hi/profile");
+    expect(stopped).toContain(`http://localhost:3000${hindi}/profile`);
   });
 });

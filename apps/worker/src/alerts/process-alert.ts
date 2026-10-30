@@ -12,6 +12,7 @@ import {
   type TemplatedMessage,
   type TemplateKey,
   localePath,
+  servedLocale,
 } from "@walkins/shared";
 import type { ChannelResolver } from "../channels/channel-resolver";
 import { type AlertContext, renderAlert, renderMessage } from "./templates";
@@ -82,7 +83,7 @@ async function loadMessage(messageId: string, webUrl: string): Promise<Loaded | 
   });
   if (!message) return null;
   const { application } = message.thread;
-  const { locale } = application.candidate.user;
+  const locale = servedLocale(application.candidate.user.locale);
   return {
     recipient: { candidateId: application.candidateId, phone: application.candidate.user.phone, telegramChatId: application.candidate.telegramChatId },
     message: renderMessage(
@@ -147,7 +148,7 @@ async function loadAlert({ driveId, candidateId, templateKey, scheduleVersion }:
     WHERE c.id = ${candidateId} AND d.id = ${driveId}
   `;
 
-  const { locale } = candidate.user;
+  const locale = servedLocale(candidate.user.locale);
   const link = (path: string) => `${webUrl}${localePath(path, locale)}`;
   const context: AlertContext = {
       roleTitle: drive.role.title,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LOCALES } from "../i18n";
+import { type Locale, OFFERED_LOCALES } from "../i18n";
 import { knockoutAnswersSchema, knockoutQuestionsSchema, publicKnockoutQuestionSchema } from "../knockout";
 import { personRefSchema } from "../people";
 import { READABLE_LANGUAGES, VOICE_CONTENT_TYPES } from "../voice";
@@ -115,7 +115,9 @@ export const updateCandidateProfileSchema = z
   })
   .partial();
 
-export const setLocaleSchema = z.object({ locale: z.enum(LOCALES) });
+// Only an offered language can be saved, so a direct API call can't choose
+// Hindi before the interface offers it.
+export const setLocaleSchema = z.object({ locale: z.enum(OFFERED_LOCALES as readonly [Locale, ...Locale[]]) });
 
 export const driveSearchQuerySchema = z.object({
   city: z.string().min(1).optional(),

@@ -52,13 +52,13 @@
   "thread.flaggedCandidate": "This message seems to ask for money. Walkins never charges candidates, and no employer should ask you to pay. Don't pay. Report it below.",
   "thread.report.open": "Report",
   "thread.report.reason": "Reason",
-  "thread.report.send": "Report",
+  "thread.report.send": "Send report",
   "thread.report.cancel": "Cancel",
   "thread.report.sent": "Reported to Walkins.",
   "thread.report.failed": "The report didn't go through. Try again.",
   "yourRecord.state.awaitingConfirmation": "you checked in; the employer hasn't confirmed it yet",
-  "yourRecord.state.notAttendedExcused": "marked as not attending, but not held against you",
+  "yourRecord.state.notAttendedExcused": "marked as not attending; this won't count against you",
   "yourRecord.state.driveCancelled": "the employer cancelled the drive",
   "yourRecord.state.drivePaused": "the drive is paused",
-  "yourRecord.excused": "The drive was moved after you booked, and the message saying when it moved to didn't reach you, so this isn't counted against you."
+  "yourRecord.excused": "The drive was moved after you booked, and the message saying when it moved to didn't reach you, so this won't count against you."
 }

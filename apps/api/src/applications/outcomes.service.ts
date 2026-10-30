@@ -122,10 +122,10 @@ export class OutcomesService {
   // it. Only once the joining date has come, and within the same window.
   async candidateAnswer(userId: string, applicationId: string, started: boolean): Promise<void> {
     const outcome = await prisma.hiringOutcome.findFirst({ where: { applicationId, application: { state: "HIRED", candidate: { userId } } } });
-    if (!outcome) throw new NotFoundException(apiError("errors.outcomes.notHired"));
+    if (!outcome) throw new NotFoundException(apiError("errors.outcomes.candidate.notHired"));
     const today = dayKey(new Date());
-    if (outcome.joiningDate && asDay(outcome.joiningDate)! > today) throw new BadRequestException(apiError("errors.outcomes.notYet"));
-    if (editableUntil(outcome) < today) throw new ForbiddenException(apiError("errors.outcomes.tooLate", { day: formatDate(new Date(`${editableUntil(outcome)}T12:00:00+05:30`)) }));
+    if (outcome.joiningDate && asDay(outcome.joiningDate)! > today) throw new BadRequestException(apiError("errors.outcomes.candidate.notYet"));
+    if (editableUntil(outcome) < today) throw new ForbiddenException(apiError("errors.outcomes.candidate.tooLate", { day: formatDate(new Date(`${editableUntil(outcome)}T12:00:00+05:30`)) }));
     await prisma.$transaction([
       prisma.hiringOutcome.update({ where: { id: outcome.id }, data: { candidateStarted: started, candidateAnsweredAt: new Date() } }),
       prisma.auditLog.create({

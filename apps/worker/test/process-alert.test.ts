@@ -4,6 +4,7 @@ import { prisma } from "@walkins/db";
 import {
   type AlertJob,
   formatWhen,
+  OFFERED_LOCALES,
   DeliveryOutcomeUnknownError,
   type NotificationChannel,
   RecipientUnreachableError,
@@ -202,15 +203,18 @@ describe("processAlert", () => {
 
   // The language is read when the alert is sent, from the person: nothing in
   // the queued job carries it. The links matter even before the wording is
-  // translated, since offline nothing can redirect a Hindi reader.
-  it("sends a Hindi reader's links to the Hindi pages", async () => {
+  // translated, since offline nothing can redirect a Hindi reader. A saved
+  // Hindi choice reads as English until Hindi is offered; the gate is read
+  // once, at start, so run with WALKINS_OFFER_HINDI=1 as well.
+  const hindi = OFFERED_LOCALES.includes("hi") ? "/hi" : "";
+  it(`sends the links of a reader who saved Hindi to the ${hindi ? "Hindi" : "English"} pages while Hindi is ${hindi ? "" : "not "}offered`, async () => {
     await prisma.user.update({ where: { id: ids.user }, data: { locale: "hi" } });
     await processAlert({ data: job, attemptsMade: 0 }, deps);
     await prisma.user.update({ where: { id: ids.user }, data: { locale: "en" } });
 
     const [message] = channel.sent;
-    expect(message.url).toBe(`http://localhost:3000/hi/drives/${ids.drive}`);
-    expect(message.text).toContain(`http://localhost:3000/hi/drives/${ids.drive}#report`);
+    expect(message.url).toBe(`http://localhost:3000${hindi}/drives/${ids.drive}`);
+    expect(message.text).toContain(`http://localhost:3000${hindi}/drives/${ids.drive}#report`);
   });
 
   it("tells a booked candidate a suspended drive is paused, and not anyone once it is back on", async () => {

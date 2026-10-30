@@ -9,16 +9,19 @@ import {
   hindiGaps,
   HINDI_SCOPE,
   LOCALE_COOKIE,
+  type Locale,
   LOCALE_HEADER,
   localePath,
   MESSAGES,
   messageArguments,
+  offeredLocales,
   OFFERED_LOCALES,
   pluralCases,
   safetyKeys,
+  servedLocale,
   splitLocalePath,
 } from "@walkins/shared";
-import { middleware } from "../middleware";
+import { routeLocale } from "../middleware";
 
 // Every user-facing string goes through the message catalog
 // (packages/shared/src/messages/en.json), so that Hindi later is translation
@@ -357,8 +360,17 @@ describe("Hindi", () => {
     expect(differing.map(([key]) => key)).toEqual([]);
   });
 
-  it("is offered for choosing only once it covers everything a Hindi reader meets", () => {
-    expect(OFFERED_LOCALES).toEqual(hindiGaps().length === 0 ? ["en", "hi"] : ["en"]);
+  it("is offered only once it covers everything a Hindi reader meets, or when asked for early", () => {
+    expect(offeredLocales(3, false)).toEqual(["en"]);
+    expect(offeredLocales(0, false)).toEqual(["en", "hi"]);
+    expect(offeredLocales(3, true)).toEqual(["en", "hi"]);
+    expect(OFFERED_LOCALES).toEqual(offeredLocales(hindiGaps().length, process.env.WALKINS_OFFER_HINDI === "1"));
+  });
+
+  it("serves a saved Hindi choice in English until Hindi is offered", () => {
+    expect(servedLocale("hi", ["en"])).toBe("en");
+    expect(servedLocale("hi", ["en", "hi"])).toBe("hi");
+    expect(servedLocale("en", ["en"])).toBe("en");
   });
 
   // Hindi's "one" covers 0 and 1, so English's one/other maps onto it, but
@@ -426,18 +438,11 @@ describe("safety wording in Hindi", () => {
     expect(safetyKeys().filter((key) => !hindi.has(key))).toEqual([]);
   });
 
-  // In Hindi's scope by prefix, but only an employer or an admin reads them.
-  const NOT_A_CANDIDATES: Record<string, string> = {
-    "errors.drive.rescheduleStrands": "tells the employer why a reschedule was refused",
-    "errors.messages.notReported": "an admin opening a conversation nobody reported",
-    "errors.messages.blocked.companySuspended": "tells the employer their company can't send",
-  };
-
   // A new string telling someone not to pay or not to travel joins the
   // manifest, or this fails.
   it("includes every string that speaks about paying, travelling, reporting or being questioned", () => {
     const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|haven't done anything wrong|\breport/i;
-    const listed = new Set<string>([...safetyKeys(), ...Object.keys(NOT_A_CANDIDATES)]);
+    const listed = new Set<string>(safetyKeys());
     const missed = [...english].filter(([key, text]) => inScope(key) && marker.test(text) && !listed.has(key)).map(([key]) => key);
     expect(missed).toEqual([]);
   });
@@ -453,9 +458,10 @@ describe("safety wording in Hindi", () => {
 });
 
 describe("language addresses", () => {
-  const visit = (path: string, cookie?: string) => {
+  const BOTH = ["en", "hi"] as const;
+  const visit = (path: string, cookie?: string, offered: readonly Locale[] = BOTH) => {
     const request = new NextRequest(`http://localhost:3000${path}`, { headers: cookie ? { cookie: `${LOCALE_COOKIE}=${cookie}` } : {} });
-    const response = middleware(request);
+    const response = routeLocale(request, offered);
     return {
       redirect: response.headers.get("location")?.replace("http://localhost:3000", "") ?? null,
       rewrite: response.headers.get("x-middleware-rewrite")?.replace("http://localhost:3000", "") ?? null,
@@ -484,7 +490,16 @@ describe("language addresses", () => {
 
   it("decides from the address, not a header a client sent", () => {
     const request = new NextRequest("http://localhost:3000/jobs", { headers: { [LOCALE_HEADER]: "hi" } });
-    expect(middleware(request).headers.get(`x-middleware-request-${LOCALE_HEADER}`)).toBe("en");
+    expect(routeLocale(request, BOTH).headers.get(`x-middleware-request-${LOCALE_HEADER}`)).toBe("en");
+  });
+
+  // Until Hindi is offered, no address and no saved choice reaches it. A
+  // saved choice is ignored rather than redirected, or /jobs and /hi/jobs
+  // would send a reader back and forth.
+  it("serves only English before Hindi is offered", () => {
+    expect(visit("/hi/my-drives", undefined, ["en"])).toMatchObject({ redirect: "/my-drives", rewrite: null });
+    expect(visit("/hi", undefined, ["en"]).redirect).toBe("/");
+    expect(visit("/jobs?city=pune", "hi", ["en"])).toEqual({ redirect: null, rewrite: null, locale: "en" });
   });
 
   it("builds the same addresses for links Walkins sends", () => {

@@ -9,6 +9,8 @@ import {
   localePath,
   type MessageKey,
   type MessageValues,
+  OFFERED_LOCALES,
+  servedLocale,
   telegramLinkKey,
   translate,
 } from "@walkins/shared";
@@ -19,12 +21,12 @@ const JOBS_LIMIT = 5;
 // person reads. A linked chat is answered in its candidate's language. A
 // chat Walkins can't place yet gets Hindi above English, the order the venue
 // board uses, since nobody has said which they read. A key with no Hindi
-// yet is sent in English once, not twice.
+// yet, or any key while Hindi isn't offered, is sent in English once.
 const say = (locale: Locale, key: MessageKey, values?: MessageValues) => translate(locale, key, values);
 
 function sayBoth(key: MessageKey, values: (locale: Locale) => MessageValues): string {
   const en = say(DEFAULT_LOCALE, key, values(DEFAULT_LOCALE));
-  return isTranslated("hi", key) ? `${say("hi", key, values("hi"))}\n\n${en}` : en;
+  return OFFERED_LOCALES.includes("hi") && isTranslated("hi", key) ? `${say("hi", key, values("hi"))}\n\n${en}` : en;
 }
 
 function chatIdOf(ctx: Context): string | null {
@@ -55,7 +57,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
       prisma.candidate.updateMany({ where: { telegramChatId: chatId, NOT: { id: candidateId } }, data: { telegramChatId: null } }),
       prisma.candidate.update({ where: { id: candidateId }, data: { telegramChatId: chatId } }),
     ]);
-    const { locale } = await prisma.user.findFirstOrThrow({ where: { candidate: { id: candidateId } }, select: { locale: true } });
+    const locale = servedLocale((await prisma.user.findFirstOrThrow({ where: { candidate: { id: candidateId } }, select: { locale: true } })).locale);
     await ctx.reply(`${say(locale, "bot.connected")}\n\n${say(locale, "bot.neverPay")}`);
   });
 
@@ -67,7 +69,7 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
       await ctx.reply(sayBoth("bot.notConnected", (locale) => ({ profile: profile(locale) })));
       return;
     }
-    const { locale } = candidate.user;
+    const locale = servedLocale(candidate.user.locale);
     const format = formatFor(locale);
 
     const reachable = await findLiveDrivesForCandidate(candidate.id, JOBS_LIMIT);
@@ -104,11 +106,8 @@ export function registerBotCommands(bot: Bot, redis: Redis, webUrl: string) {
     // Read before unlinking: afterwards the chat is nobody's.
     const linked = await prisma.candidate.findUnique({ where: { telegramChatId: chatId }, select: { user: { select: { locale: true } } } });
     await prisma.candidate.updateMany({ where: { telegramChatId: chatId }, data: { telegramChatId: null } });
-    await ctx.reply(
-      linked
-        ? say(linked.user.locale, "bot.stopped", { profile: profile(linked.user.locale) })
-        : sayBoth("bot.stopped", (locale) => ({ profile: profile(locale) })),
-    );
+    const locale = linked && servedLocale(linked.user.locale);
+    await ctx.reply(locale ? say(locale, "bot.stopped", { profile: profile(locale) }) : sayBoth("bot.stopped", (l) => ({ profile: profile(l) })));
   });
 
   bot.catch((err, ctx) => {

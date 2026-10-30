@@ -243,7 +243,12 @@
       "joiningBeforeHire": "The joining date can't be before the day they were hired. Check the date.",
       "notYet": "The joining date hasn't come yet, so whether they started can't be known. Record it on or after that day.",
       "startedOnOutOfRange": "The start date has to be between the day they were hired and today.",
-      "retainedNotYet": "Whether someone stayed is asked {days} days after they started, and that hasn't passed yet."
+      "retainedNotYet": "Whether someone stayed is asked {days} days after they started, and that hasn't passed yet.",
+      "candidate": {
+        "notHired": "You aren't recorded as hired from this drive, so there's nothing to answer here. Reload the page.",
+        "notYet": "Your joining date hasn't come yet. You can answer on or after that day.",
+        "tooLate": "This question was open until {day}, and that has passed."
+      }
     }
   },
   "fields": {
@@ -1393,7 +1398,7 @@
     "report": {
       "open": "Report",
       "reason": "Reason",
-      "send": "Report",
+      "send": "Send report",
       "cancel": "Cancel",
       "sent": "Reported to Walkins.",
       "failed": "The report didn't go through. Try again."
@@ -1461,7 +1466,7 @@
       "attended": "you came",
       "awaitingConfirmation": "you checked in; the employer hasn't confirmed it yet",
       "notAttended": "marked as not attending",
-      "notAttendedExcused": "marked as not attending, but not held against you",
+      "notAttendedExcused": "marked as not attending; this won't count against you",
       "withdrawn": "you released your seat",
       "screenedOut": "the screening questions didn't match",
       "turnedAway": "the employer didn't take it forward",
@@ -1469,7 +1474,7 @@
       "drivePaused": "the drive is paused"
     },
     "markedOn": "recorded {day}",
-    "excused": "The drive was moved after you booked, and the message saying when it moved to didn't reach you, so this isn't counted against you.",
+    "excused": "The drive was moved after you booked, and the message saying when it moved to didn't reach you, so this won't count against you.",
     "joining": "Joining date (from {company}):",
     "started": "Started (from {company}):",
     "retained": "Still there after 30 days (from {company}):",
