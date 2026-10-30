@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "@/lib/navigation";
-import { otpRequestSchema, otpVerifySchema } from "@walkins/shared";
+import { usePageLocale, useRouter } from "@/lib/navigation";
+import { DEFAULT_LOCALE, isLocalizedPath, localePath, otpRequestSchema, otpVerifySchema, splitLocalePath } from "@walkins/shared";
 import { apiClient } from "@/lib/api-client";
 import { BoardButton, BoardField, BoardInput } from "@/components/board/field";
 import { Masthead } from "@/components/board/masthead";
@@ -22,6 +22,7 @@ export default function LoginPage() {
   const errorText = useErrorText();
   const issueText = useIssueText();
   const router = useRouter();
+  const page = usePageLocale();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -63,11 +64,16 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const { role } = await apiClient.verifyOtp(parsed.data);
+      const { role, locale } = await apiClient.verifyOtp(parsed.data);
       // Someone a company invited sees the invitation first, with the
       // company's name, before anything else.
       const invited = role === "CANDIDATE" && (await apiClient.myInvitations()).invitations.length > 0;
-      router.push(invited ? "/join" : (returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile")));
+      const { path } = splitLocalePath(invited ? "/join" : (returnPath() ?? (role === "EMPLOYER" ? "/employer/drives" : role === "ADMIN" ? "/admin" : "/profile")));
+      // The saved language, not this page's, decides where they land. Into
+      // another language it is a full load, as readIn() explains: a client
+      // navigation would keep this page's catalog and <html lang>.
+      if ((isLocalizedPath(path) ? locale : DEFAULT_LOCALE) !== page) window.location.assign(localePath(path, locale));
+      else router.push(path);
     } catch (err) {
       setError(errorText(err, "login.checkFailed"));
     } finally {

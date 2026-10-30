@@ -1603,7 +1603,11 @@ states), the candidate's keys are listed one by one, so an employer's
 refusal doesn't hold Hindi back. Field names in scope are those of the
 schemas candidate and public endpoints check.
 
-**Until `hi.json` covers all of it, nobody meets Hindi.** Not offering it
+**Until `hi.json` covers all of it, nobody meets Hindi.** The condition is
+completeness only: every key in scope has a Hindi string. It is not review.
+Hindi is offered as soon as it is complete, whether or not a person has
+read it, and the picker's disclosure (see "The language picker" below) is
+what tells readers how far it was checked. Not offering it
 in the picker isn't enough, since a half-translated page can be reached
 other ways. While it isn't offered (`OFFERED_LOCALES`):
 - the picker and the header switch are hidden, and no `hreflang`
@@ -1619,7 +1623,8 @@ other ways. While it isn't offered (`OFFERED_LOCALES`):
   bot's replies;
 - the bot answers a chat it can't place in English only.
 
-The gate lifts itself when the last key lands: there is no flag to forget.
+The gate lifts itself when the last key lands, read or not: there is no
+flag to forget. It lifted on 30 October 2026, with the venue board's keys.
 `WALKINS_OFFER_HINDI=1` in `.env` lifts it early on one machine, to look at
 a partial catalog. It is off unless set, so a developer sees the gated path
 by default, and it is never set in production. The gate is read once, when
@@ -1833,7 +1838,8 @@ fails on a bare count before seat, slot, candidate, person or yr.
 
 Status: read by a native speaker on 30 October 2026 and accepted as
 written. The safety strings built from the fixed phrases below still get
-their own reading once they exist.
+their own reading once they exist. Changed since that reading: October's
+spelling in the date examples, अक्तूबर to अक्टूबर (see "Dates" below).
 
 **The register: everyday Hindi, with English loanwords in Devanagari.**
 Write what a jobseeker in a tier-2 city says, not what a government form
@@ -1868,6 +1874,12 @@ argument the English string doesn't have. Phrase around it instead:
 - **Digits stay Latin (0–9),** as the formatter gives them for `hi-IN`.
   Times are on the 24-hour clock (14:30), as in English.
 - **Units stay Latin:** km and m. The formatter's कि॰मी॰ is overridden.
+- **A display heading never breaks a hyphenated loanword.** At phone width
+  the home heading broke as "आपके पास वॉक-" / "इन इंटरव्यू", leaving half a
+  word on each line. Where a heading can wrap inside वॉक-इन or चेक-इन, it
+  uses a non-breaking hyphen (U+2011): `home.heading` does. Nowhere else:
+  in titles, alerts and body text it would stop a search for the ordinary
+  hyphen from matching.
 - **Lists join without a comma before और:** "A, B और C". CLDR's
   "A, B, और C" is overridden, as the units are.
 - **Dates use the long weekday and month** (शुक्रवार, 30 अक्टूबर), never
@@ -2043,6 +2055,12 @@ before, it reads:
 If the review covers more later, the picker says more. Until the reading
 has happened, it says only "Hindi written with AI help; not yet checked
 by a person."
+
+**`language.hindiReview` stays until a native reading has actually
+happened.** The gate opens on completeness, not review, so this line is the
+only thing telling a reader the state of the translation. Don't remove it,
+soften it or make it optional; change its wording only to name a reading
+that took place.
 
 ### Devanagari on the board
 

@@ -177,14 +177,14 @@ export const apiClient = {
     return parseOrThrow(await request("/auth/otp/request", { method: "POST", body: JSON.stringify(input) }));
   },
 
-  async verifyOtp(input: OtpVerifyInput): Promise<{ role: string; companyId: string | null }> {
+  async verifyOtp(input: OtpVerifyInput): Promise<{ role: string; companyId: string | null; locale: Locale }> {
     const data = await parseOrThrow<{ accessToken: string; locale: Locale }>(
       await request("/auth/otp/verify", { method: "POST", body: JSON.stringify(input) }),
     );
     accessToken = data.accessToken;
     savedLocale = data.locale;
     const payload = decodeAccessToken(data.accessToken);
-    return { role: payload.role, companyId: payload.companyId };
+    return { role: payload.role, companyId: payload.companyId, locale: data.locale };
   },
 
   async logout(): Promise<void> {

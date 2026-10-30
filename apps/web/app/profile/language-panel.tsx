@@ -54,6 +54,10 @@ export function LanguagePanel() {
           </BoardButton>
         ))}
       </div>
+      {/* Hindi is offered once it is complete, whether or not anyone has read
+          it, so this line is the only place a reader learns how far it was
+          checked. It stays, saying exactly that, until a native reading has
+          happened. */}
       <p className="type-meta text-ink-muted">{t("hindiReview")}</p>
       {error && (
         <p role="alert" className="type-meta text-closing-ink">

@@ -380,11 +380,13 @@ export function hindiGaps(): string[] {
     .filter((key) => inHindiScope(key) && !written.has(key));
 }
 
-// A language is offered only once it covers its scope, so nobody meets
-// Hindi mixed with English. The gate lifts itself: there is no flag to
-// forget. WALKINS_OFFER_HINDI=1 offers it early on one machine, to look at
-// a partial catalog; it is off unless set, so the gated path is what a
-// developer sees by default too.
+// A language is offered once its catalog covers its scope, so nobody meets
+// Hindi mixed with English. That is the whole condition: completeness, not
+// review. Nothing here knows whether a person has read the Hindi; the
+// picker's language.hindiReview line is what tells readers that. The gate
+// lifts itself: there is no flag to forget. WALKINS_OFFER_HINDI=1 offers it
+// early on one machine, to look at a partial catalog; it is off unless set,
+// so the gated path is what a developer sees by default too.
 export function offeredLocales(gaps: number, offerEarly: boolean): readonly Locale[] {
   return gaps === 0 || offerEarly ? LOCALES : [DEFAULT_LOCALE];
 }
