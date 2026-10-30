@@ -154,7 +154,7 @@ describe("the funnel", () => {
     const flaggedApp = await applications.apply(flagged.userId, drive, fixture.roomySlot.id, {});
     await prisma.$transaction([
       prisma.application.update({ where: { id: flaggedApp.id }, data: { state: "CHECKED_IN" } }),
-      prisma.checkIn.create({ data: { applicationId: flaggedApp.id, method: "SCAN", isValid: false, flagReason: "test" } }),
+      prisma.checkIn.create({ data: { applicationId: flaggedApp.id, method: "SCAN", isValid: false, flags: ["LOW_GPS_ACCURACY"] } }),
     ]);
 
     const alerted = fixture.candidates[candidate++];

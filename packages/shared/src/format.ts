@@ -1,4 +1,5 @@
 import { DEFAULT_LOCALE, INTL_LOCALE, type Locale, translate } from "./i18n";
+import type { CheckIn } from "./schemas";
 
 // Every drive happens in India, so dates are formatted in India time on both
 // the server render and in the browser. Formatting in each runtime's own
@@ -29,6 +30,7 @@ export type Format = {
   formatExperience(min: number, max: number): string;
   formatDistance(km: number): string;
   formatSeats(capacity: number, booked: number): string;
+  formatFlags(checkIn: Pick<CheckIn, "flags" | "accuracyMeters" | "distanceMeters" | "lateBySeconds">): string;
   formatNumber(n: number): string;
   languageName(code: string): string;
   scriptName(code: string): string;
@@ -55,6 +57,9 @@ function createFormat(locale: Locale): Format {
   const metres = new Intl.NumberFormat(unitTag, { style: "unit", unit: "meter", maximumFractionDigits: 0 });
 
   const formatTime = (iso: string) => time.format(new Date(iso));
+
+  const formatDistance = (distanceKm: number) =>
+    distanceKm < 1 ? metres.format(Math.round(distanceKm * 100) * 10) : km.format(distanceKm);
 
   const formatDate = (date: Date) => {
     const parts = Object.fromEntries(dayParts.formatToParts(date).map((p) => [p.type, p.value]));
@@ -89,10 +94,25 @@ function createFormat(locale: Locale): Format {
       if (max === 0) return translate(locale, "format.noExperience");
       return min === max ? translate(locale, "format.years", { count: max }) : translate(locale, "format.yearsRange", { min, max });
     },
-    formatDistance: (distanceKm) => (distanceKm < 1 ? metres.format(Math.round(distanceKm * 100) * 10) : km.format(distanceKm)),
+    formatDistance,
     formatSeats: (capacity, booked) => {
       const left = Math.max(0, capacity - booked);
       return left === 0 ? translate(locale, "format.seatsAllTaken", { capacity }) : translate(locale, "format.seatsLeft", { left, capacity });
+    },
+    // A flag's values are the check-in's own columns, so the wording is
+    // built here at reading time and never stored. Keyed by every code, so
+    // a new one doesn't compile until it has wording.
+    formatFlags: (checkIn) => {
+      const wording: Record<CheckIn["flags"][number], () => string> = {
+        LOW_GPS_ACCURACY: () =>
+          translate(locale, "format.checkInFlags.LOW_GPS_ACCURACY", {
+            accuracy: formatDistance(checkIn.accuracyMeters! / 1000),
+            distance: formatDistance(checkIn.distanceMeters! / 1000),
+          }),
+        SYNCED_AFTER_EXPIRY: () =>
+          translate(locale, "format.checkInFlags.SYNCED_AFTER_EXPIRY", { minutes: Math.floor(checkIn.lateBySeconds! / 60) }),
+      };
+      return checkIn.flags.map((flag) => wording[flag]()).join("; ");
     },
     formatNumber: (n) => number.format(n),
     languageName: (code) => languages.of(code) ?? code,

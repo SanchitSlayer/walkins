@@ -26,7 +26,8 @@ export function toCheckIn(row: CheckInRow): CheckIn {
     distanceMeters: row.distanceMeters,
     accuracyMeters: row.accuracyMeters,
     isValid: row.isValid,
-    flagReason: row.flagReason,
+    flags: row.flags,
+    lateBySeconds: row.lateBySeconds,
   };
 }
 

@@ -3,7 +3,7 @@ import { BadRequestException, HttpException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@walkins/db";
-import { CHECKIN_CODE_ALPHABET, type CheckInRequest } from "@walkins/shared";
+import { CHECKIN_CODE_ALPHABET, type CheckInRequest, formatFor } from "@walkins/shared";
 import { ApplicationsService } from "../src/applications/applications.service";
 import { checkInCodeKey, CheckInTokenService } from "../src/check-in/check-in-token.service";
 import { CheckInService } from "../src/check-in/check-in.service";
@@ -98,7 +98,7 @@ describe("scanning to check in", () => {
     expect(second.outcome).toBe("already_checked_in");
     if (first.outcome !== "checked_in" || second.outcome !== "already_checked_in") return;
     expect(second.checkIn.id).toBe(first.checkIn.id);
-    expect(first.checkIn).toMatchObject({ method: "SCAN", isValid: true, flagReason: null });
+    expect(first.checkIn).toMatchObject({ method: "SCAN", isValid: true, flags: [], lateBySeconds: null });
     expect(await prisma.checkIn.count({ where: { application: { candidateId } } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { entityId: application.id, action: "CONFIRMED->CHECKED_IN" } })).toBe(1);
     expect(await redis.keys(`checkin-nonce:*:${candidateId}`)).toHaveLength(1);
@@ -175,7 +175,8 @@ describe("the geofence", () => {
     expect(result.outcome).toBe("checked_in");
     if (result.outcome !== "checked_in") return;
     expect(result.checkIn.isValid).toBe(false);
-    expect(result.checkIn.flagReason).toMatch(/only accurate to ±450 m/);
+    expect(result.checkIn).toMatchObject({ flags: ["LOW_GPS_ACCURACY"], accuracyMeters: 450 });
+    expect(formatFor("en").formatFlags(result.checkIn)).toBe("Location only accurate to ±450 m, 1.1 km from the venue");
   });
 });
 
@@ -254,7 +255,8 @@ describe("check-in codes", () => {
     expect(result.outcome).toBe("checked_in");
     if (result.outcome !== "checked_in") return;
     expect(result.checkIn.isValid).toBe(false);
-    expect(result.checkIn.flagReason).toMatch(/Scanned offline, sent 5 min after the code expired/);
+    expect(result.checkIn.flags).toEqual(["SYNCED_AFTER_EXPIRY"]);
+    expect(formatFor("en").formatFlags(result.checkIn)).toBe("Scanned offline, sent 5 min after the code expired");
     expect(result.checkIn.capturedAt).not.toBeNull();
   });
 });
@@ -282,9 +284,10 @@ describe("the employer's side", () => {
 
     const confirmed = await checkIns.confirmFlagged(fixture.employer.id, flagged.checkIn.id);
 
-    expect(confirmed.isValid).toBe(true);
+    expect(confirmed).toMatchObject({ isValid: true, flags: ["LOW_GPS_ACCURACY"] });
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: flagged.checkIn.id, action: "confirmed" } });
     expect(audit.actorUserId).toBe(fixture.employer.id);
+    expect(audit.before).toEqual({ isValid: false, flags: ["LOW_GPS_ACCURACY"] });
   });
 
   it("only lets an employer watch their own company's drive", async () => {
@@ -312,7 +315,7 @@ describe("the employer's side", () => {
     // late sync, the manual mark and the confirmed flag. Refused scans add
     // none; walk-ins are counted apart.
     expect(desk.counts).toMatchObject({ checkedIn: 8, walkIns: 2, hired: 0 });
-    expect(desk.arrivals.some((a) => a.flagReason !== null)).toBe(true);
+    expect(desk.arrivals.some((a) => a.flags.length > 0)).toBe(true);
   });
 
   it("gives the public board short names and nothing the desk alone should see", async () => {
@@ -334,7 +337,7 @@ describe("the employer's side", () => {
       const user = await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, include: { user: true } });
       expect(serialised).not.toContain(user.user.name);
     }
-    expect(serialised).not.toMatch(/flagReason|distanceMeters|applicationId|accurate to/);
+    expect(serialised).not.toMatch(/"flags"|lateBySeconds|accuracyMeters|distanceMeters|applicationId/);
     // Fixture names are "Check-in Test Candidate 7", so the short form is "Check-in 7.".
     expect(board.arrivals[0].displayName).toMatch(/^Check-in \w+\.$/);
   });

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { type Actor, createApplication, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
+import { type Actor, type CheckInFlag, createApplication, prisma, StaleTransitionError, transitionApplication } from "@walkins/db";
 import {
   CHECK_IN_OPENS_BEFORE_START_MS,
   type CheckInRequest,
@@ -40,10 +40,6 @@ const FAILED_CODES_PER_ADDRESS = 300;
 // Concurrent duplicates are settled by the unique index on CheckIn.
 function nonceKey(jti: string, candidateId: string) {
   return `checkin-nonce:${jti}:${candidateId}`;
-}
-
-function describeMeters(meters: number) {
-  return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
 }
 
 @Injectable()
@@ -159,20 +155,17 @@ export class CheckInService {
       SELECT ST_Distance(d.geom, ST_SetSRID(ST_MakePoint(${input.lng}, ${input.lat}), 4326)::geography) AS "distanceMeters"
       FROM drives d WHERE d.id = ${drive.id}
     `;
-    const flags: string[] = [];
+    const flags: CheckInFlag[] = [];
     if (input.accuracy > MAX_ACCURACY_METERS) {
       // Poor GPS indoors is common and not the candidate's fault, so this is
       // accepted and left to the employer rather than refused.
-      flags.push(`Location only accurate to ±${describeMeters(input.accuracy)}, ${describeMeters(distanceMeters)} from the venue`);
+      flags.push("LOW_GPS_ACCURACY");
     } else if (distanceMeters > GEOFENCE_METERS) {
       throw new BadRequestException(
         apiError("errors.checkIn.tooFar", { distance: formatDistance(distanceMeters / 1000), limit: formatDistance(GEOFENCE_METERS / 1000) }),
       );
     }
-    if (lateByMs > 0) {
-      const minutes = Math.floor(lateByMs / 60_000);
-      flags.push(`Scanned offline, sent ${minutes < 1 ? "less than a minute" : `${minutes} min`} after the code expired`);
-    }
+    if (lateByMs > 0) flags.push("SYNCED_AFTER_EXPIRY");
 
     const actor: Actor = { kind: "candidate", userId };
     const method = booked ? "SCAN" : "WALK_IN";
@@ -203,7 +196,8 @@ export class CheckInService {
             accuracyMeters: input.accuracy,
             distanceMeters,
             isValid: flags.length === 0,
-            flagReason: flags.join("; ") || null,
+            flags,
+            lateBySeconds: lateByMs > 0 ? Math.floor(lateByMs / 1000) : null,
           },
         });
       });
@@ -267,7 +261,7 @@ export class CheckInService {
           entityType: "check_in",
           entityId: checkInId,
           action: "confirmed",
-          before: { isValid: false, flagReason: checkIn.flagReason },
+          before: { isValid: false, flags: checkIn.flags },
           after: { isValid: true },
         },
       });

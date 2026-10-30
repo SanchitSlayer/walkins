@@ -74,7 +74,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
   const t = useTranslations("arrivals");
   const state = useTranslations("deskState");
   const errorText = useErrorText();
-  const { formatTime } = useFormat();
+  const { formatTime, formatFlags } = useFormat();
   const runs = useMembership().can("runDrives");
   const personName = usePersonName();
   const threads = useDriveThreads(driveId);
@@ -140,7 +140,7 @@ export function ArrivalsDesk({ driveId }: { driveId: string }) {
                 <div>
                   <p className="type-body">{a.name}</p>
                   <p className="type-meta text-housing-muted">
-                    {t("flaggedLine", { method: a.method, time: formatTime(a.scannedAt), reason: a.flagReason ?? "" })}
+                    {t("flaggedLine", { method: a.method, time: formatTime(a.scannedAt), reason: formatFlags(a) })}
                   </p>
                 </div>
                 {runs && (

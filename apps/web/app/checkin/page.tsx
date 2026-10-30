@@ -100,7 +100,7 @@ function locate(): Promise<Reading> {
 export default function CheckInPage() {
   const t = useTranslations("checkin");
   const errorText = useErrorText();
-  const { formatTime } = useFormat();
+  const { formatTime, formatFlags } = useFormat();
   const ready = useRequireRole("CANDIDATE");
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const scanner = useRef<Html5Qrcode | null>(null);
@@ -277,7 +277,7 @@ export default function CheckInPage() {
               <p className="type-h2">{step.again ? t("alreadyIn") : t("in")}</p>
               <p className="type-board-md">{t("at", { time: formatTime(step.checkIn.scannedAt) })}</p>
               {!step.checkIn.isValid && (
-                <p className="type-meta text-housing-muted">{t("flagged", { reason: step.checkIn.flagReason?.toLowerCase() ?? "" })}</p>
+                <p className="type-meta text-housing-muted">{t("flagged", { reason: formatFlags(step.checkIn).toLowerCase() })}</p>
               )}
               <Link href="/my-drives" className={boardButtonClass("housing", "quiet")}>
                 {t("yourDrives")}

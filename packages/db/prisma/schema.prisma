@@ -368,9 +368,20 @@ enum CheckInMethod {
   MANUAL
 }
 
+// Why a check-in was accepted but held for the employer. Codes are data:
+// the wording lives in the catalog (format.checkInFlags) and can change
+// freely, these names cannot without a migration of the stored rows.
+enum CheckInFlag {
+  LOW_GPS_ACCURACY
+  SYNCED_AFTER_EXPIRY
+}
+
 // Location fields are null for a MANUAL check-in: the employer marked the
 // person present, so there is no reading. isValid false means "accepted but
-// needs an employer's confirmation", with the reason in flagReason.
+// needs an employer's confirmation", with the reasons in flags. flags stay
+// after the employer confirms, as the record of what was questioned. Each
+// flag's values are columns: accuracyMeters and distanceMeters for
+// LOW_GPS_ACCURACY, lateBySeconds for SYNCED_AFTER_EXPIRY.
 model CheckIn {
   id             String        @id @default(cuid())
   applicationId  String        @unique
@@ -384,7 +395,9 @@ model CheckIn {
   accuracyMeters Float?
   distanceMeters Float?
   isValid        Boolean
-  flagReason     String?
+  flags          CheckInFlag[] @default([])
+  // How long after the code expired an offline scan reached the server.
+  lateBySeconds  Int?
 
   application Application @relation(fields: [applicationId], references: [id])
 

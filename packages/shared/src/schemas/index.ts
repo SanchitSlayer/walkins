@@ -235,6 +235,9 @@ export const manualCheckInSchema = z.object({
 
 export const checkInMethodSchema = z.enum(["SCAN", "WALK_IN", "MANUAL"]);
 
+// Codes, never wording: formatFlags() words them from the catalog.
+export const checkInFlagSchema = z.enum(["LOW_GPS_ACCURACY", "SYNCED_AFTER_EXPIRY"]);
+
 export const checkInSchema = z.object({
   id: z.string(),
   applicationId: z.string(),
@@ -244,7 +247,8 @@ export const checkInSchema = z.object({
   distanceMeters: z.number().nullable(),
   accuracyMeters: z.number().nullable(),
   isValid: z.boolean(),
-  flagReason: z.string().nullable(),
+  flags: z.array(checkInFlagSchema),
+  lateBySeconds: z.number().int().nullable(),
 });
 
 export const checkInResultSchema = z.discriminatedUnion("outcome", [
@@ -315,8 +319,10 @@ export const liveBoardSchema = z.object({
       scannedAt: z.string(),
       slotStartsAt: z.string().nullable(),
       distanceMeters: z.number().nullable(),
+      accuracyMeters: z.number().nullable(),
       isValid: z.boolean(),
-      flagReason: z.string().nullable(),
+      flags: z.array(checkInFlagSchema),
+      lateBySeconds: z.number().int().nullable(),
       // Who at the desk marked them present (a MANUAL check-in) and who
       // confirmed a flagged one, so people sharing a desk see each other's
       // work.

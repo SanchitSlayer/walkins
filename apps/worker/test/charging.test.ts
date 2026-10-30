@@ -35,7 +35,7 @@ async function showUp(opts: { isValid?: boolean; scannedAt?: Date; hire?: boolea
       await transitionApplication(tx, { applicationId: app.id, to: "HIRED", actor: employer });
     }
     return tx.checkIn.create({
-      data: { applicationId: app.id, method: "SCAN", isValid: opts.isValid ?? true, scannedAt: opts.scannedAt ?? new Date(), flagReason: opts.isValid === false ? "test flag" : null },
+      data: { applicationId: app.id, method: "SCAN", isValid: opts.isValid ?? true, scannedAt: opts.scannedAt ?? new Date(), flags: opts.isValid === false ? ["LOW_GPS_ACCURACY"] : [] },
     });
   });
 }

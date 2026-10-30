@@ -1695,13 +1695,36 @@ What the check does **not** cover on the server:
   first and passed in later goes unseen.
 - **Words stored to show later.** Syntax can't tell these from internal
   text. They are:
-  - `check_ins.flagReason`;
   - a payment's `failureReason`, as the gateway sent it;
   - the notes admins write on verification decisions and warnings, which
     are their own words to the company, in whatever language they wrote.
   These are listed under the Hindi phase's known work below. The
   verification provider's verdict and the reasons for rejecting a company
-  became codes in Phase 10, so they are worded from the catalog.
+  became codes in Phase 10, and a check-in's flags in Phase 13 (below), so
+  they are worded from the catalog.
+
+Why a check-in was held for the employer is stored as codes in
+`check_ins.flags`, never as wording:
+- `LOW_GPS_ACCURACY`: the reading was worse than ±100 m. Its values are the
+  check-in's `accuracyMeters` and `distanceMeters`.
+- `SYNCED_AFTER_EXPIRY`: an offline scan reached the server after its code
+  expired. Its value is `lateBySeconds`.
+
+The codes are data. Rewording a flag is a catalog change
+(`format.checkInFlags`); renaming a code needs a migration of the stored
+rows. `formatFlags()` words them in the reader's language for the
+candidate's check-in result and the employer's arrivals desk, and it is
+keyed by every code, so a new code doesn't compile without wording. The
+audit entry for confirming a flag records the codes too.
+
+Until Phase 13 this was an English sentence in `flagReason`, several flags
+joined by "; ". The migration (`20261031100000_check_in_flags`) converted
+each sentence to its codes. The accuracy and distance in the text were the
+columns rounded, so nothing was lost. The lateness had been kept only as
+whole minutes, so it became minutes × 60, which words the same again. It
+converted the audit log's copies the same way. It refuses to run, before
+changing anything, if any sentence isn't one of the two shapes the
+check-in service wrote.
 - **Log lines, job outcomes and embedding input.** These are for operators
   and the model, not people, and stay in English on purpose.
 
@@ -1934,14 +1957,9 @@ conjunct क्ष. It now takes the first letter as a reader sees it.
 
 These were found while building the scaffolding and are not fixed yet.
 
-- **Stored English.** `check_ins.flagReason` is still stored as an English
-  sentence ("Location only accurate to ±…, … from the venue"), built from
-  several flags joined into one string. Moving it to keys needs a schema
-  change: a list of flag codes with their values. Until then, the employer
-  board and the candidate's check-in result show it in English whatever the
-  locale. Decline reasons from the payment gateway are stored as the gateway
-  sends them, and admins' notes on decisions and warnings are their own
-  words.
+- **Stored English.** Decline reasons from the payment gateway are stored as
+  the gateway sends them, and admins' notes on decisions and warnings are
+  their own words.
 - **Language names come from each runtime's ICU data.** Node 20 names `or`
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override

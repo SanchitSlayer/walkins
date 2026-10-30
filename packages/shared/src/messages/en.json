@@ -8,7 +8,11 @@
     "years": "{count, plural, one {# year} other {# years}}",
     "yearsRange": "{min}–{max, plural, one {# year} other {# years}}",
     "seatsAllTaken": "All {capacity} seats taken",
-    "seatsLeft": "{left} of {capacity} seats left"
+    "seatsLeft": "{left} of {capacity} seats left",
+    "checkInFlags": {
+      "LOW_GPS_ACCURACY": "Location only accurate to ±{accuracy}, {distance} from the venue",
+      "SYNCED_AFTER_EXPIRY": "Scanned offline, sent {minutes, plural, =0 {less than a minute} other {# min}} after the code expired"
+    }
   },
   "alerts": {
     "where": "{venue} ({distance} from your home)",
