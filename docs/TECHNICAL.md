@@ -1197,6 +1197,12 @@ Reschedule, and the API refuses a time change through edit.
   `datetime-local` input is drawn by the browser in its own locale, so it
   can show "03:30 PM" while the rest of Walkins uses the 24-hour clock. A
   page can't set the format of a native input.
+- **The date fields on /jobs show the browser's wording.** The same holds
+  for `type="date"`: on a Hindi page they still show "dd/mm/yyyy" in the
+  browser's language. Cosmetic; the dates they pick are right.
+- **A Hindi drive page's कब row wraps at phone width.** The day and time
+  run onto a second line at 375 px where the English fits on one. Nothing
+  is cut off. Cosmetic.
 
 #### Everything that keys off a drive's time
 
@@ -2381,6 +2387,24 @@ also includes `test`.
 timeout is tight for the API suite's database-heavy tests, and a busy machine
 fails a few of them, different ones on different runs. A lone timeout that
 passes on a re-run is probably load, not a regression.
+
+**Before seeding rows into the dev database by hand, look for a running
+worker** rather than assuming none was started. The root `pnpm dev` starts
+every app, the worker included, and a `pnpm dev` left open in another
+terminal runs one too:
+
+```
+lsof -a -c node -d cwd | grep apps/worker
+```
+
+The hazard is the charge sweep. Every 15 minutes it charges each valid
+check-in that has no charge yet, so a seeded check-in becomes a debit from a
+real company's wallet and platform revenue, and the ledger is append-only:
+deleting the seeded rows afterwards removes the check-in but not the charge.
+The only correction is a reversing transaction. The same run also sends the
+seeded drives' alerts and copies the seeded rows into the analytics views,
+which keep them until the next refresh. Stop the worker before seeding, or
+seed nothing it acts on.
 
 To queue one drive's alerts by hand, and to list jobs that failed for good:
 
