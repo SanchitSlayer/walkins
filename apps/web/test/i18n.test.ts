@@ -330,6 +330,13 @@ describe("wording around numbers", () => {
     expect(bare.map(([key]) => key)).toEqual([]);
   });
 
+  // कल means yesterday as well as tomorrow, so Hindi never says it alone.
+  it("names tomorrow by its date in Hindi", () => {
+    const now = new Date("2026-10-30T06:00:00Z");
+    expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("शनिवार, 31 अक्तूबर");
+    expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज");
+  });
+
   it("dates a past reschedule by its date, not relative to today", () => {
     const now = new Date("2026-10-30T06:00:00Z");
     expect(en.formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("Tomorrow");
@@ -378,6 +385,8 @@ describe("Hindi", () => {
   // doesn't change, the key is listed here with why.
   const SAME_IN_BOTH: Record<string, string> = {
     "format.checkInFlags.SYNCED_AFTER_EXPIRY": "मिनट doesn't change for number",
+    "format.years": "साल doesn't change for number",
+    "format.yearsRange": "साल doesn't change for number",
   };
 
   it("has a plural wherever English does, with English's cases, saying different things", () => {

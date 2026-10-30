@@ -49,6 +49,8 @@ function createFormat(locale: Locale): Format {
   // in docs/TECHNICAL.md has both rules.
   const short = locale === "hi" ? "long" : "short";
   const unitTag = locale === "hi" ? INTL_LOCALE.en : tag;
+  // कल is both yesterday and tomorrow, so Hindi names tomorrow by its date.
+  const saysTomorrow = locale !== "hi";
   const dayParts = new Intl.DateTimeFormat(tag, { timeZone: TIME_ZONE, weekday: short, day: "numeric", month: short });
   const time = new Intl.DateTimeFormat(tag, { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const rupees = new Intl.NumberFormat(tag, { style: "currency", currency: "INR", maximumFractionDigits: 0 });
@@ -71,7 +73,7 @@ function createFormat(locale: Locale): Format {
 
   const dayLabel = (date: Date, now: Date) => {
     if (dayKey(date) === dayKey(now)) return translate(locale, "format.today");
-    if (dayKey(date) === dayKey(new Date(now.getTime() + 86_400_000))) return translate(locale, "format.tomorrow");
+    if (saysTomorrow && dayKey(date) === dayKey(new Date(now.getTime() + 86_400_000))) return translate(locale, "format.tomorrow");
     return formatDate(date);
   };
 

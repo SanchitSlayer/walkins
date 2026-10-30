@@ -1604,7 +1604,10 @@ other ways. While it isn't offered (`OFFERED_LOCALES`):
 - the picker and the header switch are hidden, and no `hreflang`
   alternates are given;
 - a `/hi` address redirects to its English one, and a saved Hindi choice
-  doesn't send anyone to `/hi`;
+  doesn't send anyone to `/hi`. `/hi/<path>` goes to `/<path>` even where
+  that is a 404 (`/hi/jobs` to `/jobs`): the English address 404s the same
+  way, so the redirect changes nothing but the language. Don't send it to
+  `/` instead, which would turn a mistyped address into a different page;
 - the API refuses to save `hi` (`setLocaleSchema`);
 - a Hindi choice already in `users.locale` is served as English
   (`servedLocale`): the session's cookie, alerts and their links, and the
@@ -1842,7 +1845,9 @@ argument the English string doesn't have. Phrase around it instead:
   never written into the catalog: they come from the formatter, so their
   spelling stays consistent.
 - **कल means both yesterday and tomorrow,** so in Hindi it never appears
-  without the date beside it.
+  without the date beside it. The formatter names tomorrow by its date in
+  Hindi ("शनिवार, 31 अक्तूबर") where English says "Tomorrow"; `format.tomorrow`
+  has Hindi only so the catalog is complete.
 - **Hindi's "one" plural form covers 0 as well as 1.** A count that can be
   zero needs an explicit `=0` case.
 - **Placeholders move with Hindi word order.** "{role} at {company}"

@@ -1,5 +1,14 @@
 {
   "format": {
+    "today": "आज",
+    "tomorrow": "कल",
+    "dayDate": "{weekday}, {day} {month}",
+    "range": "{from}–{to}",
+    "noExperience": "अनुभव ज़रूरी नहीं",
+    "years": "{count, plural, one {# साल} other {# साल}}",
+    "yearsRange": "{min}–{max, plural, one {# साल} other {# साल}}",
+    "seatsAllTaken": "{capacity, plural, one {इकलौती सीट भर गई है} other {सभी # सीटें भर गई हैं}}",
+    "seatsLeft": "कुल {capacity, plural, one {# सीट} other {# सीटों}} में से {left} बाकी",
     "checkInFlags": {
       "LOW_GPS_ACCURACY": "लोकेशन सिर्फ़ ±{accuracy} तक सही थी, इंटरव्यू की जगह से {distance} दूर",
       "SYNCED_AFTER_EXPIRY": "चेक-इन ऑफ़लाइन सेव हुआ और कोड एक्सपायर होने के {minutes, plural, =0 {एक मिनट से भी कम समय} one {# मिनट} other {# मिनट}} बाद भेजा गया"
@@ -25,11 +34,97 @@
       "reportOwnSide": "रिपोर्ट सिर्फ़ बातचीत में दूसरी तरफ़ से आए मैसेज की हो सकती है, अपने भेजे मैसेज की नहीं।"
     }
   },
+  "fields": {
+    "default": "यह जानकारी",
+    "phone": "मोबाइल नंबर",
+    "otp": "OTP",
+    "name": "नाम",
+    "roleId": "काम",
+    "cityId": "शहर",
+    "venueAddress": "इंटरव्यू की जगह का पता",
+    "salaryMin": "कम से कम सैलरी",
+    "salaryMax": "ज़्यादा से ज़्यादा सैलरी",
+    "experienceMin": "कम से कम अनुभव",
+    "experienceMax": "ज़्यादा से ज़्यादा अनुभव",
+    "startsAt": "शुरू होने का समय",
+    "endsAt": "बंद होने का समय",
+    "capacity": "कुल सीटें",
+    "capacityPerSlot": "हर स्लॉट में सीटें",
+    "slotDurationMinutes": "हर स्लॉट का समय",
+    "prompt": "सवाल",
+    "requirement": "ज़रूरी शर्त",
+    "options": "जवाब",
+    "unit": "यूनिट",
+    "knockoutQuestions": "बुकिंग से पहले के सवाल",
+    "homeLat": "घर की लोकेशन",
+    "homeLng": "घर की लोकेशन",
+    "maxTravelKm": "आने-जाने की दूरी",
+    "experienceYears": "अनुभव",
+    "roleIds": "काम",
+    "amountPaise": "रकम",
+    "pricePaise": "कीमत",
+    "effectiveFrom": "लागू होने का समय",
+    "readsLanguages": "आपकी टीम जो भाषाएँ पढ़ती है",
+    "reason": "वजह",
+    "code": "चेक-इन कोड",
+    "slotId": "स्लॉट",
+    "answers": "जवाब",
+    "applicationIds": "आवेदन करने वाले",
+    "role": "टीम में उनका रोल",
+    "successorId": "ज़िम्मेदारी किसे मिलेगी",
+    "ownerId": "ओनर",
+    "gstin": "GSTIN",
+    "documentKeys": "डॉक्यूमेंट",
+    "details": "क्या हुआ",
+    "note": "नोट",
+    "body": "मैसेज",
+    "seq": "मैसेज",
+    "joiningDate": "जॉइनिंग की तारीख",
+    "started": "काम शुरू किया",
+    "startedOn": "काम शुरू करने की तारीख",
+    "retained": "अब भी काम पर"
+  },
   "board": {
     "state": {
       "cancelled": "रद्द",
       "suspended": "रोकी गई"
     }
+  },
+  "nav": {
+    "yourDrives": "आपकी ड्राइव",
+    "yourProfile": "आपकी प्रोफ़ाइल",
+    "admin": "एडमिन",
+    "logIn": "लॉग इन करें",
+    "logOut": "लॉग आउट करें",
+    "loggingOut": "लॉग आउट हो रहा है",
+    "account": "अकाउंट"
+  },
+  "map": {
+    "drives": {
+      "noWebgl": "मैप के लिए WebGL चाहिए, जो इस ब्राउज़र में नहीं है। मैप पर जो कुछ है, वह सब इस पेज पर लिखा भी है।",
+      "label": "ड्राइव का मैप"
+    },
+    "home": {
+      "noWebgl": "मैप के लिए WebGL चाहिए, जो इस ब्राउज़र में नहीं है, इसलिए यहाँ मैप पर आपके घर की जगह नहीं चुनी जा सकती।",
+      "label": "घर की लोकेशन का मैप"
+    }
+  },
+  "transcript": {
+    "label": "अपने-आप लिखा गया टेक्स्ट, इसमें गलतियाँ हो सकती हैं",
+    "language": " · {language}",
+    "languageSure": " · {language} (भाषा पहचानने में {percent}% भरोसा)"
+  },
+  "meta": {
+    "title": "Walkins: आपके पास वॉक-इन इंटरव्यू",
+    "titleTemplate": "%s · Walkins",
+    "description": "अपने पास वॉक-इन इंटरव्यू ढूँढें। न आवेदन भरना, न जवाब का इंतज़ार: देखें किस कंपनी के इंटरव्यू कब और कहाँ हैं, और पहुँच जाएँ।"
+  },
+  "home": {
+    "heading": "आपके पास वॉक-इन इंटरव्यू",
+    "intro": "न आवेदन भरना, न जवाब का इंतज़ार। अपना शहर चुनें, देखें किस कंपनी के इंटरव्यू कब हैं, और पहुँच जाएँ।",
+    "chooseCity": "शहर चुनें",
+    "unreachable": "बोर्ड अभी सर्वर तक नहीं पहुँच पा रहा है। थोड़ी देर में फिर से कोशिश करें।",
+    "seeDrives": "ड्राइव देखें"
   },
   "drive": {
     "detail": {
@@ -110,5 +205,16 @@
       "drivePaused": "ड्राइव अभी रोकी गई है"
     },
     "excused": "आपकी बुकिंग के बाद ड्राइव का समय बदला गया, और नए समय वाला मैसेज आप तक नहीं पहुँचा, इसलिए इसे आपके खिलाफ़ नहीं गिना जाएगा।"
+  },
+  "language": {
+    "heading": "भाषा",
+    "intro": "Walkins और आपके Telegram मैसेज इसी भाषा में होंगे। कंपनियों के अपने शब्द (काम का नाम, पते, मैसेज) वैसे ही रहेंगे जैसे उन्होंने लिखे हैं।",
+    "name": {
+      "en": "English",
+      "hi": "हिंदी"
+    },
+    "hindiReview": "हिंदी AI की मदद से लिखी गई है; अभी किसी व्यक्ति ने इसे नहीं जाँचा है।",
+    "switchTo": "यह पेज {language} में पढ़ें",
+    "saveFailed": "आपकी भाषा सेव नहीं हो पाई। फिर से कोशिश करें।"
   }
 }
