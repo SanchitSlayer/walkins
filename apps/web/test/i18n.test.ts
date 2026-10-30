@@ -459,7 +459,7 @@ describe("safety wording in Hindi", () => {
   // A new string telling someone not to pay or not to travel joins the
   // manifest, or this fails.
   it("includes every string that speaks about paying, travelling, reporting or being questioned", () => {
-    const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|haven't done anything wrong|\breport/i;
+    const marker = /never charges|ask(s|ing)? (you )?(for money|to pay)|don't pay|don't travel|won't count against|doesn't count towards|haven't done anything wrong|\breport/i;
     const listed = new Set<string>(safetyKeys());
     const missed = [...english].filter(([key, text]) => inHindiScope(key) && marker.test(text) && !listed.has(key)).map(([key]) => key);
     expect(missed).toEqual([]);

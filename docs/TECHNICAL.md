@@ -1962,7 +1962,7 @@ covers most of the critical tier's meaning:
 pay or that Walkins never charges, is part of reporting, tells them their
 account or check-in was questioned, tells them whether to travel (a drive
 paused, cancelled or moved, an application turned down), or promises
-something won't count against them. 62 keys, in five groups. Tests hold
+something won't count against them. 64 keys, in five groups. Tests hold
 the set together (`apps/web/test/i18n.test.ts`, "safety wording in
 Hindi"):
 - every key in it is in `HINDI_SCOPE` and has Hindi;
@@ -2094,6 +2094,13 @@ To do with the board and the validation wording (the last Hindi group):
   `params.field` already worded in English, and the web inserts it as it
   is. The API is to send the field's key, and the web word it in the page's
   language. `fields.role` is renamed for the search filter at the same time.
+- **The venue's screens are English only.** The check-in screen and the
+  live board are served from `/employer/drives/[id]/...`, an English-only
+  address, so their Hindi is never shown. Decided: both become bilingual,
+  since a screen facing a queue can't know who reads it. The check-in
+  screen stacks Hindi above English. For the board, alternating (each
+  language held a few seconds, flapping between them, as departure boards
+  do) is to be weighed against stacking with the board in front of us.
 - **The drive card at phone width.** It keeps the day on one line, now
   "Tomorrow, Sat 31 Oct". If that doesn't fit, shorten the English form;
   don't change the layout.

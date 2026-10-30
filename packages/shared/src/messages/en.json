@@ -87,8 +87,8 @@
       "rejected": "The employer isn't taking your application forward for this drive, so check-in is closed for you.",
       "tooFar": "You're {distance} from the venue. Check-in works within {limit}; if you're here, ask the employer at the desk to check you in.",
       "notACode": "That isn't a Walkins check-in code. Scan the code on the screen at the venue.",
-      "refused": "This check-in was refused. Ask the employer at the desk to check you in.",
-      "needsRegistering": "This check-in needs registering at the desk. Show this screen to the employer.",
+      "refused": "This check-in wasn't recorded. Ask the employer at the desk to check you in.",
+      "needsRegistering": "This check-in wasn't recorded. Show this screen to the employer at the desk so they can check you in.",
       "suspended": "This drive is paused while Walkins checks it, so check-in is closed. You haven't done anything wrong. Please don't pay anyone at the venue for this job."
     },
     "drive": {
@@ -592,7 +592,7 @@
     "registerWalkIn": "Register as a walk-in",
     "notNow": "Not now",
     "savedHeading": "Saved on this phone",
-    "savedBody": "There's no signal, so your check-in will be sent as soon as there is. It needs to go within 30 minutes; keep this page open if you can, or open Walkins again once you have signal.",
+    "savedBody": "There's no signal, so your check-in will be sent as soon as there is, and the employer will confirm it at the desk. It has to be sent within 30 minutes of scanning: keep this page open if you can, or open Walkins again once you have signal. After 30 minutes it can't be sent, and you'll need to scan the code at the venue again or ask the employer at the desk.",
     "alreadyIn": "You're already checked in",
     "in": "You're checked in",
     "at": "At {time}",

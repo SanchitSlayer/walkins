@@ -231,7 +231,7 @@ export const SAFETY_KEYS = {
     "yourRecord.state.driveCancelled",
     "yourRecord.state.drivePaused",
   ],
-  notAgainstYou: ["yourRecord.excused", "yourRecord.state.notAttendedExcused"],
+  notAgainstYou: ["yourRecord.excused", "yourRecord.state.notAttendedExcused", "myDrives.started.whoSees", "alerts.joining_check"],
 } as const satisfies Record<string, readonly MessageKey[]>;
 
 export const safetyKeys = (): MessageKey[] => Object.values(SAFETY_KEYS).flat();
