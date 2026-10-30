@@ -70,9 +70,9 @@ function createFormat(locale: Locale): Format {
   };
 
   const dayLabel = (date: Date, now: Date) => {
-    if (dayKey(date) === dayKey(now)) return translate(locale, "format.today");
     // With its date: a page kept offline is read on a later day, and कल
     // means yesterday as well as tomorrow.
+    if (dayKey(date) === dayKey(now)) return translate(locale, "format.today", { date: formatDate(date) });
     if (dayKey(date) === dayKey(new Date(now.getTime() + 86_400_000))) return translate(locale, "format.tomorrow", { date: formatDate(date) });
     return formatDate(date);
   };

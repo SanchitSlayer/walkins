@@ -1,6 +1,6 @@
 {
   "format": {
-    "today": "Today",
+    "today": "Today, {date}",
     "tomorrow": "Tomorrow, {date}",
     "dayDate": "{weekday} {day} {month}",
     "range": "{from}–{to}",

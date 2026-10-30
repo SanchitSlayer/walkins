@@ -332,11 +332,12 @@ describe("wording around numbers", () => {
   });
 
   // A page kept offline is read on a later day, and कल means yesterday as
-  // well as tomorrow, so tomorrow always comes with its date.
-  it("names tomorrow with its date", () => {
+  // well as tomorrow, so today and tomorrow always come with their date.
+  it("names today and tomorrow with their date", () => {
     const now = new Date("2026-10-30T06:00:00Z");
     expect(formatFor("hi").formatWhen("2026-10-31T10:00:00Z", "2026-10-31T14:00:00Z", now).day).toBe("कल (शनिवार, 31 अक्तूबर)");
-    expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज");
+    expect(formatFor("hi").formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("आज (शुक्रवार, 30 अक्तूबर)");
+    expect(en.formatWhen("2026-10-30T10:00:00Z", "2026-10-30T14:00:00Z", now).day).toBe("Today, Fri 30 Oct");
   });
 
   it("dates a past reschedule by its date, not relative to today", () => {

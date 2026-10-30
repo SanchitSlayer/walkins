@@ -1846,10 +1846,11 @@ argument the English string doesn't have. Phrase around it instead:
   the formatter's abbreviations (शुक्र, अक्तू॰). Month and day names are
   never written into the catalog: they come from the formatter, so their
   spelling stays consistent.
-- **Tomorrow always comes with its date, in both languages:** "Tomorrow,
-  Sat 31 Oct", "कल (शनिवार, 31 अक्तूबर)". कल means both yesterday and
-  tomorrow, and a page kept offline is read on a later day, when a bare
-  "Tomorrow" is wrong.
+- **Today and tomorrow always come with their date, in both languages:**
+  "Today, Fri 30 Oct", "Tomorrow, Sat 31 Oct", "आज (शुक्रवार, 30 अक्तूबर)",
+  "कल (शनिवार, 31 अक्तूबर)". A page kept offline is read on a later day,
+  when a bare "Today" or "Tomorrow" is wrong, and कल means both yesterday
+  and tomorrow.
 - **Hindi's "one" plural form covers 0 as well as 1.** A count that can be
   zero needs an explicit `=0` case.
 - **Placeholders move with Hindi word order.** "{role} at {company}"
@@ -2076,6 +2077,26 @@ These were found while building the scaffolding and are not fixed yet.
   "Odia", and older ICU data says "Oriya". The server render and the browser
   can disagree. Check the names when they are shown in Hindi, and override
   any that differ in the catalog.
+- **English written for one reader, reused for another.** Nothing in the
+  catalog records who reads a key, so a key worded for the employer gets
+  reused where a candidate reads it, and translation would faithfully carry
+  the wrong reader into Hindi. Three found so far:
+  - the candidate's "did you start?" answer refused in the employer's words
+    ("This person isn't recorded as hired"), now `errors.outcomes.candidate.*`;
+  - the arrivals desk showing check-in flags in the candidate's wording;
+  - `fields.role` ("Their role", a team member's role) naming the public
+    search's `role` filter, the kind of work. Fixed with the next item.
+
+  When a key is used somewhere new, check whose words it is in.
+
+To do with the board and the validation wording (the last Hindi group):
+- **Field names reach Hindi pages in English.** The API refuses a form with
+  `params.field` already worded in English, and the web inserts it as it
+  is. The API is to send the field's key, and the web word it in the page's
+  language. `fields.role` is renamed for the search filter at the same time.
+- **The drive card at phone width.** It keeps the day on one line, now
+  "Tomorrow, Sat 31 Oct". If that doesn't fit, shorten the English form;
+  don't change the layout.
 
 ## Prerequisites
 
